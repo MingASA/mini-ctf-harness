@@ -1,0 +1,3 @@
+# Runtime addresses and file offsets
+
+A file offset counts bytes from the start of a stored file. A virtual address names a location in a process address space. A loader maps file regions into virtual memory according to segment metadata; it need not preserve a direct one-to-one offset equality. Some mapped memory has no corresponding stored bytes. Position-independent code and address randomization can change a runtime base between executions. When translating a location, retain the relevant mapping, file-backed range, load base, and executable identity. Never apply a mapping from one process run to another without checking its base.

@@ -1,0 +1,3 @@
+# Transparent pixel data
+
+An alpha channel describes opacity separately from color channels. A fully transparent pixel may still store nonzero RGB components. Compositing an image on a background can conceal those stored values, and an export pipeline may discard or transform them. Premultiplied and straight alpha representations use different relationships between stored color and opacity. Inspect a representation in its declared color model before drawing conclusions from the displayed image. Record dimensions, channel layout, bit depth, and whether transformations occurred between the source bytes and the displayed pixels.

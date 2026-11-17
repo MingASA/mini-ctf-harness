@@ -1,0 +1,54 @@
+{
+  "model_revision": "4ca720788d1e01f1bff70c033e0d0028fd02e502",
+  "engine_tag": "b12144",
+  "engine_commit": "69ee2ecc0150ba7d1204a7f7393dfd651569db8c",
+  "assets": {
+    "windows-engine": {
+      "name": "llama-b12144-bin-win-cuda-13.4-x64.zip",
+      "url": "https://github.com/ggml-org/llama.cpp/releases/download/b12144/llama-b12144-bin-win-cuda-13.4-x64.zip",
+      "sha256": "19809fbc335671be6e964c874a19ce879b64ef0e1f9431a23ce9654bf71f44ce",
+      "size": 170311229
+    },
+    "windows-cuda": {
+      "name": "cudart-llama-bin-win-cuda-13.4-x64.zip",
+      "url": "https://github.com/ggml-org/llama.cpp/releases/download/b12144/cudart-llama-bin-win-cuda-13.4-x64.zip",
+      "sha256": "738f8c251ac22b70c3ae6f83a10cf222725df0395246a2cf58f32bdb85fbe668",
+      "size": 423535356
+    },
+    "qwen3.8-27b-iq4xs": {
+      "name": "Qwen3.8-27B-UD-IQ4_XS.gguf",
+      "url": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/4ca720788d1e01f1bff70c033e0d0028fd02e502/Qwen3.8-27B-UD-IQ4_XS.gguf",
+      "sha256": "40fac4050e940397dbf13087afd50f4734a11805bf9d65ef8ddd7483470e6199",
+      "size": 14252845984
+    },
+    "linux-cuda": {
+      "name": "cudart-llama-b12144-bin-ubuntu-cuda-12.8-x64.tar.gz",
+      "url": "https://github.com/ggml-org/llama.cpp/releases/download/b12144/cudart-llama-b12144-bin-ubuntu-cuda-12.8-x64.tar.gz",
+      "sha256": "eb690223e72a69e5f80954f8b7f8eced57800561af7196d53095a7e4b5286d8c",
+      "size": 594372521
+    },
+    "linux-engine": {
+      "name": "llama-b12144-bin-ubuntu-cuda-12.8-x64.tar.gz",
+      "url": "https://github.com/ggml-org/llama.cpp/releases/download/b12144/llama-b12144-bin-ubuntu-cuda-12.8-x64.tar.gz",
+      "sha256": "6d0a5fc026233ab1fed162f6eeeb62ac0dffc4ac1ab2ee66a8c4ceb17ace5143",
+      "size": 188085326
+    },
+    "node": {
+      "name": "node-v22.22.1-linux-x64.tar.xz",
+      "url": "https://nodejs.org/dist/v22.22.1/node-v22.22.1-linux-x64.tar.xz",
+      "sha256": "9a6bc82f9b491279147219f6a18add1e18424dce90d41d2a5fcd69d4924ba3aa"
+    },
+    "compose": {
+      "name": "docker-compose-linux-x86_64",
+      "url": "https://github.com/docker/compose/releases/download/v5.7.2/docker-compose-linux-x86_64",
+      "sha256": "e14235d9c622c5bd57eb8adeed4a0f7308c7f3862e6812dd843f6fe27f1307cc",
+      "size": 34063021
+    },
+    "docker": {
+      "name": "docker-29.9.3.tgz",
+      "url": "https://download.docker.com/linux/static/stable/x86_64/docker-29.9.3.tgz",
+      "sha256": "3fb5d1f13014c18cc54945bc177c58a9056a482dada031e17d12cf2e6922c973",
+      "size": 86360685
+    }
+  }
+}

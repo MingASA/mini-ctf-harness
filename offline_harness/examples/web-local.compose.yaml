@@ -1,0 +1,19 @@
+# Generic connectivity example. Replace image/command with the prepared challenge.
+services:
+  web:
+    image: sha256:2a41d227b5e305eaf4d3bc3c7fc6030759e15a12ba50d45b087a271bf1d63ca7
+    pull_policy: never
+    command: [python3, -m, http.server, "8000", --bind, 0.0.0.0, --directory, /work]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 128m
+    pids_limit: 64
+    tmpfs: [/tmp:size=16m]
+    networks:
+      challenge:
+        ipv4_address: 172.28.248.10
+networks:
+  challenge:
+    external: true
+    name: ctf-web-local

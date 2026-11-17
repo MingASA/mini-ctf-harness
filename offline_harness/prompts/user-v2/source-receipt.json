@@ -1,0 +1,11 @@
+{
+  "archive": "ctf_prompts_v2.zip",
+  "sha256": "3376651d9fb15bc782b55247a90202ff2cf4fff3ea707e64453e685c60604e45",
+  "files": {
+    "compact_update.txt": "cdb4af943fb45ccd27b214d642b097e068799b6f7d95700e23e425651f3fff05",
+    "README.md": "f2e06a11dc46da6a8cc3ae782c64046b233609b3ef3dfc9df47ca1ee50b050d9",
+    "compact_initial.txt": "7ad819729dd3f5fd0e85d7bc777c73953d015c46c3d02006d7ee1354e57137ec",
+    "system_prompt.txt": "229278f8d84cc0c6a71f99d80cc859ad2b7dc04bae127cc451a062890afc7acb"
+  },
+  "contents_modified": false
+}

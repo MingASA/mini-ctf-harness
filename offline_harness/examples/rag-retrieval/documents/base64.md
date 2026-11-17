@@ -1,0 +1,3 @@
+# Binary-to-text transport
+
+Base64 encodes binary octets into a printable alphabet. It is an encoding, not encryption: decoding requires no secret key. Conventional Base64 uses plus and slash, while a URL-safe alphabet substitutes minus and underscore. Padding with equals signs reflects the final group length and may be omitted by some protocols. A decoded output can still contain compressed data or a separate encrypted representation. Validate alphabet and padding under the expected variant, decode once, and compare a re-encoding if canonical representation matters. Preserve bytes rather than assuming the decoded result is UTF-8 text.

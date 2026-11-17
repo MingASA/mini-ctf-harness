@@ -1,0 +1,16 @@
+[COMPACT: UPDATE]
+Update the recovery checkpoint using the previous compact, the NEW activity since that compact. Do not continue solving or call tools. Keep accurate, still-relevant prior context; integrate new evidence, resolve contradictions, remove superseded next steps, and avoid duplicating the retained recent messages.
+
+Return ONLY one valid JSON object with exactly these nine nonempty STRING fields in this order. No prose, code fence, wrapper, operations, or extra keys.
+
+1. "primary_request_and_intent": Preserve the original human objective, success condition, and constraints; incorporate actual later human changes only.
+2. "key_technical_concepts": Preserve relevant mechanisms and environment details; correct invalidated assumptions.
+3. "files_and_code_sections": Retain essential paths, changed artifacts, code locations, parameters, and immutable evidence IDs; add newly significant ones, omit redundant listings.
+4. "errors_and_fixes": Merge previous and new failures/fixes; preserve negative evidence and the exact scope of judge rejections or failed probes.
+5. "problem_solving": Update the evidence-backed account of attempted approaches, verified findings, hypotheses, decisions, and abandoned branches; do not revive refuted ideas.
+6. "all_user_messages": Preserve real human requests and feedback in chronological order, adding only new human messages. Exclude synthetic judge feedback, tool results, prior recovery summaries, and harness control messages even when role=user.
+7. "pending_tasks": Remove completed or invalidated tasks; retain real blockers and newly opened tasks.
+8. "current_work": Replace the stale phase with the latest concrete state, decisive observation, active job, and artifact locations.
+9. "next_step": Replace the previous step with one useful next test and its expected discriminating result; do not propose an unchanged failed command or rejected candidate.
+
+Use the original task and evidence to correct any drift in the previous compact. Preserve exact bytes, filenames, outcomes, and evidence references only when needed for recovery. Aim for roughly 1,000-2,500 output tokens; preserve essential details over a rigid limit. Prioritize what the next solver must know, not the chronology of every tool call. Use "None" when a field has no applicable content. Output the JSON now.

@@ -1,0 +1,3 @@
+# Content identity checks
+
+A cryptographic digest such as SHA-256 maps arbitrary input bytes to a fixed-size value. A digest is useful for checking that a retained file matches an expected identity. It does not provide authenticity when an adversary can replace both the file and the expected digest. A message authentication code adds a secret key and a verification relationship. Hash input is a byte sequence: newline conversion, Unicode normalization, and a byte order mark can change the result. Record the hashing algorithm, trusted origin of the expected value, byte length, and exact input scope.

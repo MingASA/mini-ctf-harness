@@ -1,0 +1,3 @@
+# Authenticated encryption boundaries
+
+Authenticated encryption with associated data protects plaintext confidentiality and checks integrity of both ciphertext and associated data. Associated data is authenticated but is not itself encrypted. Nonce requirements belong to the specific algorithm and key usage rules; repeating a nonce can invalidate security assumptions. A failed authentication check should not be treated as meaningful plaintext. Preserve the algorithm identifier, nonce, associated data, ciphertext, tag layout, and byte encodings when diagnosing an interface mismatch. Algorithm classification must precede any interpretation of malformed outputs.

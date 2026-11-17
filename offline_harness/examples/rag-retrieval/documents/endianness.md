@@ -1,0 +1,3 @@
+# Integer byte order
+
+Endianness specifies how a multi-byte integer is arranged in bytes. In little-endian representation the least significant byte comes first; big-endian representation places the most significant byte first. Byte order does not determine signedness, integer width, or bit-field layout. Those are separate parts of the data format. For a four-byte quantity, changing signedness can change the interpreted value while leaving the byte sequence unchanged. Preserve width, signedness, offset, and byte order alongside each decoded number, and verify one known field before interpreting an entire structure.

@@ -1,0 +1,24 @@
+import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import path from 'node:path';import os from 'node:os';import {execFile} from 'node:child_process';import {promisify} from 'node:util';
+import {runTask} from '../src/runner.mjs';import {InteractiveSession} from '../src/interactive-session.mjs';import {Store} from '../src/store.mjs';
+const exec=promisify(execFile),prepare=async()=>{};
+function fixture(t){const root=fs.mkdtempSync(path.join(os.tmpdir(),'crash-local-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));return root;}
+const config=root=>({runDir:root,mode:'memory',model:'fixture',baseUrl:'http://127.0.0.1:8081',contextTokens:12000,promptTokens:5000,compactSoftTokens:5000,generationTokens:2048,reasoningTokens:-1,safetyTokens:64,compactTokens:1024,maxSeconds:60,maxTurns:20,maxGeneratedTokens:10000,localRecovery:{stateFile:'/synthetic-owner-state'}});
+const response=delta=>new Response('data: '+JSON.stringify({choices:[{delta,finish_reason:delta.tool_calls?'tool_calls':'stop'}],usage:{prompt_tokens:1000,completion_tokens:20,total_tokens:1020}})+'\n\ndata: [DONE]\n\n');
+const metadata=url=>Response.json(url.endsWith('/health')?{status:'ok'}:url.endsWith('/slots')?[]:{default_generation_settings:{n_ctx:12000}});
+test('actual process crash after tool_start resumes through Pi without executing the old command again',async t=>{
+ const root=fixture(t),cfg=config(root),task={id:'crashed',objective:'Recover an interrupted synthetic tool.'},file=path.join(root,'input.json');fs.writeFileSync(file,JSON.stringify({cfg,task}));
+ const source=`import fs from 'node:fs';import {runTask} from ${JSON.stringify(new URL('../src/runner.mjs',import.meta.url).href)};const {cfg,task}=JSON.parse(fs.readFileSync(process.argv[1]));const response=${response.toString()};const metadata=${metadata.toString()};await runTask(task,cfg,{testMode:true,guard:()=>{},knowledge:{docs:[]},localRecovery:{prepare:async()=>{}},broker:{validate:async()=>{},start:async()=>process.exit(91)},fetchFn:async(url,opt)=>!opt?.body?metadata(url):url.endsWith('input_tokens')?Response.json({input_tokens:1000}):response({tool_calls:[{index:0,id:'old',function:{name:'run_command',arguments:JSON.stringify({command:'old command must not run twice'})}}]})});`;
+ await assert.rejects(exec(process.execPath,['--input-type=module','-e',source,file]),e=>e.code===91);
+ const before=new Store(root);assert.equal(before.pending().length,1);const prefix=fs.readFileSync(before.file);let generations=0,commands=[];
+ const result=await runTask(task,cfg,{resume:true,testMode:true,guard:()=>{},knowledge:{docs:[]},localRecovery:{prepare},broker:{validate:async()=>{},start:async command=>{commands.push(command);return {job_id:'j2',status:'finished',exit_code:0};}},fetchFn:async(url,opt)=>{
+  if(!opt?.body)return metadata(url);if(url.endsWith('input_tokens'))return Response.json({input_tokens:1000});generations++;
+  if(generations===1){const b=JSON.parse(opt.body);assert.ok(b.messages.some(m=>m.role==='tool'&&m.content.includes('unknown_after_runner_exit')));return response({tool_calls:[{index:0,id:'fresh',function:{name:'run_command',arguments:JSON.stringify({command:'fresh command'})}}]});}
+  return response({content:'Recovered'});
+ }});
+ assert.equal(result.status,'model_stopped_without_verified_answer');assert.deepEqual(commands,['fresh command']);const after=new Store(root);assert.equal(after.pending().length,0);assert(fs.readFileSync(after.file).subarray(0,prefix.length).equals(prefix));assert.equal(after.events.filter(e=>e.type==='tool_start'&&e.data.callId==='request-1:old').length,1);
+});
+test('interactive competition session closes an interrupted tool pair locally and continues',async t=>{
+ const root=fixture(t);let generations=0,commands=0;const task={id:'interactive-crash',objective:'Continue a synthetic contest task.'};const session=new InteractiveSession(task,config(root),{guard:()=>{},knowledge:{docs:[]},localRecovery:{prepare},broker:{validate:async()=>{},start:async()=>{commands++;return {job_id:'j2',status:'finished',exit_code:0};}},fetchFn:async(url,opt)=>{if(!opt?.body)return metadata(url);if(url.endsWith('input_tokens'))return Response.json({input_tokens:1000});generations++;return generations===1?response({tool_calls:[{index:0,id:'new',function:{name:'run_command',arguments:JSON.stringify({command:'fresh'})}}]}):response({content:'Ready'});}});
+ session.store.append('message',{role:'user',content:task.objective});session.store.append('message',{role:'assistant',content:[{type:'toolCall',id:'interrupted',name:'run_command',arguments:{command:'old'}}]});session.store.append('tool_start',{callId:'interrupted',name:'run_command'});
+ const result=await session.runSlice();assert.equal(result.status,'awaiting_input');assert.equal(commands,1);assert.equal(session.store.pending().length,0);assert.equal(generations,2);
+});

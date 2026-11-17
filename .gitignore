@@ -1,0 +1,17 @@
+node_modules/
+.mini-ctf/
+.data/
+data/
+*.gguf
+*.safetensors
+*.tar
+*.tgz
+*.zip
+*.bundle
+*.log
+*.jsonl
+__pycache__/
+*.pyc
+.env
+config.local.json
+.install.json

@@ -1,0 +1,3 @@
+# Child process completion
+
+A process exit status belongs to the child process, not to an individual chunk of standard output. Standard output and standard error are separate byte streams whose reads may be split at arbitrary boundaries. End of one stream does not necessarily imply that the child has terminated, and an empty read observation need not be a complete application message. Wait for the process completion event and collect the final exit status. A timeout imposed by the harness should be distinguished from a child-reported nonzero status. Preserve both streams, termination reason, and truncation information.

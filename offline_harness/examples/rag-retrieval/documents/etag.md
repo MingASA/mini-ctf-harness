@@ -1,0 +1,3 @@
+# Conditional representation validation
+
+An entity tag identifies a selected representation for conditional HTTP requests. The If-None-Match condition carries entity tags previously received by a client. A matching condition on a retrieval request can allow a 304 response without a new representation body. Weak entity tags begin with W/ and express a weaker equivalence relation than strong validators. An entity tag is opaque: clients must not assume it is a content hash or decode internal meaning from its characters. Record the original validator, request condition, method, and response status when checking cache behavior.

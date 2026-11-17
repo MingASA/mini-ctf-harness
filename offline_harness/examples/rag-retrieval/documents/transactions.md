@@ -1,0 +1,3 @@
+# Atomic database changes
+
+A database transaction groups changes into a unit that can commit or roll back. Atomicity concerns whether a partial group becomes visible, while isolation concerns interactions among concurrent transactions. A savepoint provides a position to which part of a transaction can roll back without necessarily ending the whole transaction. A successful statement is not proof that a surrounding transaction committed. Record the transaction boundary, connection identity, commit outcome, and the isolation setting before interpreting inconsistent observations. Specific database products may differ in their locking and visibility behavior.

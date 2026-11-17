@@ -1,0 +1,3 @@
+# Multibyte text boundaries
+
+UTF-8 represents a Unicode scalar value using one to four bytes. A byte offset and a character offset therefore are different units. Continuation bytes have their two highest bits set to 10; a slice beginning with a continuation byte does not start at a complete code point. A streaming decoder may retain an incomplete prefix until more bytes arrive. A strict decoder should reject malformed input rather than replacing it silently. When quoting a byte range, retain the original bytes, start and exclusive end offsets, encoding, and digest. Do not normalize text before measuring offsets against the original source.

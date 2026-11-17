@@ -1,0 +1,3 @@
+# Retry timing metadata
+
+Retry-After is an HTTP response field that suggests how long a client ought to wait before making a follow-up request. Its value can be a non-negative number of seconds or an HTTP-date. An HTTP-date requires a clock interpretation; a delay in seconds is relative to receipt of the response. A suggested delay does not itself make repeating a state-changing operation safe. Retry policy also depends on method semantics and application guarantees. Retain the status, raw field value, observation time, and whether the operation is safe to repeat. A local clock offset can make a date appear to be in the past.

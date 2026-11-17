@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "manifestSha256": "1df55a5ba4a486b853926c6f77f77d1eb370d8178c0634b94517f2dc2580fda9",
+  "queriesSha256": "561bc0a456cf617360058e9d42eb92859555a6ee7149a8acc20d3bcbe5694a5a",
+  "purpose": "Frozen authored retrieval diagnostic, not solve-rate evidence",
+  "queriesAuthoredBeforeFirstRun": true
+}

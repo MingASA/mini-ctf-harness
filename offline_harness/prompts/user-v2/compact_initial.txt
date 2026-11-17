@@ -1,0 +1,16 @@
+[COMPACT: INITIAL]
+Create a recovery checkpoint from the original task, actual human instructions, conversation activity above. Do not continue solving or call tools. If some recent messages will remain verbatim after compaction, summarize only what is needed from the discarded portion.
+
+Return ONLY one valid JSON object with exactly these nine nonempty STRING fields in this order. No prose, code fence, wrapper, operations, or extra keys.
+
+1. "primary_request_and_intent": Actual human goal, success condition, and constraints; retain the original objective accurately.
+2. "key_technical_concepts": Relevant CTF mechanisms, formats, assumptions, tools, and runtime facts necessary to continue.
+3. "files_and_code_sections": Exact filenames/paths, modified artifacts, pivotal code locations, parameters, commands, and immutable evidence IDs; include short critical snippets only when needed to reproduce.
+4. "errors_and_fixes": Specific errors, rejected inputs, false assumptions, fixes, and still-unresolved causes. State precisely what each failure establishes.
+5. "problem_solving": Verified results versus open hypotheses; strategies attempted, decisions, negative evidence, and why the current approach was chosen.
+6. "all_user_messages": Chronological original task and any real human follow-up instructions or corrections. Exclude tool results, synthetic judge-feedback messages, prior recovery summaries, and harness control messages, even if carried under role=user.
+7. "pending_tasks": Remaining tests, blockers, and unresolved questions, without re-listing completed work.
+8. "current_work": Current phase, latest decisive observations, active jobs/artifacts, and where the solver stopped.
+9. "next_step": One concrete high-information action, its expected discriminating result, and an alternative if blocked; never repeat an already rejected submission without new evidence.
+
+Aim for roughly 1,000-2,500 output tokens; preserve essential details over a rigid limit. Keep the snapshot concise and usable, not a second Raw Log. Preserve exact flags/candidates only when important, along with whether they were validated, rejected, or pending. Never promote guesses to facts or fabricate results. Use "None" for a field with no applicable content. Output the JSON now.

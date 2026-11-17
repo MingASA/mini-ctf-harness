@@ -1,0 +1,149 @@
+{
+  "version": 1,
+  "description": "Authored general technical retrieval diagnostic v1. Frozen before the first ranking run. No contest data, solutions, or historical transcripts. This is not a held-out competition benchmark.",
+  "queries": [
+    {
+      "id": "q01",
+      "query": "How is Retry-After interpreted when the value is a date?",
+      "relevance": {
+        "retry-after": 3
+      }
+    },
+    {
+      "id": "q02",
+      "query": "Which validator is sent with If-None-Match for a cached representation?",
+      "relevance": {
+        "etag": 3
+      }
+    },
+    {
+      "id": "q03",
+      "query": "How do I preserve a UTF-8 byte range without splitting a continuation byte?",
+      "relevance": {
+        "utf8": 3
+      }
+    },
+    {
+      "id": "q04",
+      "query": "Is Base64 encryption and what changes in the URL-safe alphabet?",
+      "relevance": {
+        "base64": 3
+      }
+    },
+    {
+      "id": "q05",
+      "query": "Does SHA-256 establish authenticity if the expected digest can also be replaced?",
+      "relevance": {
+        "digest": 3
+      }
+    },
+    {
+      "id": "q06",
+      "query": "Does end of standard output prove that a child process has terminated?",
+      "relevance": {
+        "process-streams": 3
+      }
+    },
+    {
+      "id": "q07",
+      "query": "Why can a network read contain an incomplete JSON message?",
+      "relevance": {
+        "json-stream": 3,
+        "process-streams": 1
+      }
+    },
+    {
+      "id": "q08",
+      "query": "Can I roll back to a savepoint without ending the transaction?",
+      "relevance": {
+        "transactions": 3
+      }
+    },
+    {
+      "id": "q09",
+      "query": "How is a runtime virtual address related to a file offset?",
+      "relevance": {
+        "address-offset": 3
+      }
+    },
+    {
+      "id": "q10",
+      "query": "Is associated data encrypted by authenticated encryption?",
+      "relevance": {
+        "aead": 3
+      }
+    },
+    {
+      "id": "q11",
+      "query": "Does little-endian byte order determine signedness?",
+      "relevance": {
+        "endianness": 3
+      }
+    },
+    {
+      "id": "q12",
+      "query": "Can a fully transparent pixel retain nonzero RGB components?",
+      "relevance": {
+        "png-alpha": 3
+      }
+    },
+    {
+      "id": "q13",
+      "query": "How do inverse document frequency and length normalization affect BM25?",
+      "relevance": {
+        "bm25-reference": 3
+      }
+    },
+    {
+      "id": "q14",
+      "query": "What evidence should I retain to reproduce a technical observation offline?",
+      "relevance": {
+        "engineering-overview": 3,
+        "digest": 1
+      }
+    },
+    {
+      "id": "q15",
+      "query": "What is the difference between bytes and characters when preserving exact source offsets?",
+      "relevance": {
+        "utf8": 3,
+        "address-offset": 1
+      }
+    },
+    {
+      "id": "q16",
+      "query": "How do I distinguish a harness timeout from a child exit status?",
+      "relevance": {
+        "process-streams": 3
+      }
+    },
+    {
+      "id": "q17",
+      "query": "Why should an unauthenticated output not be accepted as plaintext?",
+      "relevance": {
+        "aead": 3
+      }
+    },
+    {
+      "id": "q18",
+      "query": "Why can a strict decoder fail after slicing multibyte text?",
+      "relevance": {
+        "utf8": 3
+      }
+    },
+    {
+      "id": "q19",
+      "query": "Which data needs to be retained to translate a location after address randomization?",
+      "relevance": {
+        "address-offset": 3
+      }
+    },
+    {
+      "id": "q20",
+      "query": "When do changes from a successful statement actually become committed?",
+      "relevance": {
+        "transactions": 3
+      }
+    }
+  ]
+}

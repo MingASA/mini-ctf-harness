@@ -1,0 +1,3 @@
+# Lexical retrieval statistics
+
+BM25 ranks documents using term frequency, inverse document frequency, and document length normalization. A rare matching term can contribute more evidence than a term found throughout the collection. Repeating a term has diminishing returns because term frequency is saturated. Length normalization compensates for the tendency of long documents to contain more query terms. Tokenization and the definition of a document affect both document frequency and average length, so changing chunk boundaries changes statistics. A lexical retriever cannot infer every semantic paraphrase without shared tokens. Evaluate relevant-document recall and ranking quality separately.

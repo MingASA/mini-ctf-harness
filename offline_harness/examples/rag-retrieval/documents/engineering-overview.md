@@ -1,0 +1,7 @@
+# Engineering reference overview
+
+A technical investigation starts with observations, a question, and a record of the procedure. Data may arrive as a file, a request, a response, a database record, or a process stream. Preserve a small input and the expected output before changing a system. A reference document describes general behavior, while an observation records what actually happened in one run.
+
+Networking work concerns request methods, response metadata, retries, and resource identity. Text work concerns encoding, bytes, characters, delimiters, and parsing. Storage work concerns records, transactions, durability, and access. Program analysis distinguishes code locations, address spaces, runtime state, and exit results. Security work needs clear authorization, precise scope, and controlled inputs. Cryptography uses mathematical constructions with particular assumptions; names alone do not establish those assumptions.
+
+A long checklist can become less useful than a focused question. Search for an exact concept when it is known, and keep the original source near each conclusion. Repeat only the step whose premise has changed. Record a failed check as a failed check rather than silently replacing it. For offline reproducibility, retain the tool version, input digest, and a minimal transcript of the relevant observation. This overview is deliberately broad and does not provide the detailed semantics in the narrower reference documents.

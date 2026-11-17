@@ -1,0 +1,3 @@
+# Incremental structured messages
+
+JSON syntax does not define how multiple top-level messages are framed on a byte stream. One transport may send newline-delimited objects; another may use a length prefix or a continuous array. A network read boundary is not a JSON message boundary. A parser needs framing and buffering before decoding complete messages. Newlines inside a JSON string are escaped; they are distinct from framing delimiters outside the value. Preserve undecoded trailing bytes until the framing rule establishes a complete message, and enforce a size budget for unfinished messages.

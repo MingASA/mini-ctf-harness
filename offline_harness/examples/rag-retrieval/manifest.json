@@ -1,0 +1,204 @@
+{
+  "version": 1,
+  "documents": [
+    {
+      "id": "engineering-overview",
+      "title": "Engineering reference overview",
+      "tags": [
+        "reference",
+        "data",
+        "request",
+        "file"
+      ],
+      "path": "documents/engineering-overview.md",
+      "sha256": "ea64302cb97d68154c9d7428ae6b4cbf7c6f3fced6c494bbb86d9744bf7c7228",
+      "source": {
+        "uri": "authored://retrieval-diagnostic-v1/engineering-overview",
+        "revision": "v1",
+        "scope": "generic-reference"
+      }
+    },
+    {
+      "id": "retry-after",
+      "title": "Retry timing metadata",
+      "tags": [
+        "http"
+      ],
+      "path": "documents/retry-after.md",
+      "sha256": "699c3f07d2c2e8bf714663d2122ce0d4bbf1fa87811a5a4d35b2ac68785350f1",
+      "source": {
+        "uri": "authored://retrieval-diagnostic-v1/retry-after",
+        "revision": "v1",
+        "scope": "generic-reference"
+      }
+    },
+    {
+      "id": "etag",
+      "title": "Conditional representation validation",
+      "tags": [
+        "http"
+      ],
+      "path": "documents/etag.md",
+      "sha256": "f31c7f1364b58aacabdf62b91adf036069f479e8d9aff481750a4bf6ecafdeb6",
+      "source": {
+        "uri": "authored://retrieval-diagnostic-v1/etag",
+        "revision": "v1",
+        "scope": "generic-reference"
+      }
+    },
+    {
+      "id": "utf8",
+      "title": "Multibyte text boundaries",
+      "tags": [
+        "encoding"
+      ],
+      "path": "documents/utf8.md",
+      "sha256": "724ef8bdd930de7e5d44e807d5142a6ab7eadb015be5f687a733f68e7dee7156",
+      "source": {
+        "uri": "authored://retrieval-diagnostic-v1/utf8",
+        "revision": "v1",
+        "scope": "generic-reference"
+      }
+    },
+    {
+      "id": "base64",
+      "title": "Binary-to-text transport",
+      "tags": [
+        "encoding"
+      ],
+      "path": "documents/base64.md",
+      "sha256": "59e65cd9fdacb3d15ec647ba8ff654dfd65c9becaf37f2d7698e5c3ea23c4628",
+      "source": {
+        "uri": "authored://retrieval-diagnostic-v1/base64",
+        "revision": "v1",
+        "scope": "generic-reference"
+      }
+    },
+    {
+      "id": "digest",
+      "title": "Content identity checks",
+      "tags": [
+        "integrity"
+      ],
+      "path": "documents/digest.md",
+      "sha256": "ad146391b0e62f17fef3085446b5b3b7e67a32c265e89610a70149cd1acb0325",
+      "source": {
+        "uri": "authored://retrieval-diagnostic-v1/digest",
+        "revision": "v1",
+        "scope": "generic-reference"
+      }
+    },
+    {
+      "id": "process-streams",
+      "title": "Child process completion",
+      "tags": [
+        "process"
+      ],
+      "path": "documents/process-streams.md",
+      "sha256": "00c9e907a28092f64970b4e17a99751594425b3d528a494ba92da8b54a1fa834",
+      "source": {
+        "uri": "authored://retrieval-diagnostic-v1/process-streams",
+        "revision": "v1",
+        "scope": "generic-reference"
+      }
+    },
+    {
+      "id": "json-stream",
+      "title": "Incremental structured messages",
+      "tags": [
+        "serialization"
+      ],
+      "path": "documents/json-stream.md",
+      "sha256": "003dcb48283137b718ee2212dcd13c625b25397b1eb0b4ff108d7d35fe8aa62b",
+      "source": {
+        "uri": "authored://retrieval-diagnostic-v1/json-stream",
+        "revision": "v1",
+        "scope": "generic-reference"
+      }
+    },
+    {
+      "id": "transactions",
+      "title": "Atomic database changes",
+      "tags": [
+        "database"
+      ],
+      "path": "documents/transactions.md",
+      "sha256": "6cf7e042f28952d057da820d57dd5bf297ec1d75a3c45151187f8b947f6352b2",
+      "source": {
+        "uri": "authored://retrieval-diagnostic-v1/transactions",
+        "revision": "v1",
+        "scope": "generic-reference"
+      }
+    },
+    {
+      "id": "address-offset",
+      "title": "Runtime addresses and file offsets",
+      "tags": [
+        "binary"
+      ],
+      "path": "documents/address-offset.md",
+      "sha256": "55109834442468fcd3dc17e561e47b295e707c6ac533e182456b3f18a56ac1c4",
+      "source": {
+        "uri": "authored://retrieval-diagnostic-v1/address-offset",
+        "revision": "v1",
+        "scope": "generic-reference"
+      }
+    },
+    {
+      "id": "aead",
+      "title": "Authenticated encryption boundaries",
+      "tags": [
+        "cryptography"
+      ],
+      "path": "documents/aead.md",
+      "sha256": "b44a854cd06557e1cc4eb62e5eb4708eff753f7c8998fcbdefefd8bfd6278ae2",
+      "source": {
+        "uri": "authored://retrieval-diagnostic-v1/aead",
+        "revision": "v1",
+        "scope": "generic-reference"
+      }
+    },
+    {
+      "id": "endianness",
+      "title": "Integer byte order",
+      "tags": [
+        "binary"
+      ],
+      "path": "documents/endianness.md",
+      "sha256": "b7ddd427f8d9eaba32a90f6ec52b6f6416a2b650df5246a6bf5d63dd519e99bc",
+      "source": {
+        "uri": "authored://retrieval-diagnostic-v1/endianness",
+        "revision": "v1",
+        "scope": "generic-reference"
+      }
+    },
+    {
+      "id": "png-alpha",
+      "title": "Transparent pixel data",
+      "tags": [
+        "image"
+      ],
+      "path": "documents/png-alpha.md",
+      "sha256": "c5ef1be50b106fcd3c3fe6d5a36ffc95b25c2ef6057bcf66767c4cc2823e2895",
+      "source": {
+        "uri": "authored://retrieval-diagnostic-v1/png-alpha",
+        "revision": "v1",
+        "scope": "generic-reference"
+      }
+    },
+    {
+      "id": "bm25-reference",
+      "title": "Lexical retrieval statistics",
+      "tags": [
+        "retrieval"
+      ],
+      "path": "documents/bm25-reference.md",
+      "sha256": "7a97594b1b4ba0a621207b2437847b7e372bfaf8cc6ebeb9bf3893953aa1330c",
+      "source": {
+        "uri": "authored://retrieval-diagnostic-v1/bm25-reference",
+        "revision": "v1",
+        "scope": "generic-reference"
+      }
+    }
+  ]
+}

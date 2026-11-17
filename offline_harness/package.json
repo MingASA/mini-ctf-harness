@@ -1,0 +1,16 @@
+{
+  "name": "mini-ctf-harness",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "1.5.0",
+    "@earendil-works/pi-tui": "1.5.0",
+    "@earendil-works/pi-coding-agent": "1.5.0"
+  },
+  "version": "0.3.0",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 --test-timeout=60000 test/*.test.mjs",
+    "start": "node src/cli.mjs",
+    "terminal": "node src/cli.mjs terminal"
+  }
+}
