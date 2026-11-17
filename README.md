@@ -20,7 +20,7 @@ cd mini-ctf-harness
 安装命令会完成：
 
 - 校验并下载固定版本的模型权重、llama.cpp 与 CUDA 运行库；支持断点续传。
-- 准备 Node 22、固定 npm 依赖、独立 Docker Engine 和 Compose。
+- 准备 Node 22、固定 npm 依赖、独立 Docker Engine、Buildx 和 Compose；Windows 缺失 VC 运行库时一并安装。
 - 构建含 Python、pwntools、z3、sympy、Crypto、gdb、binutils、curl、nmap 等工具的容器镜像。
 - 生成可编辑的 `config.json`；每次启动自动加载模型并准备工具环境。
 

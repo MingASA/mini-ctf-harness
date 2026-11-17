@@ -49,6 +49,18 @@
       "url": "https://download.docker.com/linux/static/stable/x86_64/docker-29.9.3.tgz",
       "sha256": "3fb5d1f13014c18cc54945bc177c58a9056a482dada031e17d12cf2e6922c973",
       "size": 86360685
+    },
+    "buildx": {
+      "name": "buildx-v0.39.0.linux-amd64",
+      "url": "https://github.com/docker/buildx/releases/download/v0.39.0/buildx-v0.39.0.linux-amd64",
+      "sha256": "5fb31a097304fbf6dd4038649a0decf32c2b9510e4047acd7d68b9d700c46194",
+      "size": 68296864
+    },
+    "windows-vcredist": {
+      "name": "vc_redist.x64.exe",
+      "url": "https://download.visualstudio.microsoft.com/download/pr/e9604e21-4b79-4096-a4b3-1b63d4b55b4d/CC0FF0EB1DC3F5188AE6300FAEF32BF5BEEBA4BDD6E8E445A9184072096B713B/VC_redist.x64.exe",
+      "size": 25635768,
+      "sha256": "cc0ff0eb1dc3f5188ae6300faef32bf5beeba4bdd6e8e445a9184072096b713b"
     }
   }
 }

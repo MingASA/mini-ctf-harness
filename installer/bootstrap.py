@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Install pinned assets, model, Node dependencies and an isolated solver environment."""
-import argparse,hashlib,json,os,pathlib,platform,shutil,subprocess,sys,tarfile,urllib.request,zipfile,time,stat,re
+import argparse,hashlib,json,os,pathlib,platform,shutil,subprocess,sys,tarfile,urllib.request,zipfile,time,stat,re,ctypes.util
 ROOT=pathlib.Path(__file__).resolve().parent.parent
 MANIFEST=json.loads((ROOT/'installer/assets.json').read_text())
 
@@ -86,18 +86,20 @@ def write_json(file,value):
 def install(args):
     if platform.machine() not in ('x86_64','AMD64'):raise ValueError('The pinned installation profile requires x86-64')
     data=pathlib.Path(args.data_dir).expanduser().resolve();wsl=bool(os.environ.get('WSL_DISTRO_NAME'));host='windows' if wsl else 'linux';assets=MANIFEST['assets']
-    plan={'data_dir':str(data),'profile':args.model,'platform':host,'assets':[assets[k] for k in ['node','docker','compose',host+'-engine',host+'-cuda',args.model]],'steps':['prepare Linux storage','install Node and Docker binaries','npm ci','build solver image','verify model and engine','write config']}
+    plan={'data_dir':str(data),'profile':args.model,'platform':host,'assets':[assets[k] for k in ['node','docker','compose','buildx',host+'-engine',host+'-cuda',args.model]],'steps':['prepare Linux storage','install Node and Docker binaries','npm ci','build solver image','verify model and engine','write config']}
+    if wsl:plan['assets'].append(assets['windows-vcredist'])
     if args.plan:print(json.dumps(plan,indent=2));return
     data.mkdir(parents=True,exist_ok=True)
     if wsl:
         windows_data=subprocess.check_output(['wslpath','-w',str(data)],text=True).strip()
         if not re.match(r'^[A-Za-z]:\\',windows_data):raise ValueError('On WSL, --data-dir must be on a Windows data drive')
     missing=[name for name in ['findmnt','mkfs.ext4','iptables-legacy','ip','systemctl'] if not shutil.which(name)]
+    if not wsl:missing.extend(name for name in ['gomp','numa','curl'] if not ctypes.util.find_library(name))
     if missing:
         print('Installing required Ubuntu system packages: '+', '.join(missing),flush=True)
         cache=data/'os-cache';cache.mkdir(exist_ok=True)
         privileged(['apt-get','update'])
-        privileged(['apt-get','-o','Dir::Cache::Archives='+str(cache),'install','-y','ca-certificates','e2fsprogs','iptables','iproute2','libgomp1','libnuma1','libcurl4'])
+        privileged(['apt-get','-o','Dir::Cache::Archives='+str(cache),'install','-y','ca-certificates','e2fsprogs','iptables','iproute2','libgomp1','libnuma1',('libcurl4t64' if subprocess.run(['apt-cache','show','libcurl4t64'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode==0 else 'libcurl4')])
     work=pathlib.Path(privileged(['python3',ROOT/'installer/storage.py',data,'--uid',os.getuid(),'--gid',os.getgid(),'--size-gib',args.workspace_gib]))
     if not (work/'tmp').is_dir():
         if wsl and os.environ.get('MINI_CTF_MOUNT_ENTERED')!='1':
@@ -110,12 +112,14 @@ def install(args):
     env['PATH']=str(pathlib.Path(node).parent)+':'+env.get('PATH','')
     docker=args.docker or str(work/'bin/docker/docker');dockerd=args.dockerd or str(work/'bin/docker/dockerd')
     if not args.docker:unpack(fetch_asset(assets['docker'],cache),work/'bin')
-    plugin=work/'bin/docker/cli-plugins';plugin.mkdir(parents=True,exist_ok=True);compose=fetch_asset(assets['compose'],cache);shutil.copyfile(compose,plugin/'docker-compose');(plugin/'docker-compose').chmod(0o755)
+    plugin=work/'bin/docker/cli-plugins';plugin.mkdir(parents=True,exist_ok=True)
+    for component in ['compose','buildx']:
+        binary=fetch_asset(assets[component],cache);destination=plugin/('docker-'+component);shutil.copyfile(binary,destination);destination.chmod(0o755)
     modules=ROOT/'offline_harness/node_modules'
     if modules.is_symlink():modules.unlink()
     run([npm,'ci','--ignore-scripts','--no-audit','--no-fund'],cwd=ROOT/'offline_harness',env=env)
     config={'contestDir':str(work/'sessions'),'modelLease':str(work/'model-lease.json'),'autoStart':True,'environment':'offline','hostCwd':str(data),'wslDistribution':os.environ.get('WSL_DISTRO_NAME'),
-      'runtime':{'root':str(work/'runtime'),'execRoot':str(work/'dx'),'docker':docker,'dockerd':dockerd,'composeDir':str(plugin),'solverImage':args.solver_image or 'mini-ctf-tools:1','solverArchive':str(data/'assets/solver.tar')},
+      'runtime':{'root':str(work/'runtime'),'execRoot':str(work/'dx'),'docker':docker,'dockerd':dockerd,'pluginDir':str(plugin),'solverImage':args.solver_image or 'mini-ctf-tools:1','solverArchive':str(data/'assets/solver.tar')},
       'provision':{'workBase':str(work/'offline-harness/work')},'solver':{'memoryMiB':512,'cpus':1,'pids':128,'tmpMiB':128},'environments':{'offline':{'type':'offline'},'lan':{'type':'lan','targetUrl':''}},'services':{},'uid':os.getuid(),'gid':os.getgid(),
       'model':{'mode':'memory-skills','model':args.model,'baseUrl':'http://127.0.0.1:'+str(args.port),'contextTokens':55296,'promptTokens':40960,'compactSoftTokens':40960,'generationTokens':8192,'reasoningTokens':-1,'reasoningEffort':'medium','safetyTokens':0,'compactThinking':True,'compactReasoningEffort':'xhigh','compactReasoningTokens':4096,'compactTokens':8192,'maxTurns':10000,'maxGeneratedTokens':10000000,'maxSeconds':7200,'nativeImages':False,'kv':{'enabled':False,'slot':0}}}
     prior_file=data/'config.json'
@@ -127,11 +131,15 @@ def install(args):
     file=data/'config.json';write_json(file,config);helper=ROOT/'offline_harness/scripts/interactive_environment.py'
     privileged(['python3',helper,'daemon','--config',file],env=env)
     docker_env=dict(env,DOCKER_HOST=args.docker_host or 'unix://'+str(work/'runtime/run/docker.sock'),DOCKER_CONFIG=str(work/'runtime/docker-config'))
-    if not args.solver_image:run([docker,'build','--pull','--tag','mini-ctf-tools:1',ROOT/'docker'],env=docker_env)
+    if not args.solver_image:run([docker,'build','--network=host','--pull','--tag','mini-ctf-tools:1',ROOT/'docker'],env=docker_env)
     config['runtime']['solverImage']=json.loads(subprocess.check_output([docker,'image','inspect',config['runtime']['solverImage']],env=docker_env,text=True))[0]['Id']
     model=pathlib.Path(args.model_file).resolve() if args.model_file else fetch_asset(assets[args.model],data/'models')
     print('Verifying pinned model SHA256: '+str(model),flush=True)
     if sha256(model)!=assets[args.model]['sha256']:raise ValueError('Model checksum mismatch')
+    if wsl and any(not pathlib.Path('/mnt/c/Windows/System32',name).exists() for name in ['msvcp140.dll','vcruntime140.dll','vcruntime140_1.dll']):
+        redist=fetch_asset(assets['windows-vcredist'],cache);helper=cache/'install-vcredist.ps1';shutil.copyfile(ROOT/'installer/install-vcredist.ps1',helper)
+        windows=lambda p:subprocess.check_output(['wslpath','-w',str(p)],text=True).strip()
+        run(['/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',windows(helper),'-Path',windows(redist)],cwd=data,env=interop_env(env))
     engine=pathlib.Path(args.runtime_exe).resolve() if args.runtime_exe else None
     if not engine:
         runtime=data/'engines'/MANIFEST['engine_tag']/host

@@ -17,7 +17,8 @@ class Environment:
     def prepare(self,daemon_only=False):
         for name in ['run','data','exec','tmp','docker-config']:(self.root/name).mkdir(parents=True,exist_ok=True)
         pathlib.Path(self.r.get('execRoot',str(self.root.parent/'dx'))).mkdir(parents=True,exist_ok=True)
-        atomic(self.root/'docker-config/config.json',{'cliPluginsExtraDirs':[str(self.r.get('composeDir',pathlib.Path(self.bin).parent/'cli-plugins'))]})
+        atomic(self.root/'docker-config/config.json',{'cliPluginsExtraDirs':[str(self.r.get('pluginDir',pathlib.Path(self.bin).parent/'cli-plugins'))]})
+        os.chown(self.root/'docker-config',self.c['uid'],self.c['gid']);os.chown(self.root/'docker-config/config.json',self.c['uid'],self.c['gid'])
         daemon={'data-root':str(self.root/'data'),'exec-root':str(self.r.get('execRoot',str(self.root.parent/'dx'))),'pidfile':str(self.root/'run/dockerd.pid'),'hosts':[self.host],'group':str(self.c['uid']),'storage-driver':'overlay2','bridge':'none','features':{'containerd-snapshotter':False},'log-driver':'local','log-opts':{'max-size':'10m','max-file':'2'}}
         file=self.root/'daemon.json'
         if not self.r.get('dockerHost') and file.exists() and json.loads(file.read_text())!=daemon:raise ValueError('Existing interactive daemon profile differs')
