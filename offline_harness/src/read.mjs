@@ -16,7 +16,7 @@ export function fileReadTool(store,broker,skills,{nativeImages=false}={}){
    const file=await fs.open(canonical,'r');
    try{const stat=await file.stat();if(!stat.isFile()||stat.size>8*1024*1024)throw Error('Read requires a regular file within 8 MiB');return await file.readFile();}finally{await file.close();}
   }
-  if(/^\/work\/\.tool-output\/[a-f0-9]{20}\.txt$/.test(filename)){
+  if(!broker.readFile&&/^\/work\/\.tool-output\/[a-f0-9]{20}\.txt$/.test(filename)){
    const file=path.join(outputRoot(store,broker),path.basename(filename));
    const root=await fs.realpath(outputRoot(store,broker)),canonical=await fs.realpath(file);
    if(!within(canonical,root)||canonical!==file)throw Error('Output file escaped its directory');

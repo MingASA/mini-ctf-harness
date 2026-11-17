@@ -33,6 +33,8 @@ test('long output is readable with native read while private worker metadata sta
  assert.ok(full.content[0].text.includes('large output'));
  const tail=await read.execute('read-tail',{path:file,offset:11990,limit:10});assert.equal(tail.isError,undefined);assert.match(tail.content[0].text,/large output/);assert.ok(!full.content[0].text.includes('supervisor'));
  assert.ok(!result.content[0].text.includes('evidence_id'));
+ const containerRead=buildTools(store,{config:{workDir:store.root},readFile:async path=>{assert.equal(path,file);return Buffer.from('container output');}}, {},{}).find(t=>t.name==='read');
+ assert.equal((await containerRead.execute('container-read',{path:file})).content[0].text,'container output');
  assert.equal(fs.readFileSync(path.join(store.root,'.tool-output',path.basename(file)),'utf8').includes(output),true);
 });
 
