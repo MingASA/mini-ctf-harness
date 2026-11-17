@@ -59,3 +59,15 @@ test('retained legacy tool groups and Compact remain readable without rewriting 
  const cm=new ContextManager(store,{});assert.doesNotThrow(()=>cm.assemble({role:'system',content:'current'},visible,cm.checkpoint()));
  assert.deepEqual(fs.readFileSync(store.file),journal);
 });
+
+
+test('task JSON stays verbatim and cannot redirect legacy observation reads',t=>{
+ const store=setup(t);fs.writeFileSync(path.join(store.root,'secret.json'),JSON.stringify({stdout:'private sentinel'}));
+ const text=JSON.stringify({preview:'opaque task data',evidence_id:'../secret.json'}),message={role:'toolResult',toolName:'read',toolCallId:'read',content:[{type:'text',text}]};
+ const original=fs.readFileSync;let reads=0;fs.readFileSync=(...args)=>{reads++;return original(...args);};
+ try{
+  assert.deepEqual(presentMessages(store,{},[message])[0],message);
+  assert.deepEqual(presentMessages(store,{},[{...message,content:[{type:'text',text:'null'}]}])[0].content,[{type:'text',text:'null'}]);
+  const command=presentMessages(store,{},[{...message,toolName:'run_command'}])[0];assert.ok(!command.content[0].text.includes('private sentinel'));assert.equal(reads,0);
+ }finally{fs.readFileSync=original;}
+});

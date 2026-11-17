@@ -65,16 +65,16 @@ export function presentMessages(store,broker,messages){
    if(call.name==='wait_job')call.arguments={job_id:call.arguments.job_id};
    if(call.name==='submit_flag')call.arguments={candidate:call.arguments.candidate};
   }
-  if(m.role==='toolResult'){
+  if(m.role==='toolResult'&&['run_command','wait_job','submit_flag'].includes(m.toolName)){
    m.content=(m.content??[]).map(block=>{
     if(block.type!=='text')return block;
     let data;try{data=JSON.parse(block.text);}catch{return block;}
-    if(data.preview!==undefined&&data.evidence_id){
+    if(!data||typeof data!=='object')return block;
+    if(data.preview!==undefined&&/^[a-f0-9]{64}$/.test(data.evidence_id??'')){
      const file=path.join(store.root,'artifacts',data.evidence_id);
-     if(fs.existsSync(file))try{data=JSON.parse(fs.readFileSync(file,'utf8'));}catch{data=data.preview;}
+     if(fs.existsSync(file))try{const raw=fs.readFileSync(file,'utf8');if(hash(raw)!==data.evidence_id)throw Error('Archived observation integrity mismatch');data=JSON.parse(raw);}catch{data=data.preview;}
      else try{data=JSON.parse(data.preview);}catch{data=data.preview;}
     }
-    if(!['run_command','wait_job','submit_flag'].includes(m.toolName))return block;
     if(['run_command','wait_job'].includes(m.toolName))data=commandOutput(store,broker,data);
     else if(m.toolName==='submit_flag'){
      const candidate=store.events.find(e=>e.type==='candidate'&&e.data.id===data.submission_id);
