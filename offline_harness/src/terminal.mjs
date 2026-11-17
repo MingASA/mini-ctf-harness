@@ -108,11 +108,11 @@ export class CompetitionTerminal {
   if(this.bound)delete this.drafts[this.bound];this.editor.setText('');this.bound=this.selected;this.editor.setText(this.drafts[this.bound]||'');this.persist();this.render();
  }
  async review(){
-  const candidates=this.contest.queueRows().flatMap(row=>row.reviews.map(candidate=>({value:{taskId:row.id,candidate},label:row.title+' · '+candidate.review_id,description:candidate.candidate})));
+  const candidates=this.contest.queueRows().flatMap(row=>row.reviews.map(candidate=>({value:row.id+':'+candidate.review_id,taskId:row.id,candidate,label:row.title+' · '+candidate.review_id,description:candidate.candidate})));
   if(!candidates.length){this.notice='暂无待人工确认的答案。';return;}
   const item=await this.select('选择待确认答案',candidates);if(!item)return;
-  const verdict=await this.select('平台判题结果 · '+item.value.candidate.candidate,[{value:'correct',label:'通过'},{value:'incorrect',label:'错误'}]);
-  if(!verdict)return;this.contest.feedback(item.value.taskId,item.value.candidate.review_id,verdict.value);this.notice='已记录判题结果。';
+  const verdict=await this.select('平台判题结果 · '+item.candidate.candidate,[{value:'correct',label:'通过'},{value:'incorrect',label:'错误'}]);
+  if(!verdict)return;this.contest.feedback(item.taskId,item.candidate.review_id,verdict.value);this.notice='已记录判题结果。';
  }
  async wizardSubmit(text){
   if(text==='/back'){this.wizard=null;this.editor.setText(this.drafts[this.bound]||'');this.persist();this.render();return;}
