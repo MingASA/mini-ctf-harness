@@ -21,8 +21,17 @@ export function publishText(store,broker,text,key){
 }
 export function boundedText(store,broker,text,key,limit=12000){
  if(text.length<=limit)return text;
- const file=publishText(store,broker,text,key);
- return text.slice(0,limit)+`\n[Output truncated. Full output: ${file}. Use read to continue.]`;
+ let archived=text;
+ try{
+  const data=JSON.parse(text);
+  if(typeof data.stdout==='string'||typeof data.stderr==='string')archived=[
+   `Status: ${data.status??''}${data.job_id?' · '+data.job_id:''}${data.exit_code!==undefined?' · exit '+data.exit_code:''}`,
+   ...(data.stdout_file?['Full stdout: '+data.stdout_file]:[]),...(data.stderr_file?['Full stderr: '+data.stderr_file]:[]),
+   'stdout:',data.stdout??'',...(data.stderr?['stderr:',data.stderr]:[])
+  ].join('\n');
+ }catch{}
+ const file=publishText(store,broker,archived,key);
+ return archived.slice(0,limit)+`\n[Output truncated. Full output: ${file}. Use read to continue.]`;
 }
 export function commandOutput(store,broker,data){
  const result={status:isRunning(data)?'running':data.status??'error',...(data.job_id?{job_id:data.job_id}:{})};

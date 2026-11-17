@@ -26,13 +26,14 @@ test('public schemas and results carry only command, job and submission semantic
 });
 
 test('long output is readable with native read while private worker metadata stays in the journal',async t=>{
- const store=setup(t),output='large output\n'.repeat(2000),broker={start:async()=>({job_id:'j1',status:'finished',exit_code:0,stdout:output,supervisor:{pid:987}})};
+ const store=setup(t),output='large output\n'.repeat(12000),broker={start:async()=>({job_id:'j1',status:'finished',exit_code:0,stdout:output,supervisor:{pid:987}})};
  const tools=buildTools(store,broker,{},{}),result=await tools.find(x=>x.name==='run_command').execute('long',{command:'cat result'});
  const file=result.content[0].text.match(/Full output: (\S+)\. Use/)[1];
  const read=tools.find(x=>x.name==='read'),full=await read.execute('read',{path:file,offset:1,limit:3});
- assert.ok(full.content[0].text.includes('large output'));assert.ok(!full.content[0].text.includes('supervisor'));
+ assert.ok(full.content[0].text.includes('large output'));
+ const tail=await read.execute('read-tail',{path:file,offset:11990,limit:10});assert.equal(tail.isError,undefined);assert.match(tail.content[0].text,/large output/);assert.ok(!full.content[0].text.includes('supervisor'));
  assert.ok(!result.content[0].text.includes('evidence_id'));
- assert.equal(fs.readFileSync(path.join(store.root,'.tool-output',path.basename(file)),'utf8').includes(output.replace(/\n/g,'\\n')),true);
+ assert.equal(fs.readFileSync(path.join(store.root,'.tool-output',path.basename(file)),'utf8').includes(output),true);
 });
 
 test('interrupting a wait ends observation and preserves the existing background job',async t=>{
