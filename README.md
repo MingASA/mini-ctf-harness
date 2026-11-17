@@ -104,6 +104,10 @@ submit_flag({"candidate":"flag{...}"})
 
 `./mini-ctf --env local-web` 会启动对应 Compose 并预填目标地址。题目镜像需提前拉取或导入；正式解题时使用本地镜像。可添加 `imageArchives` 数组，由启动器导入离线镜像。
 
+## 验证范围
+
+Windows + WSL 的真实 27B 加载、工具执行、候选提交与人工确认流程已验收。原生 Linux 已通过自动测试和真实进程启动/替换测试；Linux CUDA 推理尚未做 GPU 实机验收。
+
 ## 测试与目录
 
 ```bash

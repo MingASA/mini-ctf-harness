@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """Install pinned assets, model, Node dependencies and an isolated solver environment."""
-import argparse,hashlib,json,os,pathlib,platform,shutil,subprocess,sys,tarfile,urllib.request,zipfile,time,stat
+import argparse,hashlib,json,os,pathlib,platform,shutil,subprocess,sys,tarfile,urllib.request,zipfile,time,stat,re
 ROOT=pathlib.Path(__file__).resolve().parent.parent
 MANIFEST=json.loads((ROOT/'installer/assets.json').read_text())
 
 def sha256(file):
     file=pathlib.Path(file).resolve()
-    if os.environ.get('WSL_DISTRO_NAME') and str(file).startswith('/mnt/') and len(file.parts)>3 and len(file.parts[2])==1:
-        script=file.parent/'.mini-ctf-sha256.ps1';shutil.copyfile(ROOT/'installer/hash-file.ps1',script)
+    if os.environ.get('WSL_DISTRO_NAME') and str(file).startswith('/mnt/'):
         convert=lambda p:subprocess.check_output(['wslpath','-w',str(p)],text=True).strip()
-        try:
-            return subprocess.check_output(['/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',convert(script),'-Path',convert(file)],cwd=file.parent,env=interop_env(),text=True,timeout=1200).strip().lower()
-        finally:script.unlink(missing_ok=True)
+        windows_file=convert(file)
+        if re.match(r'^[A-Za-z]:\\',windows_file):
+            script=file.parent/'.mini-ctf-sha256.ps1';shutil.copyfile(ROOT/'installer/hash-file.ps1',script)
+            try:
+                return subprocess.check_output(['/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',convert(script),'-Path',windows_file],cwd=file.parent,env=interop_env(),text=True,timeout=1200).strip().lower()
+            finally:script.unlink(missing_ok=True)
     h=hashlib.sha256()
     with pathlib.Path(file).open('rb') as f:
         for chunk in iter(lambda:f.read(4*1024*1024),b''):h.update(chunk)
@@ -87,6 +89,9 @@ def install(args):
     plan={'data_dir':str(data),'profile':args.model,'platform':host,'assets':[assets[k] for k in ['node','docker','compose',host+'-engine',host+'-cuda',args.model]],'steps':['prepare Linux storage','install Node and Docker binaries','npm ci','build solver image','verify model and engine','write config']}
     if args.plan:print(json.dumps(plan,indent=2));return
     data.mkdir(parents=True,exist_ok=True)
+    if wsl:
+        windows_data=subprocess.check_output(['wslpath','-w',str(data)],text=True).strip()
+        if not re.match(r'^[A-Za-z]:\\',windows_data):raise ValueError('On WSL, --data-dir must be on a Windows data drive')
     missing=[name for name in ['findmnt','mkfs.ext4','iptables-legacy','ip','systemctl'] if not shutil.which(name)]
     if missing:
         print('Installing required Ubuntu system packages: '+', '.join(missing),flush=True)
@@ -100,7 +105,7 @@ def install(args):
         raise ValueError('Workspace mount is not visible in this namespace')
     cache=data/'downloads';env=dict(os.environ,TMPDIR=str(work/'tmp'),npm_config_cache=str(work/'cache/npm'))
     node=shutil.which('node');npm=shutil.which('npm')
-    if not node or not npm or int(subprocess.check_output([node,'-p','process.versions.node.split(".")[0]'],text=True))<22:
+    if not node or not npm or subprocess.check_output([node,'-p','process.versions.node'],text=True).strip()!='22.22.1':
         unpack(fetch_asset(assets['node'],cache),work/'bin');node=str(work/'bin/node-v22.22.1-linux-x64/bin/node');npm=str(pathlib.Path(node).with_name('npm'))
     env['PATH']=str(pathlib.Path(node).parent)+':'+env.get('PATH','')
     docker=args.docker or str(work/'bin/docker/docker');dockerd=args.dockerd or str(work/'bin/docker/dockerd')
