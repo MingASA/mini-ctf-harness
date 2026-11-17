@@ -19,6 +19,7 @@ test('actual Pi fullscreen components render Chinese; view switch keeps draft ta
  try{
   c=new Contest(cfg,options);await c.add({id:'alpha',title:'第一道题',objective:'测试任务'});await c.add({id:'beta',title:'第二道题',objective:'测试任务'});
   const terminal=new Terminal();ui=new CompetitionTerminal(c,{terminal});ui.start();await delay();
+  for(let i=0;i<20&&!ui.tui.getScreenLines().join('\n').includes('CTF 比赛终端');i++)await delay();
   assert.ok(ui.tui.getScreenLines().join('\n').includes('CTF 比赛终端'));
   ui.editor.setText('补充给第一道题');ui.persistDraft();ui.setView('beta');assert.equal(ui.bound,'alpha');await ui.submit(ui.editor.getExpandedText());assert.equal(c.session('alpha').inbox.items()[0].text,'补充给第一道题');assert.equal(c.session('beta').inbox.items().length,0);assert.equal(ui.bound,'beta');
   ui.editor.setText('第二题草稿');ui.persistDraft();ui.beginNew();await ui.wizardSubmit('新题标题');ui.editor.setText('多行题意\n继续粘贴');ui.persistDraft();await delay();
@@ -75,5 +76,18 @@ test('queue exposes manual review and confirms a short candidate ID without runn
   assert.match(ui.content.text,/synthetic/);assert.equal(c.queueRows()[0].reviews[0].review_id,'c1');
   const reviewing=ui.submit('/review');await delay();assert.match(ui.tui.getScreenLines().join('\n'),/选择待确认答案/);terminal.input('\r');await delay();assert.match(ui.tui.getScreenLines().join('\n'),/平台判题结果/);terminal.input('\r');await reviewing;assert.equal(c.status('review'),'correct');assert.equal(c.queueRows()[0].reviews.length,0);
   assert.ok(fs.readdirSync(path.join(c.root,'startups')).length);assert.match(ui.header.text,new RegExp(c.source.commit.slice(0,8)));
+ }finally{await ui?.close();await c?.close();fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('resume and view accept short task numbers and open output from any panel',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'pi-short-view-'));let c,ui;
+ try{
+  c=new Contest({contestDir:path.join(root,'contest'),model:{baseUrl:'http://127.0.0.1:9',contextTokens:55296,promptTokens:40960,generationTokens:8192}},{testMode:true,guard:()=>{throw Error('No inference');},provision:async id=>{const workDir=path.join(root,id);fs.mkdirSync(workDir);return {containerId:id,workDir};},sessionOptions:()=>({broker:{validate:async()=>{}},knowledge:{docs:[]}})});
+  await c.add({id:'task-old-alpha',objective:'first'});await c.add({id:'task-old-beta',objective:'second'});c.session('02').store.append('message',{role:'user',content:'Second session output'});
+  const terminal=new Terminal();ui=new CompetitionTerminal(c,{terminal});ui.start();ui.tab='queue';ui.detail='prior panel';await ui.submit('/resume 02');await delay();
+  assert.equal(ui.selected,'task-old-beta');assert.equal(ui.tab,'output');assert.equal(ui.detail,null);assert.equal(ui.bound,'task-old-beta');assert.match(ui.content.text,/Second session output/);assert.equal(c.status('02'),'ready_resume');assert.equal(c.active,null);assert.match(ui.binding.text,/已用 0 轮/);assert.match(ui.binding.text,/软线 40K/);assert.match(ui.binding.text,/54K/);assert.ok(!ui.binding.text.includes('剩余'));
+  ui.tab='budget';terminal.input('\x12');await delay();assert.equal(ui.tab,'output');
+  ui.tab='jobs';await ui.submit('/view 01');assert.equal(ui.tab,'output');assert.equal(ui.selected,'task-old-alpha');assert.match(ui.notice,/01/);
+  assert.ok(!ui.sidebar.text.includes('task-old-'));
  }finally{await ui?.close();await c?.close();fs.rmSync(root,{recursive:true,force:true});}
 });

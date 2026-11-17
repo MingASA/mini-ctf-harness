@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {TuiAltScreen,ProcessTerminal,Editor,Text,VStack,HStack,ScrollView,SelectList,Container,matchesKey,CombinedAutocompleteProvider} from '@earendil-works/pi-tui';
 import {outputRoot} from './tool-output.mjs';
+import {sessionUsage,contextLine,usageLine,budgetText} from './session-usage.mjs';
+import {toolText} from './tool-display.mjs';
 import {atomic} from './store.mjs';
 const plain=s=>s;
 const selectTheme={selectedPrefix:plain,selectedText:s=>'\x1b[36m'+s+'\x1b[0m',description:plain,scrollInfo:plain,noMatch:plain};
@@ -9,8 +11,8 @@ const theme={borderColor:s=>'\x1b[36m'+s+'\x1b[0m',selectList:selectTheme};
 export const safeText=value=>String(value??'').replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g,c=>c==='\t'?'    ':'�');
 const stringify=v=>safeText(typeof v==='string'?v:JSON.stringify(v,null,2));
 const HELP=`Ctrl+N 创建题目 · Ctrl+L 切换查看 · Ctrl+P 暂停当前题推理 · Ctrl+R 恢复 · Ctrl+C 中断生成并保留缓存
-/start 启动调度   /queue 题目队列   /review 确认答案   /view 题目ID   /priority 数值   /switch 题目ID（安全边界保存对话/KV并切题）
-/env 查看或选择题目环境\n/model 查看模型 · /model 编号或ID 切换模型\n/compact 本轮结束后压缩 · /effort off|low|medium|high|xhigh [思考tokens|-1]\n/pause  /resume  /cancel 命令ID  /checkpoint  /feedback 候选ID correct|incorrect|pending 说明
+/start 启动调度   /queue 题目队列   /review 确认答案   /view [题号]   /priority 数值   /switch 题号（安全边界保存对话/KV并切题）
+/env 查看或选择题目环境\n/model 查看模型 · /model 编号或ID 切换模型\n/compact 本轮结束后压缩 · /effort off|low|medium|high|xhigh [思考tokens|-1]\n/pause  /resume [题号]  /cancel 命令ID  /checkpoint  /feedback 候选ID correct|incorrect|pending 说明
 /tab output|jobs|budget|files|inbox|candidates|compact  /read 文件路径  /archive 消息ID
 /skills [检索词] 查看技能元数据 · /use-skill NAME 将读取请求加入本题消息队列\n/new 创建题目（题意可多行粘贴） /discard 清空当前草稿  /quit 保存退出
 直接输入补充消息；Enter 发送，Shift+Enter 换行；已送达表示服务已接受包含该消息的请求。`;
@@ -27,7 +29,7 @@ export class CompetitionTerminal {
   this.tui.setLayoutRoot(new VStack([
    {component:this.header,basis:2,shrink:0},
    {component:new HStack([{component:new ScrollView(this.sidebar,{follow:'none'}),basis:30,minSize:16,maxSize:40},{component:this.scroll,grow:1,minSize:10}],{gap:1}),grow:1,minSize:3},
-   {component:this.binding,basis:1,shrink:0},{component:this.editor,basis:'auto',maxSize:9,minSize:3,shrink:0},{component:this.footer,basis:2,shrink:0}
+   {component:this.binding,basis:2,shrink:0},{component:this.editor,basis:'auto',maxSize:9,minSize:3,shrink:0},{component:this.footer,basis:2,shrink:0}
   ]));
   this.tui.setFocus(this.editor);
   this.tui.addInputListener(data=>{
@@ -35,7 +37,7 @@ export class CompetitionTerminal {
    if(matchesKey(data,'ctrl+n')){this.beginNew();return {consume:true};}
    if(matchesKey(data,'ctrl+l')){this.chooseTask();return {consume:true};}
    if(matchesKey(data,'ctrl+p')){this.attempt(()=>contest.pause(this.requireTask()));return {consume:true};}
-   if(matchesKey(data,'ctrl+r')){this.attempt(()=>contest.resume(this.requireTask()));return {consume:true};}
+   if(matchesKey(data,'ctrl+r')){this.attempt(()=>{this.setView(this.requireTask());contest.resume(this.requireTask());});return {consume:true};}
   });
   this.changed=()=>this.render();this.agentEvent=({taskId,event})=>{
    if(event.type==='message_update')this.live.set(taskId,structuredClone(event.message));
@@ -50,9 +52,9 @@ export class CompetitionTerminal {
  attempt(fn){Promise.resolve().then(fn).catch(e=>{this.notice=e.message;this.render();});}
  persist(){atomic(this.file,{selected:this.selected,drafts:this.drafts,wizard:this.wizard});}
  persistDraft(){const text=this.editor.getExpandedText();if(this.wizard)this.wizard.draft=text;else if(this.bound)this.drafts[this.bound]=text;this.persist();}
- setView(id){this.contest.session(id);this.selected=id;this.detail=null;if(!this.editor.getExpandedText()&&!this.wizard){this.bound=id;this.editor.setText(this.drafts[id]||'');}this.persist();this.render();}
+ setView(id){id=this.contest.resolveTaskId(id);this.contest.session(id);this.selected=id;this.tab='output';this.detail=null;this.notice='正在查看 '+this.contest.taskLabel(id)+' · '+this.contest.taskTitle(id);if(!this.editor.getExpandedText()&&!this.wizard){this.bound=id;this.editor.setText(this.drafts[id]||'');}this.persist();this.render();}
  beginNew(){this.persistDraft();this.wizard={step:0,values:{},draft:''};this.editor.setText('');this.render();}
- async chooseTask(){const item=await this.select('切换查看（不打断推理）',[...this.contest.records.values()].map(r=>({value:r.task.id,label:safeText(r.title),description:r.task.id+' '+this.contest.status(r.task.id)})));if(item)this.setView(item.value);}
+ async chooseTask(){const item=await this.select('切换查看（不打断推理）',[...this.contest.records.values()].map(r=>({value:r.task.id,label:safeText(this.contest.taskTitle(r.task.id)),description:this.contest.taskLabel(r.task.id)+' '+this.contest.status(r.task.id)})));if(item)this.setView(item.value);}
  select(title,items){return new Promise(resolve=>{
   const list=new SelectList(items,12,selectTheme),box=new Container();box.addChild(new Text(safeText(title),1,1));box.addChild(list);
   box.handleInput=data=>list.handleInput(data);const overlay=this.tui.showOverlay(box,{width:'80%',maxHeight:'80%'});
@@ -81,16 +83,16 @@ export class CompetitionTerminal {
     const taskId=this.requireTask(),s=this.contest.session(taskId);if(s.config.mode!=='memory-skills')throw Error('当前题未启用技能工具');
     const name=args.join(' '),skill=s.knowledge.skill(name);
     const item=this.contest.enqueue(taskId,'Use read to load '+JSON.stringify(skill.filePath)+'. Resolve needed reference paths relative to its directory.');
-    this.notice=`技能读取请求已排队 → ${taskId} · ${item.id}`;
+    this.notice=`技能读取请求已排队 → ${this.contest.taskLabel(taskId)} · ${item.id}`;
    }
    else if(cmd==='/start'){this.contest.start();this.notice='调度已开启；/queue 查看队列，/review 记录人工判题结果。';}
    else if(cmd==='/queue'){this.tab='queue';this.detail=null;}
    else if(cmd==='/review')await this.review();
-   else if(cmd==='/view')this.setView(args[0]);
+   else if(cmd==='/view'){if(args.length>1)throw Error('用法：/view [题号]');if(args[0])this.setView(args[0]);else await this.chooseTask();}
    else if(cmd==='/priority')this.contest.priority(this.requireTask(),Number(args[0]));
-   else if(cmd==='/switch')this.contest.switchInference(args[0]||this.requireTask());
+   else if(cmd==='/switch'){const target=args[0]?this.contest.resolveTaskId(args[0]):this.requireTask();this.setView(target);this.contest.switchInference(target);}
    else if(cmd==='/pause')this.contest.pause(this.requireTask());
-   else if(cmd==='/resume')this.contest.resume(this.requireTask());
+   else if(cmd==='/resume'){if(args.length>1)throw Error('用法：/resume [题号]');if(args[0])this.setView(args[0]);else this.setView(this.requireTask());this.contest.resume(this.requireTask());}
    else if(cmd==='/env'){if(args.length>1)throw Error('用法：/env [环境名称]');const environments=this.contest.config.environments??{};if(args.length){if(!environments[args[0]])throw Error('未知环境');this.contest.environmentName=args[0];this.contest.newTaskTarget=environments[args[0]].targetUrl??'';this.notice='新题环境已设为 '+args[0];}else this.detail=Object.entries(environments).map(([name,e])=>`${name===this.contest.environmentName?'▶ ':''}${name} · ${e.type} · ${e.targetUrl??''}`).join('\n')+'\n/env 环境名称：用于之后创建的题目。';}
    else if(cmd==='/model'){if(args.length>1)throw Error('用法：/model [编号或ID]');if(args.length){this.notice='正在切换模型…';this.render();this.contest.switchModel(this.selected,args[0]).then(()=>{this.notice=this.contest.notice;this.detail=null;this.render();}).catch(error=>{this.notice='模型切换未完成：'+error.message;this.render();});}else{const models=await this.contest.models(this.selected);this.detail=models.map(m=>`${m.current?'▶ ':'  '}${m.number}. ${m.name} (${m.id})\n${m.online?'服务在线':m.managed&&m.installed?'本地已安装，可加载':'服务未就绪'} · ${m.baseUrl}`).join('\n\n')+'\n\n/model 编号或ID 切换；对话保留，旧 KV 失效。';}}
    else if(cmd==='/compact'){this.contest.compact(this.requireTask());this.notice='Compact 已排队，将在完整轮次边界执行。';}
@@ -103,7 +105,7 @@ export class CompetitionTerminal {
    else if(cmd==='/archive')this.contest.session(this.requireTask()).inbox.retire(args[0]);
    else throw Error('未知命令；/help 查看帮助');
   }else{
-   const id=this.bound||this.requireTask();const item=this.contest.enqueue(id,text);this.notice=`已排队 → ${id} · ${item.id}`;
+   const id=this.bound||this.requireTask();const item=this.contest.enqueue(id,text);this.notice=`已排队 → ${this.contest.taskLabel(id)} · ${item.id}`;
   }
   if(this.bound)delete this.drafts[this.bound];this.editor.setText('');this.bound=this.selected;this.editor.setText(this.drafts[this.bound]||'');this.persist();this.render();
  }
@@ -112,7 +114,7 @@ export class CompetitionTerminal {
   if(!candidates.length){this.notice='暂无待人工确认的答案。';return;}
   const item=await this.select('选择待确认答案',candidates);if(!item)return;
   const verdict=await this.select('平台判题结果 · '+item.candidate.candidate,[{value:'correct',label:'通过'},{value:'incorrect',label:'错误'}]);
-  if(!verdict)return;this.contest.feedback(item.taskId,item.candidate.review_id,verdict.value);this.notice='已记录判题结果。';
+  if(!verdict)return;this.contest.feedback(item.taskId,item.candidate.review_id,verdict.value);this.setView(item.taskId);this.notice='已记录 '+this.contest.taskLabel(item.taskId)+' 的判题结果。';
  }
  async wizardSubmit(text){
   if(text==='/back'){this.wizard=null;this.editor.setText(this.drafts[this.bound]||'');this.persist();this.render();return;}
@@ -120,7 +122,7 @@ export class CompetitionTerminal {
   if(w.step===2&&value.startsWith('/browse')){value=await this.directory(value.slice(7).trim());if(value===null)return;}
   if(w.step<2&&!value)throw Error('此项不能为空');if(w.step>=2&&value==='-')value='';
   w.values[keys[w.step]]=value;
-  if(w.step===3){this.notice='正在创建独立题目与附件快照…';this.render();const record=await this.contest.add(w.values);this.wizard=null;this.selected=record.task.id;this.bound=this.selected;this.notice='题目已创建，进入首次启动队列。/start 启动调度';}
+  if(w.step===3){this.notice='正在创建独立题目与附件快照…';this.render();const record=await this.contest.add(w.values);this.wizard=null;this.selected=record.task.id;this.bound=this.selected;this.tab='output';this.detail=null;this.notice='题目已创建，进入首次启动队列。/start 启动调度';}
   else w.step++;
   this.editor.setText(this.wizard?.step===3?(this.contest.newTaskTarget??''):'');this.persist();this.render();
  }
@@ -130,25 +132,26 @@ export class CompetitionTerminal {
  }
  renderNow(){
   const c=this.contest,s=this.selected?c.sessions.get(this.selected):null;
-  this.header.setText(safeText(`CTF 比赛终端 · ${c.source?.commit?.slice(0,8)??'未知版本'}${c.source?.dirty?'*':''} · ${c.booting?'准备中':c.enabled?'调度开启':'调度停止'} · 模型 ${s?.config.model??c.defaultModel?.model??'未选择'} · 环境 ${c.environmentName??'默认'}\n推理 ${c.active||'空闲'} · 查看 ${this.selected||'无'} · 恢复 ${c.queue.state.readyResume.length} | 新题 ${c.queue.state.readyFresh.length} | 工具等待 ${Object.keys(c.queue.state.waiting).length} | 待确认 ${c.queueRows().reduce((n,r)=>n+r.reviews.length,0)} · /queue`));
-  this.sidebar.setText([...c.records.values()].map(r=>`${r.task.id===this.selected?'▶':' '} ${r.title}\n${r.task.id}\n${c.status(r.task.id)} · 优先级 ${c.queue.item(r.task.id)?.priority??0}`).map(safeText).join('\n\n')||'Ctrl+N 创建第一题');
+  this.header.setText(safeText(`CTF 比赛终端 · ${c.source?.commit?.slice(0,8)??'未知版本'}${c.source?.dirty?'*':''} · ${c.booting?'准备中':c.enabled?'调度开启':'调度停止'} · 模型 ${s?.config.model??c.defaultModel?.model??'未选择'} · 环境 ${c.environmentName??'默认'}\n推理 ${c.taskLabel(c.active)||'空闲'} · 查看 ${c.taskLabel(this.selected)||'无'} · 恢复 ${c.queue.state.readyResume.length} | 新题 ${c.queue.state.readyFresh.length} | 工具等待 ${Object.keys(c.queue.state.waiting).length} | 待确认 ${c.queueRows().reduce((n,r)=>n+r.reviews.length,0)} · /queue`));
+  this.sidebar.setText([...c.records.values()].map(r=>`${r.task.id===this.selected?'▶':' '} ${c.taskTitle(r.task.id)}\n${c.taskLabel(r.task.id)}\n${c.status(r.task.id)} · 优先级 ${c.queue.item(r.task.id)?.priority??0}`).map(safeText).join('\n\n')||'Ctrl+N 创建第一题');
   let content=this.detail;
   if(content===null){
-   if(this.tab==='queue')content='题目 | 状态 | 模型 | 后台任务 | 待确认答案\n'+c.queueRows().map(r=>`${r.title} (${r.id}) | ${r.status==='awaiting_review'?'待人工确认':r.status} | ${r.model} | ${r.jobs} | ${r.reviews.map(x=>x.review_id+': '+x.candidate).join(', ')||'—'}`).join('\n\n')+'\n\n/review：选择答案并记录通过或错误；/view 题目ID：查看对话。';
+   if(this.tab==='queue')content='题目 | 状态 | 模型 | 后台任务 | 待确认答案\n'+c.queueRows().map(r=>`${r.title} (${c.taskLabel(r.id)}) | ${r.status==='awaiting_review'?'待人工确认':r.status} | ${r.model} | ${r.jobs} | ${r.reviews.map(x=>x.review_id+': '+x.candidate).join(', ')||'—'}`).join('\n\n')+'\n\n/review：选择答案并记录通过或错误；/view [题号]：查看对话。';
    else if(!s)content=HELP;
    else if(this.tab==='output'){
     const messages=s.messages().slice(-100);
     const live=this.live.get(this.selected);if(live)messages.push(live);
-    content=messages.map(m=>`${m===live?'[实时 · 未完成] ':''}${m.role}${m.harnessInboxId?' · '+m.harnessInboxId:''}\n${typeof m.content==='string'?m.content:(m.content||[]).map(x=>x.type==='text'?x.text:x.type==='thinking'?'[推理] '+x.thinking:x.type==='toolCall'?'[工具] '+x.name+' '+JSON.stringify(x.arguments):'[附件]').join('\n')}${m.harnessInterruptedEvidence?'\n[手动中断，工具草稿未执行] /read '+m.harnessInterruptedEvidence:''}${m.errorMessage?'\n[中断] '+m.errorMessage:''}`).join('\n\n')||'题目已入队，等待推理。';
+    content=messages.map(m=>`${m===live?'[实时 · 未完成] ':''}${m.role}${m.harnessInboxId?' · '+m.harnessInboxId:''}\n${typeof m.content==='string'?m.content:(m.content||[]).map(x=>x.type==='text'?(m.role==='toolResult'?toolText(m.toolName,x.text):x.text):x.type==='thinking'?'[推理] '+x.thinking:x.type==='toolCall'?'[工具] '+x.name+' '+JSON.stringify(x.arguments):'[附件]').join('\n')}${m.harnessInterruptedEvidence?'\n[手动中断，工具草稿未执行] /read '+m.harnessInterruptedEvidence:''}${m.errorMessage?'\n[中断] '+m.errorMessage:''}`).join('\n\n')||'题目已入队，等待推理。';
    }else if(this.tab==='jobs')content=s.store.events.filter(e=>e.type==='job_launch_attempt').map(e=>{const id=e.data.job_id,last=s.store.events.findLast(x=>x.type==='job_output_cursor'&&x.data.job_id===id);const dep=s.dependencies().some(x=>x.id===id);return `${id} · ${dep?'运行中':'已结束'} · ${last?'已有输出':'等待输出'}`;}).join('\n')||'暂无后台命令';
-   else if(this.tab==='budget')content=stringify({controls:s.generationControls(),prefixCheck:s.store.events.findLast(e=>e.type==='generation_prefix_check')?.data,remaining:s.budget(),context:s.config.contextTokens,prompt:s.config.promptTokens,generation:s.config.generationTokens,checkpoint:s.store.events.filter(e=>e.type==='checkpoint_result').at(-1)?.data||'尚未保存 KV'});
+   else if(this.tab==='budget')content=budgetText(s);
    else if(this.tab==='files'){const dir=outputRoot(s.store,s.broker);content=fs.existsSync(dir)?fs.readdirSync(dir).map(f=>'/read /work/.tool-output/'+f).join('\n'):'暂无保存的长输出';}
-   else if(this.tab==='inbox')content=s.inbox.items().map(i=>`${i.status==='queued'?'已排队':'已送达'}${i.retired?' · 已归档':''} → ${i.taskId} · ${i.id}\n${i.text}`).join('\n\n')||'尚无补充消息';
+   else if(this.tab==='inbox')content=s.inbox.items().map(i=>`${i.status==='queued'?'已排队':'已送达'}${i.retired?' · 已归档':''} → ${c.taskLabel(i.taskId)} · ${i.id}\n${i.text}`).join('\n\n')||'尚无补充消息';
    else if(this.tab==='candidates')content=s.candidates().map(x=>`${x.review_id} · ${x.candidate}\n${x.feedback?.status??'待人工确认'} · /review`).join('\n\n')||'暂无候选答案';
    else content=stringify({pending:s.pendingControl('compact')?.seq??null,lastResult:s.store.events.findLast(e=>e.type==='compact_resolved')?.data,summary:s.store.events.findLast(e=>e.type==='compact_commit')?.data.checkpoint?.summary??'尚无 Compact 摘要',partial:s.store.events.findLast(e=>e.type==='model_auxiliary_interrupted')?.data});
   }
   this.content.setText(safeText(content).slice(-160000));
-  const b=s?.budget();this.binding.setText(safeText(this.wizard?`创建 ${this.wizard.step+1}/4：${['题目标题','粘贴题意（支持多行）','附件目录：路径 /browse 或 - 跳过','内网目标 URL 或 - 跳过'][this.wizard.step]} · /back 取消`:`输入绑定 → ${this.bound||this.selected||'无题目'} · 面板 ${this.tab}${b?` · 剩余 ${b.turnsRemaining} 轮 / ${b.tokensRemaining} tokens`:''}`));
+  const usage=s?sessionUsage(s.store,s.config):null;
+  this.binding.setText(safeText(this.wizard?`创建 ${this.wizard.step+1}/4：${['题目标题','粘贴题意（支持多行）','附件目录：路径 /browse 或 - 跳过','内网目标 URL 或 - 跳过'][this.wizard.step]} · /back 取消`:`输入绑定 → ${c.taskLabel(this.bound||this.selected)||'无题目'} · 面板 ${this.tab}${usage?' · '+usageLine(usage)+'\n'+contextLine(usage):''}`));
   this.footer.setText(safeText((this.notice||c.notice||'Ctrl+C 中断生成 · Ctrl+R 恢复 · /compact 压缩 · /effort 调整思考 · /quit 退出')+'\n'+(c.notice&&this.notice?c.notice:'暂停推理保留命令运行；/cancel 命令ID 单独取消。')));
   this.tui.requestRender();
  }

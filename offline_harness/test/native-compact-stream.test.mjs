@@ -56,3 +56,13 @@ test('task abort cancels a live auxiliary stream without accepting partial compa
  await accepted;controller.abort();await assert.rejects(result,/abort/i);
  assert.equal(s.events.filter(e=>e.type==='model_auxiliary_response'||e.type==='compact_commit').length,0);
 });
+
+test('cancellation closes a reader even when the transport ignores the signal and retains received output',async t=>{
+ const s=store(t),controller=new AbortController();let received,cancelled=false;
+ const progress=new Promise(r=>received=r);
+ const body=new ReadableStream({start(c){c.enqueue(new TextEncoder().encode(frame({reasoning_content:'saved reasoning',content:'saved partial'})));},cancel(){cancelled=true;}});
+ const client=new NativeClient({...cfg,baseUrl:'http://127.0.0.1:8081'},s,{guard:()=>{},fetchFn:async url=>url.endsWith('input_tokens')?Response.json({input_tokens:100}):new Response(body),onAuxiliary:()=>received()});
+ const work=client.complete(input,{kind:'compact',signal:controller.signal});await progress;controller.abort();await assert.rejects(work,/abort/i);assert.equal(cancelled,true);
+ const ref=s.events.findLast(e=>e.type==='model_auxiliary_interrupted').data.evidence_id,partial=JSON.parse(s.read(ref).text);
+ assert.equal(partial.content,'saved partial');assert.equal(partial.reasoning,'saved reasoning');assert.equal(s.events.some(e=>e.type==='compact_commit'),false);
+});

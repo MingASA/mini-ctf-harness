@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {createReadTool,convertToPng} from './pi-runtime.mjs';
+import {toolError} from './tool-errors.mjs';
 import {hash} from './store.mjs';
 import {outputRoot} from './tool-output.mjs';
 
@@ -39,6 +40,6 @@ export function fileReadTool(store,broker,skills,{nativeImages=false}={}){
     for(let i=0;i<result.content.length;i++){const block=result.content[i];if(block.type==='image'&&!['image/png','image/jpeg'].includes(block.mimeType)){const png=await convertToPng(block.data,block.mimeType);if(!png)throw Error('Image conversion to PNG failed');result.content[i]={type:'image',...png};}}
     for(const [filename,bytes] of cache){const raw=await bytes;store.put({path:filename,sha256:hash(raw),...(imageType(raw)?{data:raw.toString('base64')}:{text:raw.toString('utf8')})},root&&within(filename,root)?'reference:read':'tool:read');}
     return {...result,details:result.details??{}};
-   }catch(error){return {content:[{type:'text',text:error.message}],isError:true};}
+   }catch(error){return {content:[{type:'text',text:toolError(store,'read',id,error)}],isError:true};}
   })};
 }

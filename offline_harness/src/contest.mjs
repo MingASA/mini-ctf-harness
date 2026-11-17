@@ -1,12 +1,12 @@
 import {DATA_ROOT} from './paths.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
-import crypto from 'node:crypto';
 import {EventEmitter} from 'node:events';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {atomic,hash} from './store.mjs';
 import {sourceIdentity} from './source-identity.mjs';
+import {TaskNumbers} from './task-numbers.mjs';
 import {ContestQueue} from './contest-queue.mjs';
 import {InteractiveSession} from './interactive-session.mjs';
 import {ModelCatalog} from './model-catalog.mjs';
@@ -53,7 +53,8 @@ export class Contest extends EventEmitter {
   const selection=path.join(this.root,'model-selection.json');if(fs.existsSync(selection))Object.assign(this.defaultModel,JSON.parse(fs.readFileSync(selection)).settings);
   try {
    const file=path.join(this.root,'tasks.json');
-   for(const record of fs.existsSync(file)?JSON.parse(fs.readFileSync(file)):[]){this.records.set(record.task.id,record);this.load(record);}
+   const records=fs.existsSync(file)?JSON.parse(fs.readFileSync(file)):[];this.numbers=new TaskNumbers(this.root,records.map(r=>r.task.id));
+   for(const record of records){this.records.set(record.task.id,record);this.load(record);}
    if(this.queue.state.running){const id=this.queue.state.running.taskId,s=this.session(id);this.queue.settle(id,s.store.pending().length?'needs_review':'paused');s.store.append('restart_recovery',{note:'Prior inference stopped. Commands were not replayed.'});this.retryLocally(id);}
    for(const [id,s] of this.sessions){
     if(!this.queue.item(id))this.queue.enqueue(id,'fresh');
@@ -72,10 +73,14 @@ export class Contest extends EventEmitter {
   this.sessions.set(record.task.id,session);return session;
  }
  save(){atomic(path.join(this.root,'tasks.json'),[...this.records.values()]);}
- session(id){const s=this.sessions.get(id);if(!s)throw Error('Unknown task '+id);return s;}
- queueRows(){return [...this.records.values()].map(r=>{const s=this.session(r.task.id);return {id:r.task.id,title:r.title,status:this.status(r.task.id),model:s.config.model,jobs:s.dependencies().length,reviews:s.candidates().filter(x=>!x.feedback||x.feedback.status==='pending')};});}
- status(id){const item=this.queue.item(id);if(this.active===id)return 'running';if(this.queue.state.readyResume.some(x=>x.taskId===id))return 'ready_resume';if(this.queue.state.readyFresh.some(x=>x.taskId===id))return 'ready_fresh';return item?.status||'idle';}
- async add({id='task-'+crypto.randomUUID().slice(0,8),title,objective,attachmentDir='',target='',sandbox}){
+ taskLabel(id){return this.numbers.label(id);}
+ taskTitle(id){const r=this.records.get(id);return r?.title===id?'题目 '+this.taskLabel(id):r?.title;}
+ resolveTaskId(id){return this.numbers.resolve(id,this.records);}
+ session(id){id=this.resolveTaskId(id);const s=this.sessions.get(id);if(!s)throw Error('Unknown task '+id);return s;}
+ queueRows(){return [...this.records.values()].map(r=>{const s=this.session(r.task.id);return {id:r.task.id,title:this.taskTitle(r.task.id),status:this.status(r.task.id),model:s.config.model,jobs:s.dependencies().length,reviews:s.candidates().filter(x=>!x.feedback||x.feedback.status==='pending')};});}
+ status(id){id=this.resolveTaskId(id);const item=this.queue.item(id);if(this.active===id)return 'running';if(this.queue.state.readyResume.some(x=>x.taskId===id))return 'ready_resume';if(this.queue.state.readyFresh.some(x=>x.taskId===id))return 'ready_fresh';return item?.status||'idle';}
+ async add({id,title,objective,attachmentDir='',target='',sandbox}){
+  id=id??this.numbers.allocate();
   if(!/^[a-zA-Z0-9_-]{1,100}$/.test(id)||['__proto__','constructor','prototype'].includes(id)||this.records.has(id))throw Error('Task ID invalid or already exists');
   if(typeof objective!=='string'||!objective.trim()||objective.length>90000)throw Error('Paste a task statement of 1..90000 characters');
   if(target)validateServiceUrl(target);
@@ -100,9 +105,9 @@ export class Contest extends EventEmitter {
  register({id,title,objective,target,attachmentDir,attachments,sandbox,runDir}){
   const task={id,objective:objective+(target?'\nOperator-supplied target address: '+target:''),input_files:attachments.map(x=>x.path)};
   const record={task,title:String(title||id).slice(0,200),target,attachmentDir,attachments,config:{...this.defaultModel,...this.pendingDefaultModel,runDir,sandbox}};
-  this.records.set(id,record);this.save();const s=this.load(record);s.store.append('attachment_manifest',{files:attachments});this.queue.enqueue(id,'fresh');this.emit('change');return record;
+  this.numbers.assign(id);this.records.set(id,record);this.save();const s=this.load(record);s.store.append('attachment_manifest',{files:attachments});this.queue.enqueue(id,'fresh');this.emit('change');return record;
  }
- enqueue(id,text){const s=this.session(id);const result=s.enqueue(text);const status=this.status(id);if(['awaiting_input','awaiting_judge','awaiting_review','idle','paused'].includes(status))this.queue.enqueue(id,'resume');if(this.holdResident&&!this.enabled){this.manualNext=id;this.start();}this.emit('change');return result;}
+ enqueue(id,text){id=this.resolveTaskId(id);const s=this.session(id);const result=s.enqueue(text);const status=this.status(id);if(['awaiting_input','awaiting_judge','awaiting_review','idle','paused'].includes(status))this.queue.enqueue(id,'resume');if(this.holdResident&&!this.enabled){this.manualNext=id;this.start();}this.emit('change');return result;}
  interruptActive(){
   this.modelSwitchController?.abort();this.interruptEpoch++;this.enabled=false;this.holdResident=true;this.manualNext=null;
   const id=this.active??this.resident;
@@ -132,25 +137,25 @@ export class Contest extends EventEmitter {
   finally{if(this.pendingDefaultModel===pendingSettings)this.pendingDefaultModel=null;this.modelSwitching=false;this.modelSwitchController=null;this.emit('change');}
  }
  effort(id,level,budget){const s=this.session(id);return level?s.requestEffort(level,budget):s.generationControls();}
- compact(id){
+ compact(id){id=this.resolveTaskId(id);
   const s=this.session(id),result=s.requestCompact();
   if(this.active!==id&&s.messages().filter(m=>m.role!=='system').length<2){s.store.append('compact_resolved',{request_seq:result.request_seq,status:'no_history'});this.emit('change');return {...result,pending:false,status:'no_history'};}
   if(this.active!==id){this.maintenance.set(id,this.status(id));this.manualNext=id;this.tick().catch(e=>{this.notice=e.message;this.emit('change');});}
   this.emit('change');return result;
  }
- priority(id,value){this.queue.priority(id,value);this.emit('change');}
- pause(id){const s=this.session(id);if(this.active===id)s.pause();else this.queue.settle(id,'paused',s.dependencies());this.emit('change');}
- resume(id){const s=this.session(id);if(this.active===id){if(s.pauseRequested&&this.holdResident){this.manualNext=id;this.start();}return;}if(s.store.pending().length&&!s.config.localRecovery)throw Error('Uncertain tool outcome requires evidence review before resume');if(this.status(id)==='correct')throw Error('Task is already correct');this.queue.enqueue(id,'resume');if(this.holdResident&&!this.enabled){this.manualNext=id;this.start();}this.emit('change');}
+ priority(id,value){id=this.resolveTaskId(id);this.queue.priority(id,value);this.emit('change');}
+ pause(id){id=this.resolveTaskId(id);const s=this.session(id);if(this.active===id)s.pause();else this.queue.settle(id,'paused',s.dependencies());this.emit('change');}
+ resume(id){id=this.resolveTaskId(id);const s=this.session(id);if(this.active===id){if(s.pauseRequested&&this.holdResident){this.manualNext=id;this.start();}return;}if(s.store.pending().length&&!s.config.localRecovery)throw Error('Uncertain tool outcome requires evidence review before resume');if(this.status(id)==='correct')throw Error('Task is already correct');this.queue.enqueue(id,'resume');if(this.holdResident&&!this.enabled){this.manualNext=id;this.start();}this.emit('change');}
  retryLocally(id){
   const s=this.session(id);if(!s.config.localRecovery||s.pauseRequested)return false;
   const attempts=s.store.events.filter(e=>e.type==='local_session_recovery').length;
   if(attempts>=2||s.budget().millisecondsRemaining<=1000){this.queue.settle(id,'recovery_failed');return false;}
   s.store.append('local_session_recovery',{attempt:attempts+1,tools_replayed:false,time:Date.now()});this.queue.enqueue(id,'resume',{reason:'local_recovery'});return true;
  }
- feedback(id,candidate,status,note){const s=this.session(id);s.feedback(candidate,status,note);if(status==='correct'&&this.active!==id)this.queue.settle(id,'correct');else if(status==='incorrect'&&this.active!==id&&this.status(id)!=='paused')this.resume(id);this.emit('change');}
- async cancel(id,job){const result=await this.session(id).cancelCommand(job);await this.poll();this.emit('change');return result;}
- switchInference(id){this.session(id);if(this.active===id)return;if(this.status(id)==='correct')throw Error('Task already correct');if(this.session(id).store.pending().length)throw Error('Target has uncertain tools');this.manualNext=id;this.checkpointRequested=Boolean(this.active);if(this.active)this.session(this.active).requestYield();else this.resume(id);this.emit('change');}
- async checkpoint(id){if(this.active!==id)throw Error('KV can only be saved for the task currently owning inference');this.checkpointRequested=true;this.session(id).requestYield();}
+ feedback(id,candidate,status,note){id=this.resolveTaskId(id);const s=this.session(id);s.feedback(candidate,status,note);if(status==='correct'&&this.active!==id)this.queue.settle(id,'correct');else if(status==='incorrect'&&this.active!==id&&this.status(id)!=='paused')this.resume(id);this.emit('change');}
+ async cancel(id,job){id=this.resolveTaskId(id);const result=await this.session(id).cancelCommand(job);await this.poll();this.emit('change');return result;}
+ switchInference(id){id=this.resolveTaskId(id);this.session(id);if(this.active===id)return;if(this.status(id)==='correct')throw Error('Task already correct');if(this.session(id).store.pending().length)throw Error('Target has uncertain tools');this.manualNext=id;this.checkpointRequested=Boolean(this.active);if(this.active)this.session(this.active).requestYield();else this.resume(id);this.emit('change');}
+ async checkpoint(id){id=this.resolveTaskId(id);if(this.active!==id)throw Error('KV can only be saved for the task currently owning inference');this.checkpointRequested=true;this.session(id).requestYield();}
  start(){if(this.bootError&&this.retryInitialization){this.retryInitialization().catch(()=>{});return;}this.enabled=true;this.notice='';if(!this.interval)this.interval=setInterval(()=>{this.tick().catch(e=>{this.notice=e.message;this.emit('change');});},1000);this.tick().catch(e=>{this.notice=e.message;this.emit('change');});this.emit('change');}
  async poll(){
   if(this.pollPromise)return this.pollPromise;

@@ -88,13 +88,13 @@ test('manual Compact waits for a complete tool group and commits once before the
 });
 
 test('idle Compact generates only a summary, survives restart, and interruption retains its old checkpoint',async()=>{
- const root=temp(),ready=deferred();let abortCompact=false;
+ const root=temp(),ready=deferred(),received=deferred();let abortCompact=false;
  const p=await fixture(async(n,b,f,res)=>{if(b.response_format&&abortCompact){f({reasoning_content:'retain this compact reasoning',content:'{"primary_request_and_intent":"partial'});ready.resolve();await new Promise(r=>res.once('close',r));}else done(b,f,res,b.response_format?summary():'Ready');});
  try{
   const cfg=config(root,p.url),task={id:'compact',objective:'Compact lifecycle'};let s=new InteractiveSession(task,cfg,opts);
   s.requestCompact();assert.equal((await s.runSlice({maintenanceOnly:true})).status,'awaiting_input');assert.equal(p.requests.length,0);
   await s.runSlice();s.requestCompact();s=new InteractiveSession(task,cfg,opts);await s.runSlice({maintenanceOnly:true});const checkpoint=s.store.events.findLast(e=>e.type==='compact_commit');assert.ok(checkpoint);assert.equal(generations(p).length,2);
-  s.enqueue('New observation after the checkpoint');await s.runSlice();abortCompact=true;s.requestCompact();const work=s.runSlice({maintenanceOnly:true});await ready.promise;await settle();s.pause();assert.equal((await work).status,'paused');assert.deepEqual(s.store.events.findLast(e=>e.type==='compact_commit'),checkpoint);
+  s.enqueue('New observation after the checkpoint');await s.runSlice();abortCompact=true;s.on('auxiliary',event=>{if(event.reasoning==='retain this compact reasoning')received.resolve();});s.requestCompact();const work=s.runSlice({maintenanceOnly:true});await received.promise;s.pause();assert.equal((await work).status,'paused');assert.deepEqual(s.store.events.findLast(e=>e.type==='compact_commit'),checkpoint);
   assert.equal(s.store.events.findLast(e=>e.type==='compact_resolved').data.status,'interrupted');const ref=s.store.events.findLast(e=>e.type==='model_auxiliary_interrupted').data.evidence_id;const partial=JSON.parse(s.store.read(ref).text);assert.equal(partial.reasoning,'retain this compact reasoning');assert.match(partial.content,/partial/);
  }finally{await p.close();fs.rmSync(root,{recursive:true,force:true});}
 });
@@ -154,7 +154,7 @@ test('manual Compact obeys the cumulative active budget even without a normal ge
  const root=temp(),ready=deferred();let hang=false;
  const p=await fixture(async(n,b,f,res)=>{if(b.response_format&&hang){f({reasoning_content:'Working within the remaining budget'});ready.resolve();await new Promise(r=>res.once('close',r));}else done(b,f,res);});
  try{
-  const s=new InteractiveSession({id:'budget',objective:'Bound auxiliary generation'},{...config(root,p.url),maxSeconds:1},opts);await s.runSlice();hang=true;s.requestCompact();const work=s.runSlice({maintenanceOnly:true});await ready.promise;assert.equal((await work).status,'budget_exhausted');assert.equal(s.store.events.some(e=>e.type==='compact_commit'),false);assert.ok(s.budget().millisecondsRemaining<30);
+  const s=new InteractiveSession({id:'budget',objective:'Bound auxiliary generation'},{...config(root,p.url),maxSeconds:5},opts);assert.equal((await s.runSlice()).status,'awaiting_input');hang=true;s.requestCompact();const work=s.runSlice({maintenanceOnly:true});assert.equal(await Promise.race([ready.promise.then(()=>true),work.then(()=>false)]),true,'Compact must start before its solve budget expires');assert.equal((await work).status,'budget_exhausted');assert.equal(s.store.events.some(e=>e.type==='compact_commit'),false);assert.ok(s.budget().millisecondsRemaining<30);
  }finally{await p.close();fs.rmSync(root,{recursive:true,force:true});}
 });
 

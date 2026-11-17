@@ -6,6 +6,7 @@ import {getCurrentSystemMessage} from '@earendil-works/pi-ai';
 import {bodySettings,settingsHash} from './generation-controls.mjs';
 import {ContextManager, wire} from './context.mjs';
 import {COMPACT_SCHEMA} from './compact-prompts.mjs';
+import {streamChunks} from './native-stream.mjs';
 import {hash} from './store.mjs';
 import {LocalModelRecovery} from './local-model.mjs';
 
@@ -140,7 +141,7 @@ export class NativeClient {
       this.onAuxiliary({kind,requestId,content,reasoning});
     };
     try {
-    for await(const chunk of response.body){
+    for await(const chunk of streamChunks(response.body,signal)){
       fs.appendFileSync(rawFile,chunk);buffer+=decoder.decode(chunk,{stream:true});
       let index;while((index=buffer.indexOf('\n'))>=0){line(buffer.slice(0,index).trimEnd());buffer=buffer.slice(index+1);}
     }
@@ -237,7 +238,7 @@ export class NativeClient {
             stream.push({type:'toolcall_delta',contentIndex:prior.contentIndex,delta:t.function?.arguments||'',partial:message});
           }
         };
-        for await(const chunk of response.body) {
+        for await(const chunk of streamChunks(response.body,signal)) {
           fs.appendFileSync(rawFile,chunk);
           buffer+=decoder.decode(chunk,{stream:true});
           let i; while((i=buffer.indexOf('\n'))>=0) {line(buffer.slice(0,i).trimEnd());buffer=buffer.slice(i+1);}

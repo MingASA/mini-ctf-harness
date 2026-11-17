@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {hash, atomic} from './store.mjs';
+import {toolError} from './tool-errors.mjs';
 import {fileReadTool} from './read.mjs';
 import {boundedText,commandOutput,submissionOutput,recordCursor,isRunning} from './tool-output.mjs';
 
@@ -40,7 +41,7 @@ export function buildTools(store,broker,knowledge,verdict,onSubmission=()=>{},op
         try {data=await operation(args,callId,control,limit);} catch(error) {
           if(name==='submit_flag')throw error;
           const job=store.events.findLast(e=>e.type==='job_launch_attempt'&&e.data.callId===callId)?.data;
-          data=control?.aborted&&name==='wait_job'?{job_id:args.job_id,status:'running',message:'Observation interrupted. The job continues.'}:{error:error.message,...(name==='wait_job'?{job_id:args.job_id}:job?{job_id:job.job_id,status:'unknown_launch'}:{})};
+          data=control?.aborted&&name==='wait_job'?{job_id:args.job_id,status:'running',message:'Observation interrupted. The job continues.'}:{error:toolError(store,name,callId,error),...(name==='wait_job'?{job_id:args.job_id}:job?{job_id:job.job_id,status:'unknown_launch'}:{})};
         }
         const ref=store.put(data,'tool:'+name);
         if(['run_command','wait_job'].includes(name))recordCursor(store,data,ref.id);
@@ -52,7 +53,7 @@ export function buildTools(store,broker,knowledge,verdict,onSubmission=()=>{},op
     {name:'view_image',label:'view_image',description:'View a task PNG/JPEG within /work. Uses native vision; images count toward the context budget.',
       parameters:schema({path:string('Task image path inside /work',500)}),executionMode:'sequential',
       execute:async(id,a)=>store.execute(id,'view_image',a,async()=>{
-        let image;try{image=await broker.image(a.path);}catch(error){return {content:[{type:'text',text:error.message}],isError:true};}
+        let image;try{image=await broker.image(a.path);}catch(error){return {content:[{type:'text',text:toolError(store,'view_image',id,error)}],isError:true};}
         store.put(image,'tool:view_image');
         return {content:[{type:'text',text:image.path},{type:'image',mimeType:image.mimeType,data:image.data}],details:{}};
       })},
