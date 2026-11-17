@@ -6,6 +6,13 @@
 
 支持原生 x86-64 Ubuntu 24.04，以及 Windows 11 + WSL2 Ubuntu 22.04/24.04。系统需有 Python 3.10+、Git、启用 systemd 和 NVIDIA 驱动。WSL 使用 Windows CUDA 引擎；原生 Ubuntu 使用 Linux CUDA 引擎。
 
+WSL 使用 Windows CUDA 服务时，请先在 `%UserProfile%\.wslconfig` 配置以下网络模式，并重新启动 WSL。这样前端可通过 `127.0.0.1` 连接 Windows 服务，配置依据见 [Microsoft WSL 网络文档](https://learn.microsoft.com/en-us/windows/wsl/networking#mirrored-mode-networking)。
+
+```ini
+[wsl2]
+networkingMode=mirrored
+```
+
 将仓库放在准备使用的磁盘，然后执行：
 
 ```bash
