@@ -1,5 +1,10 @@
 {
   "model_revision": "4ca720788d1e01f1bff70c033e0d0028fd02e502",
+  "model_revisions": {
+    "qwen3.8-27b-iq4xs": "4ca720788d1e01f1bff70c033e0d0028fd02e502",
+    "qwen3.5-9b-ctf-web-q8": "f08b567d5e69917787953d5302093de5d1ab8a2d",
+    "qwen3.5-9b-projector": "3885219b6810b007914f3a7950a8d1b469d598a5"
+  },
   "engine_tag": "b12144",
   "engine_commit": "69ee2ecc0150ba7d1204a7f7393dfd651569db8c",
   "assets": {
@@ -26,6 +31,18 @@
       "url": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/4ca720788d1e01f1bff70c033e0d0028fd02e502/mmproj-F16.gguf",
       "sha256": "cbb841a9ee0636b2ec172f5bb8df2ea8dfeb01e90fe7c6126581d662a0b4e43e",
       "size": 927607488
+    },
+    "qwen3.5-9b-ctf-web-q8": {
+      "name": "qwen3.5-9B-ctf-instruct-experiment.gguf",
+      "url": "https://huggingface.co/chinatigerking/qwen3.5-9B-ctf-web-instruct/resolve/f08b567d5e69917787953d5302093de5d1ab8a2d/qwen3.5-9B-ctf-instruct-experiment.gguf",
+      "sha256": "de632c79cb58be69c4685967e114a329fd819ba6fb9e87c1c79843dc7a2e73bd",
+      "size": 9786060032
+    },
+    "qwen3.5-9b-projector": {
+      "name": "mmproj-Qwen3.5-9B-F16.gguf",
+      "url": "https://huggingface.co/unsloth/Qwen3.5-9B-GGUF/resolve/3885219b6810b007914f3a7950a8d1b469d598a5/mmproj-F16.gguf",
+      "sha256": "f70dc3509053962b0d0d3ee8a7eacebf5d60aa560cad78254ae8698516ae029f",
+      "size": 918166080
     },
     "linux-cuda": {
       "name": "cudart-llama-b12144-bin-ubuntu-cuda-12.8-x64.tar.gz",

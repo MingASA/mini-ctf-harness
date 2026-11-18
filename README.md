@@ -26,7 +26,7 @@ cd mini-ctf-harness
 
 安装命令会完成：
 
-- 校验并下载固定版本的模型权重、视觉 projector、llama.cpp 与 CUDA 运行库；支持断点续传。
+- 校验并下载固定版本的 27B、9B CTF 权重、两套视觉 projector、llama.cpp 与 CUDA 运行库；支持断点续传。
 - 准备 Node 22、固定 npm 依赖、独立 Docker Engine、Buildx 和 Compose；Windows 缺失 VC 运行库时一并安装。
 - 构建含 Python、pwntools、z3、sympy、Crypto、gdb、binutils、curl、nmap 等工具的容器镜像。
 - 生成可编辑的 `config.json`；每次启动自动加载模型并准备工具环境。
@@ -53,11 +53,17 @@ cd mini-ctf-harness
 40fac4050e940397dbf13087afd50f4734a11805bf9d65ef8ddd7483470e6199
 ```
 
-推理引擎固定为 [llama.cpp b12144](https://github.com/ggml-org/llama.cpp/releases/tag/b12144)。全部下载地址、大小和哈希在 [installer/assets.json](installer/assets.json)。可复用已有资产：`--model-file`、`--runtime-exe`、`--docker`、`--dockerd`、`--docker-host`、`--solver-image`；权重仍校验上述 SHA256。
+同时安装 [Qwen3.5 9B CTF Web Q8](https://huggingface.co/chinatigerking/qwen3.5-9B-ctf-web-instruct/tree/f08b567d5e69917787953d5302093de5d1ab8a2d)，固定 revision `f08b567d5e69917787953d5302093de5d1ab8a2d`，SHA256：
 
-安装器同时准备约 928 MB 的 F16 projector，并在模型列表中加入 `qwen3.8-27b-iq4xs-vision`。默认启动文本版。需要读取图片时，用 `/model qwen3.8-27b-iq4xs-vision` 切换，或启动时传入 `--model qwen3.8-27b-iq4xs-vision`。可用 `--projector-file /path/to/mmproj.gguf` 复用通过校验的本地文件。已有的额外模型配置会随重新安装保留。
+```text
+de632c79cb58be69c4685967e114a329fd819ba6fb9e87c1c79843dc7a2e73bd
+```
 
-默认是 16 GB 显存配置：55,296 上下文、Q8 KV、单槽、无 MTP；普通生成 medium、总输出 8K；40K 软 Compact，Compact 使用 xhigh、4K 思考与 8K 总输出。硬件不同可修改数据目录的 `config.json` 中 `contextTokens`、`compactSoftTokens`、`gpuLayers`、`kvType` 等参数。预留约 30 GB 可用磁盘空间。
+推理引擎固定为 [llama.cpp b12144](https://github.com/ggml-org/llama.cpp/releases/tag/b12144)。全部下载地址、大小和哈希在 [installer/assets.json](installer/assets.json)。可复用已有资产：`--model-file`、`--projector-file`、`--qwen35-model-file`、`--qwen35-projector-file`、`--runtime-exe`、`--docker`、`--dockerd`、`--docker-host`、`--solver-image`；所有模型文件仍校验固定大小与 SHA256。
+
+安装后 `/model` 中有四项：`qwen3.8-27b-iq4xs`、`qwen3.8-27b-iq4xs-vision`、`qwen3.5-9b-ctf-web-q8`、`qwen3.5-9b-ctf-web-q8-vision`。默认仍启动 27B 文本版；切换模型时会重新加载权重，视觉项同时加载相应 F16 projector。已有的额外模型配置会随重新安装保留。
+
+默认是 16 GB 显存配置：55,296 上下文、Q8 KV、单槽、无 MTP；普通生成 medium、总输出 8K；40K 软 Compact，Compact 使用 xhigh、4K 思考与 8K 总输出。硬件不同可修改数据目录的 `config.json` 中 `contextTokens`、`compactSoftTokens`、`gpuLayers`、`kvType` 等参数。两套权重和 projector 约 26 GB；连同引擎、下载缓存、工具镜像和可增长的 ext4 工作区，建议数据盘至少预留 55 GB。
 
 Thinking 采样 `temperature=1.0, top_p=0.95, top_k=20`；Non-thinking 为 `0.7, 0.80, 20`。内置 15 个原始 SKILL.md 与 32 个 References；Pi 直接发现 `.agents/skills/`，按需使用通用 `read` 读取。
 

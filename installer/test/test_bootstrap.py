@@ -1,14 +1,15 @@
-import hashlib,http.server,io,json,pathlib,sys,tarfile,tempfile,threading,unittest
+import contextlib,hashlib,http.server,io,json,pathlib,sys,tarfile,tempfile,threading,unittest
 sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]))
-from bootstrap import configured_models,fetch_asset,unpack,parser,MANIFEST
+from bootstrap import configured_models,fetch_asset,install,unpack,parser,MANIFEST
 
 class ModelProfiles(unittest.TestCase):
     def test_vision_profile_has_distinct_alias_and_preserves_user_models(self):
         model_id = 'qwen3.8-27b-iq4xs'
         custom = {'id': 'local-text-model', 'modelPath': '/models/local.gguf'}
         existing = [{'id': model_id, 'contextTokens': 40960, 'gpuLayers': 20}, custom]
-        text, vision, extra = configured_models(
-            model_id, '/models/27b.gguf', '/models/projector.gguf', existing
+        text, vision, qwen35, qwen35_vision, extra = configured_models(
+            '/models/27b.gguf', '/models/projector.gguf',
+            '/models/9b.gguf', '/models/9b-projector.gguf', existing
         )
         self.assertEqual(extra, custom)
         self.assertNotIn('nativeImages', text)
@@ -18,9 +19,14 @@ class ModelProfiles(unittest.TestCase):
         self.assertTrue(vision['nativeImages'])
         self.assertEqual(vision['contextTokens'], 40960)
         self.assertEqual(vision['gpuLayers'], 20)
+        self.assertEqual(qwen35['id'], 'qwen3.5-9b-ctf-web-q8')
+        self.assertEqual(qwen35['modelPath'], '/models/9b.gguf')
+        self.assertEqual(qwen35_vision['model'], 'qwen3.5-9b-ctf-web-q8-vision')
+        self.assertEqual(qwen35_vision['mmprojPath'], '/models/9b-projector.gguf')
+        self.assertTrue(qwen35_vision['nativeImages'])
         self.assertEqual(
-            configured_models(model_id, '/models/27b.gguf', '/models/projector.gguf', [text, vision, extra]),
-            [text, vision, extra],
+            configured_models('/models/27b.gguf', '/models/projector.gguf', '/models/9b.gguf', '/models/9b-projector.gguf', [text, vision, qwen35, qwen35_vision, extra]),
+            [text, vision, qwen35, qwen35_vision, extra],
         )
 
 class Downloads(unittest.TestCase):
@@ -51,5 +57,11 @@ class Downloads(unittest.TestCase):
         self.assertFalse((self.root/'outside').exists())
     def test_pinned_manifest_and_valid_plan(self):
         for asset in MANIFEST['assets'].values():self.assertRegex(asset['sha256'],r'^[a-f0-9]{64}$');self.assertTrue(asset['url'].startswith('https://'))
+        self.assertEqual(MANIFEST['assets']['qwen3.5-9b-ctf-web-q8']['size'],9786060032)
+        self.assertEqual(MANIFEST['assets']['qwen3.5-9b-projector']['size'],918166080)
         self.assertEqual(parser().parse_args(['--plan']).model,'qwen3.8-27b-iq4xs')
+        output=io.StringIO()
+        with contextlib.redirect_stdout(output):install(parser().parse_args(['--plan','--data-dir',str(self.root/'data')]))
+        names={asset['name'] for asset in json.loads(output.getvalue())['assets']}
+        self.assertTrue({'Qwen3.8-27B-UD-IQ4_XS.gguf','mmproj-Qwen3.8-27B-F16.gguf','qwen3.5-9B-ctf-instruct-experiment.gguf','mmproj-Qwen3.5-9B-F16.gguf'}<=names)
 if __name__=='__main__':unittest.main()

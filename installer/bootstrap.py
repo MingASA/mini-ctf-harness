@@ -83,35 +83,43 @@ def privileged(args,**options):
 def write_json(file,value):
     file=pathlib.Path(file);file.parent.mkdir(parents=True,exist_ok=True);tmp=file.with_suffix(file.suffix+'.tmp');tmp.write_text(json.dumps(value,indent=2)+'\n');tmp.replace(file)
 
-def configured_models(model_id, model_path, projector_path, existing):
-    vision_id = model_id + '-vision'
+def configured_models(model_path, projector_path, qwen35_model_path, qwen35_projector_path, existing):
     profiles = {profile.get('id') or profile['model']: profile for profile in existing}
-    text = {
-        'id': model_id,
-        'name': 'Qwen3.8 27B IQ4_XS',
-        'contextTokens': 55296,
-        'kvType': 'q8_0',
-        **profiles.pop(model_id, {}),
-        'modelPath': str(model_path),
-    }
-    vision = {
-        'name': 'Qwen3.8 27B IQ4_XS Vision',
-        'contextTokens': text['contextTokens'],
-        'kvType': text['kvType'],
-        **{key: text[key] for key in ('baseUrl', 'gpuLayers') if key in text},
-        **profiles.pop(vision_id, {}),
-        'id': vision_id,
-        'model': vision_id,
-        'modelPath': str(model_path),
-        'mmprojPath': str(projector_path),
-        'nativeImages': True,
-    }
-    return [text, vision, *profiles.values()]
+    configured=[]
+    for model_id,name,weight,projector in [
+        ('qwen3.8-27b-iq4xs','Qwen3.8 27B IQ4_XS',model_path,projector_path),
+        ('qwen3.5-9b-ctf-web-q8','Qwen3.5 9B CTF Web Q8',qwen35_model_path,qwen35_projector_path),
+    ]:
+        vision_id=model_id+'-vision'
+        text={
+            'name':name,
+            'contextTokens':55296,
+            'kvType':'q8_0',
+            **profiles.pop(model_id,{}),
+            'id':model_id,
+            'model':model_id,
+            'modelPath':str(weight),
+        }
+        vision={
+            'name':name+' Vision',
+            'contextTokens':text['contextTokens'],
+            'kvType':text['kvType'],
+            **{key:text[key] for key in ('baseUrl','gpuLayers') if key in text},
+            **profiles.pop(vision_id,{}),
+            'id':vision_id,
+            'model':vision_id,
+            'modelPath':str(weight),
+            'mmprojPath':str(projector),
+            'nativeImages':True,
+        }
+        configured.extend([text,vision])
+    return [*configured,*profiles.values()]
 
 def install(args):
     if platform.machine() not in ('x86_64','AMD64'):raise ValueError('The pinned installation profile requires x86-64')
     data=pathlib.Path(args.data_dir).expanduser().resolve();wsl=bool(os.environ.get('WSL_DISTRO_NAME'));host='windows' if wsl else 'linux';assets=MANIFEST['assets']
-    plan={'data_dir':str(data),'profile':args.model,'platform':host,'assets':[assets[k] for k in ['node','docker','compose','buildx',host+'-engine',host+'-cuda',args.model,'qwen3.8-27b-projector']],'steps':['prepare Linux storage','install Node and Docker binaries','npm ci','build solver image','verify model, projector and engine','write config']}
+    install_assets=['node','docker','compose','buildx',host+'-engine',host+'-cuda','qwen3.8-27b-iq4xs','qwen3.8-27b-projector','qwen3.5-9b-ctf-web-q8','qwen3.5-9b-projector']
+    plan={'data_dir':str(data),'profile':args.model,'platform':host,'assets':[assets[k] for k in install_assets],'steps':['prepare Linux storage','install Node and Docker binaries','npm ci','build solver image','verify models, projectors and engine','write config']}
     if wsl:plan['assets'].append(assets['windows-vcredist'])
     if args.plan:print(json.dumps(plan,indent=2));return
     data.mkdir(parents=True,exist_ok=True)
@@ -173,6 +181,20 @@ def install(args):
             raise ValueError('Vision projector checksum mismatch')
     else:
         projector = fetch_asset(projector_asset, data/'models')
+    qwen35_asset=assets['qwen3.5-9b-ctf-web-q8']
+    if args.qwen35_model_file:
+        qwen35_model=pathlib.Path(args.qwen35_model_file).resolve()
+        if qwen35_model.stat().st_size!=qwen35_asset['size'] or sha256(qwen35_model)!=qwen35_asset['sha256']:
+            raise ValueError('Qwen3.5 9B model checksum mismatch')
+    else:
+        qwen35_model=fetch_asset(qwen35_asset,data/'models')
+    qwen35_projector_asset=assets['qwen3.5-9b-projector']
+    if args.qwen35_projector_file:
+        qwen35_projector=pathlib.Path(args.qwen35_projector_file).resolve()
+        if qwen35_projector.stat().st_size!=qwen35_projector_asset['size'] or sha256(qwen35_projector)!=qwen35_projector_asset['sha256']:
+            raise ValueError('Qwen3.5 9B vision projector checksum mismatch')
+    else:
+        qwen35_projector=fetch_asset(qwen35_projector_asset,data/'models')
     if wsl and any(not pathlib.Path('/mnt/c/Windows/System32',name).exists() for name in ['msvcp140.dll','vcruntime140.dll','vcruntime140_1.dll']):
         redist=fetch_asset(assets['windows-vcredist'],cache);helper=cache/'install-vcredist.ps1';shutil.copyfile(ROOT/'installer/install-vcredist.ps1',helper)
         windows=lambda p:subprocess.check_output(['wslpath','-w',str(p)],text=True).strip()
@@ -183,15 +205,15 @@ def install(args):
         for key in [host+'-engine',host+'-cuda']:unpack(fetch_asset(assets[key],cache),runtime)
         engine=next(runtime.rglob('llama-server.exe' if wsl else 'llama-server'))
     config['modelRuntime']={'exe':str(engine),'runDir':str(data/'model-runtime'),'hostCwd':str(data),'platform':host,'libraryDirs':sorted({str(p.parent) for p in engine.parent.parent.rglob('*.so*')}) if not wsl else []}
-    config['models']=configured_models(args.model,model,projector,prior.get('models',[]))
-    if wsl and any(not re.match(r'^/mnt/[a-z]/', str(asset), re.IGNORECASE) for asset in (engine,model,projector)):
-        raise ValueError('Windows model, projector and engine must be on Windows-mounted drives')
+    config['models']=configured_models(model,projector,qwen35_model,qwen35_projector,prior.get('models',[]))
+    if wsl and any(not re.match(r'^/mnt/[a-z]/',str(asset),re.IGNORECASE) for asset in (engine,model,projector,qwen35_model,qwen35_projector)):
+        raise ValueError('Windows models, projectors and engine must be on Windows-mounted drives')
     write_json(file,config)
     write_json(ROOT/'.install.json',{'data_dir':str(data),'workspace':str(work),'node':node,'config':str(file)})
     print('Installed. Start with: ./mini-ctf\nConfiguration: '+str(file))
 
 def parser():
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--data-dir',default=os.environ.get('MINI_CTF_DATA',str(ROOT/'.mini-ctf')));p.add_argument('--model',default='qwen3.8-27b-iq4xs',choices=['qwen3.8-27b-iq4xs']);p.add_argument('--plan',action='store_true');p.add_argument('--workspace-gib',type=int,default=24);p.add_argument('--port',type=int,default=8080);p.add_argument('--model-file');p.add_argument('--projector-file',help='Reuse a local copy of the pinned Qwen3.8 vision projector');p.add_argument('--runtime-exe');p.add_argument('--docker');p.add_argument('--dockerd');p.add_argument('--docker-host');p.add_argument('--solver-image');return p
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--data-dir',default=os.environ.get('MINI_CTF_DATA',str(ROOT/'.mini-ctf')));p.add_argument('--model',default='qwen3.8-27b-iq4xs',choices=['qwen3.8-27b-iq4xs']);p.add_argument('--plan',action='store_true');p.add_argument('--workspace-gib',type=int,default=24);p.add_argument('--port',type=int,default=8080);p.add_argument('--model-file');p.add_argument('--projector-file',help='Reuse a local copy of the pinned Qwen3.8 vision projector');p.add_argument('--qwen35-model-file',help='Reuse a local copy of the pinned Qwen3.5 9B CTF model');p.add_argument('--qwen35-projector-file',help='Reuse a local copy of the pinned Qwen3.5 9B vision projector');p.add_argument('--runtime-exe');p.add_argument('--docker');p.add_argument('--dockerd');p.add_argument('--docker-host');p.add_argument('--solver-image');return p
 
 if __name__=='__main__':
     try:install(parser().parse_args())
