@@ -5,7 +5,7 @@ import {execFile,spawn} from 'node:child_process';
 import {promisify} from 'node:util';
 import {setTimeout as delay} from 'node:timers/promises';
 import {hash} from './store.mjs';
-import {ramKvLocation,ramKvProfile} from './ram-kv.mjs';
+import {ramKvLimits,ramKvLocation,ramKvProfile} from './ram-kv.mjs';
 const execute=promisify(execFile);
 const WINDOWS_POWERSHELL='/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe';
 export function localOrigin(value){
@@ -99,11 +99,9 @@ export class ModelCatalog {
   const linux=this.config.modelRuntime.platform==='linux';
   const tuning={roundTripMiBps:60,admissionSeconds:linux?1:6.5,...spec,...policy,...policy.profiles?.[profile.id.replace(/-vision$/,'')],...policy.profiles?.[profile.id]};
   const {roundTripMiBps,prefillTokensPerSecond,cpuImageSeconds,admissionSeconds}=tuning;
-  const {reserveMiB,cpuProjectorReserveMiB,maxCacheMiB}=policy;
+  const limits=ramKvLimits(policy);
   if(![roundTripMiBps,prefillTokensPerSecond].every(x=>Number.isFinite(x)&&x>0))
    throw Error('RAM KV requires measured positive roundTripMiBps and prefillTokensPerSecond');
-  if([reserveMiB,cpuProjectorReserveMiB,maxCacheMiB].some(x=>x!==undefined&&(!Number.isSafeInteger(x)||x<0)))
-   throw Error('RAM KV memory limits must be nonnegative integer MiB');
   if(cpuImageSeconds!==undefined&&(!Number.isFinite(cpuImageSeconds)||cpuImageSeconds<0))
    throw Error('RAM KV cpuImageSeconds must be a nonnegative number');
   if(!Number.isFinite(admissionSeconds)||admissionSeconds<0)
@@ -117,7 +115,7 @@ export class ModelCatalog {
    fs.mkdirSync(stage,{recursive:true,mode:0o700});
    if(!fs.lstatSync(stage).isDirectory()||fs.realpathSync(stage)!==stage)throw Error('Invalid KV staging directory');
   }
-  return {...spec,directory,stage,hostDirectory,roundTripMiBps,prefillTokensPerSecond,cpuImageSeconds,admissionSeconds,reserveMiB,cpuProjectorReserveMiB,maxCacheMiB,
+  return {...spec,directory,stage,hostDirectory,roundTripMiBps,prefillTokensPerSecond,cpuImageSeconds,admissionSeconds,...limits,
    readWindows:linux?null:()=>Number(execFileSync(this.config.modelRuntime.powershell??WINDOWS_POWERSHELL,
     ['-NoProfile','-NonInteractive','-Command','(Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory'],
     {encoding:'utf8',timeout:5000,env:windowsInteropEnv(),cwd:'/mnt/c'}).trim())/1024};

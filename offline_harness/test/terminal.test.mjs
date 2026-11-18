@@ -96,6 +96,31 @@ test('vision model selection offers CPU and GPU and accepts an explicit device a
  }finally{await ui?.close();await c?.close();fs.rmSync(root,{recursive:true,force:true});}
 });
 
+test('RAM KV slash settings work without a selected task, update admission policy and survive restart',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'pi-ram-kv-ui-'));let c,ui;
+ const basePolicy={reserveMiB:3072,maxCacheMiB:4096,admissionSeconds:5};
+ const cfg={contestDir:root,modelRuntime:{platform:'linux',ramKv:basePolicy}};
+ const options={testMode:true,guard:()=>{throw Error('Configuration must not call the model');}};
+ try{
+  c=new Contest(cfg,options);ui=new CompetitionTerminal(c,{terminal:new Terminal()});
+  await ui.submit('/offloadKV config');assert.match(ui.detail,/reserveMiB = 3072 MiB/);
+  assert.match(ui.detail,/cpuProjectorReserveMiB = 1280 MiB/);
+  await ui.submit('/offloadKV config reserveMiB=4096 cpuProjectorReserveMiB=1536 maxCacheMiB=6144');
+  assert.match(ui.detail,/maxCacheMiB = 6144 MiB/);
+  assert.deepEqual(c.catalog.config.modelRuntime.ramKv,{reserveMiB:4096,cpuProjectorReserveMiB:1536,maxCacheMiB:6144,admissionSeconds:5});
+  await assert.rejects(ui.submit('/offloadKV config reserveMiB=512 maxCacheMiB=-1'),/非负整数/);
+  await assert.rejects(ui.submit('/offloadKV config maxCacheMiB=9007199254740992'),/nonnegative integer/);
+  await assert.rejects(ui.submit('/offloadKV config typo=4096'),/未知 RAM KV 配置项/);
+  assert.equal(c.ramKvSettings().reserveMiB,4096);
+  await ui.close();
+  c=new Contest(cfg,options);ui=new CompetitionTerminal(c,{terminal:new Terminal()});
+  await ui.submit('/offloadKV config');assert.match(ui.detail,/maxCacheMiB = 6144 MiB/);
+  await ui.submit('/offloadKV config maxCacheMiB=default reserveMiB=0');
+  assert.deepEqual(c.ramKvSettings(),{enabled:true,reserveMiB:0,cpuProjectorReserveMiB:1536,maxCacheMiB:4096});
+  assert.deepEqual(cfg.modelRuntime.ramKv,{reserveMiB:3072,maxCacheMiB:4096,admissionSeconds:5});
+ }finally{await ui?.close();await c?.close();fs.rmSync(root,{recursive:true,force:true});}
+});
+
 test('resume and view accept short task numbers and open output from any panel',async()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'pi-short-view-'));let c,ui;
  try{

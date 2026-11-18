@@ -12,6 +12,7 @@ import {InteractiveSession} from './interactive-session.mjs';
 import {ModelCatalog} from './model-catalog.mjs';
 import {SESSION_DEFAULTS} from './interactive-session.mjs';
 import {KvCache} from './kv-cache.mjs';
+import {RAM_KV_LIMIT_DEFAULTS,ramKvLimits} from './ram-kv.mjs';
 import {RagClient} from './rag/client.mjs';
 import {VisionClient} from './vision-client.mjs';
 import {assertExperimentIdle} from './native.mjs';
@@ -38,7 +39,7 @@ export function copyAttachments(source,destination,{maxBytes=200*1024*1024,maxFi
 }
 export class Contest extends EventEmitter {
  constructor(config,options={}){
-  super();this.config=config;this.options=options;this.root=path.resolve(config.contestDir);if(this.root.includes('/benchmarks/'))throw Error('Competition state needs a separate development directory');
+  super();this.config={...config};this.options=options;this.root=path.resolve(config.contestDir);if(this.root.includes('/benchmarks/'))throw Error('Competition state needs a separate development directory');
   fs.mkdirSync(this.root,{recursive:true,mode:0o700});this.lock=path.join(this.root,'owner.json');
   if(fs.existsSync(this.lock)){
    const prior=JSON.parse(fs.readFileSync(this.lock));if(live(prior.pid))throw Error('Competition terminal already open');
@@ -49,9 +50,14 @@ export class Contest extends EventEmitter {
   fs.mkdirSync(path.join(this.root,'startups'),{recursive:true});atomic(path.join(this.root,'startups',Date.now()+'-'+process.pid+'.json'),this.source);
   this.sessions=new Map();this.records=new Map();this.enabled=false;this.closing=false;this.busy=false;this.polling=false;this.notice='';this.active=null;this.manualNext=null;this.checkpointRequested=false;this.maintenance=new Map();this.holdResident=false;this.resident=null;this.interruptEpoch=0;
   this.guard=options.guard||assertExperimentIdle;this.queue=new ContestQueue(this.root);
-  this.defaultModel={...SESSION_DEFAULTS,...config.model};this.catalog=options.modelCatalog??new ModelCatalog(config,{guard:this.guard,fetchFn:options.modelFetch??fetch,executeFn:options.modelExecute});
+  this.defaultModel={...SESSION_DEFAULTS,...config.model};this.catalog=options.modelCatalog??new ModelCatalog(this.config,{guard:this.guard,fetchFn:options.modelFetch??fetch,executeFn:options.modelExecute});
   const selection=path.join(this.root,'model-selection.json');if(fs.existsSync(selection))Object.assign(this.defaultModel,JSON.parse(fs.readFileSync(selection)).settings);
   try {
+   this.ramKvBasePolicy=config.modelRuntime?.ramKv;
+   this.ramKvSettingsFile=path.join(this.root,'ram-kv-limits.json');
+   this.ramKvOverrides=fs.existsSync(this.ramKvSettingsFile)
+    ?ramKvLimits(JSON.parse(fs.readFileSync(this.ramKvSettingsFile,'utf8')),{defaults:false}):{};
+   this.applyRamKvSettings(this.ramKvOverrides);
    const file=path.join(this.root,'tasks.json');
    const records=fs.existsSync(file)?JSON.parse(fs.readFileSync(file)):[];this.numbers=new TaskNumbers(this.root,records.map(r=>r.task.id));
    for(const record of records){this.records.set(record.task.id,record);this.load(record);}
@@ -163,6 +169,23 @@ export class Contest extends EventEmitter {
  async cancel(id,job){id=this.resolveTaskId(id);const result=await this.session(id).cancelCommand(job);await this.poll();this.emit('change');return result;}
  switchInference(id){id=this.resolveTaskId(id);this.session(id);if(this.active===id)return;if(this.status(id)==='correct')throw Error('Task already correct');if(this.session(id).store.pending().length)throw Error('Target has uncertain tools');this.manualNext=id;this.checkpointRequested=Boolean(this.active);if(this.active)this.session(this.active).requestYield();else this.resume(id);this.emit('change');}
  async checkpoint(id){id=this.resolveTaskId(id);if(this.active!==id)throw Error('KV can only be saved for the task currently owning inference');this.checkpointRequested=true;this.session(id).requestYield();}
+ ramKvSettings(updates){
+  if(!updates)return {enabled:Boolean(this.ramKvBasePolicy),...ramKvLimits({...this.ramKvBasePolicy,...this.ramKvOverrides})};
+  const overrides={...this.ramKvOverrides};
+  for(const [name,value] of Object.entries(updates)){
+   if(!Object.hasOwn(RAM_KV_LIMIT_DEFAULTS,name))throw Error('未知 RAM KV 配置项：'+name);
+   if(value===undefined)delete overrides[name];
+   else overrides[name]=value;
+  }
+  const limits=ramKvLimits({...this.ramKvBasePolicy,...overrides});
+  atomic(this.ramKvSettingsFile,overrides);
+  this.ramKvOverrides=overrides;
+  this.applyRamKvSettings(overrides);
+  return {enabled:Boolean(this.ramKvBasePolicy),...limits};
+ }
+ applyRamKvSettings(overrides){
+  if(this.ramKvBasePolicy)this.config.modelRuntime={...this.config.modelRuntime,ramKv:{...this.ramKvBasePolicy,...overrides}};
+ }
  offloadKV(id){
   if(this.kvOperation)throw Error('Another RAM KV operation is in progress');
   const operation=this.performRamOffload(id);

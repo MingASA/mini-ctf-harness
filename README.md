@@ -130,6 +130,8 @@ RAM 检查取 Windows 和 WSL 可用内存中较低的一项，并检查 tmpfs �
 }
 ```
 
+在终端运行 `/offloadKV config` 查看当前余量与缓存上限。也可以直接设置，例如 `/offloadKV config reserveMiB=4096 cpuProjectorReserveMiB=1536 maxCacheMiB=6144`。可以只改一项，也可以用 `maxCacheMiB=default` 恢复该项的配置文件值或内置默认值。设置保存在当前安装的会话目录，从下一次 KV 操作生效。降低上限会限制新保存，已有快照仍可回读。
+
 默认速度参数来自 5060 Ti + Windows/WSL 测试。换机器后，可在 `ramKv.profiles` 以模型 ID 分别设置速度。`roundTripMiBps` 取快照大小除以保存、复制和回读的总耗时，`prefillTokensPerSecond` 取冷前缀速度，`cpuImageSeconds` 取一张图片的 CPU 编码耗时，`admissionSeconds` 计入内存与槽位检查的固定时间。收益小、内存不足或快照已失效时，恢复使用原对话。
 
 在这台机器上，约 24.6K 纯文本前缀的冷算和 RAM 路径分别是 27B 的 52.0 秒和 20.3 秒，以及 9B 的 21.8 秒和 9.0 秒。对计时样本插值，仅比较模型与文件操作，纯文本约在 27B 5K、9B 3.5–4K 开始占优。实测三次 Windows 内存检查合计约 6 秒。计入检查、共享前缀和余量后，Windows 默认大约从 27B 13K 和 9B 18K 起保存纯文本前缀。CPU 编码的图片可在较短的前缀中获得收益。

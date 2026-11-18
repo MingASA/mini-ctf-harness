@@ -3,6 +3,23 @@ import path from 'node:path';
 import {hash} from './store.mjs';
 
 const MiB=1024**2;
+export const RAM_KV_LIMIT_DEFAULTS=Object.freeze({
+ reserveMiB:2048,
+ cpuProjectorReserveMiB:1280,
+ maxCacheMiB:undefined,
+});
+
+export function ramKvLimits(policy={}, {defaults=true}={}) {
+ const limits=defaults?{...RAM_KV_LIMIT_DEFAULTS}:{};
+ for(const name of Object.keys(RAM_KV_LIMIT_DEFAULTS)){
+  const value=policy[name];
+  if(value===undefined)continue;
+  if(!Number.isSafeInteger(value)||value<0)throw Error(`${name} must be a nonnegative integer MiB`);
+  limits[name]=value;
+ }
+ return limits;
+}
+
 // Full-attention Q8_0 rows and an allowance for live recurrent state plus two checkpoints.
 const profiles={
  'qwen3.8-27b-iq4xs':{bytesPerToken:34816,stateMiB:512,measuredStateMiB:450,weightBytes:14252845984,prefillTokensPerSecond:520,cpuImageSeconds:18},
@@ -24,7 +41,8 @@ export function ramKvProfile(id,kvType,weightBytes,contextTokens) {
  return spec;
 }
 
-export function admitRamKv({directory,stage,availableMiB,vision,phase,bytes,reserveMiB=2048,cpuProjectorReserveMiB=1280,maxCacheMiB}) {
+export function admitRamKv({directory,stage,availableMiB,vision,phase,bytes,
+ reserveMiB=RAM_KV_LIMIT_DEFAULTS.reserveMiB,cpuProjectorReserveMiB=RAM_KV_LIMIT_DEFAULTS.cpuProjectorReserveMiB,maxCacheMiB}) {
  const {bavail,bsize}=fs.statfsSync(directory);
  const transientMiB=512;
  const requiredMiB=reserveMiB+(vision?cpuProjectorReserveMiB:0)+transientMiB+(phase==='save'?Math.ceil(bytes/MiB):0);

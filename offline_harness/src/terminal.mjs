@@ -13,7 +13,7 @@ export const safeText=value=>String(value??'').replace(/[\x00-\x08\x0b-\x1f\x7f-
 const stringify=v=>safeText(typeof v==='string'?v:JSON.stringify(v,null,2));
 const HELP=`Ctrl+N 创建题目 · Ctrl+L 切换查看 · Ctrl+P 暂停当前题推理 · Ctrl+R 恢复 · Ctrl+C 中断生成并保留缓存
 /start 启动调度   /queue 题目队列   /review 确认答案   /view [题号]   /priority 数值   /switch 题号（安全边界保存对话/KV并切题）
-/env 查看或选择题目环境\n/model 查看模型 · /model 编号或ID 切换模型\n/compact 本轮结束后压缩 · /effort off|low|medium|high|xhigh [思考tokens|-1]\n/pause  /resume [题号]  /offloadKV 暂停并保存驻留题的 KV 到 RAM\n/cancel 命令ID  /checkpoint  /feedback 候选ID correct|incorrect|pending 说明
+/env 查看或选择题目环境\n/model 查看模型 · /model 编号或ID 切换模型\n/compact 本轮结束后压缩 · /effort off|low|medium|high|xhigh [思考tokens|-1]\n/pause  /resume [题号]  /offloadKV 暂停并保存驻留题的 KV 到 RAM\n/offloadKV config [参数=MiB …] 查看或修改 RAM KV 余量及总上限\n/cancel 命令ID  /checkpoint  /feedback 候选ID correct|incorrect|pending 说明
 /tab output|jobs|budget|files|inbox|candidates|compact  /read 文件路径  /archive 消息ID
 /skills [检索词] 查看技能元数据 · /use-skill NAME 将读取请求加入本题消息队列\n/new 创建题目（题意可多行粘贴） /discard 清空当前草稿  /quit 保存退出
 直接输入补充消息；Enter 发送，Shift+Enter 换行；已送达表示服务已接受包含该消息的请求。`;
@@ -95,12 +95,15 @@ export class CompetitionTerminal {
    else if(cmd==='/pause')this.contest.pause(this.requireTask());
    else if(cmd==='/resume'){if(args.length>1)throw Error('用法：/resume [题号]');if(args[0])this.setView(args[0]);else this.setView(this.requireTask());this.contest.resume(this.requireTask());}
    else if(cmd==='/offloadKV'){
-    if(args.length)throw Error('用法：/offloadKV');
-    this.notice='正在暂停并检查 RAM KV…';this.render();
-    const result=await this.contest.offloadKV(this.requireTask());
-    this.notice=result.status==='saved'
-     ?`已保存 ${result.receipt.n_saved} tokens 的 KV（${(result.receipt.n_written/1024**2).toFixed(0)} MiB）。用 /resume 题号 继续。`
-     :'已暂停并保留对话。RAM KV 未保存：'+result.reason;
+    if(args[0]==='config')this.configureRamKv(args.slice(1));
+    else{
+     if(args.length)throw Error('用法：/offloadKV 或 /offloadKV config [参数=MiB …]');
+     this.notice='正在暂停并检查 RAM KV…';this.render();
+     const result=await this.contest.offloadKV(this.requireTask());
+     this.notice=result.status==='saved'
+      ?`已保存 ${result.receipt.n_saved} tokens 的 KV（${(result.receipt.n_written/1024**2).toFixed(0)} MiB）。用 /resume 题号 继续。`
+      :'已暂停并保留对话。RAM KV 未保存：'+result.reason;
+    }
    }
    else if(cmd==='/env'){if(args.length>1)throw Error('用法：/env [环境名称]');const environments=this.contest.config.environments??{};if(args.length){if(!environments[args[0]])throw Error('未知环境');this.contest.environmentName=args[0];this.contest.newTaskTarget=environments[args[0]].targetUrl??'';this.notice='新题环境已设为 '+args[0];}else this.detail=Object.entries(environments).map(([name,e])=>`${name===this.contest.environmentName?'▶ ':''}${name} · ${e.type} · ${e.targetUrl??''}`).join('\n')+'\n/env 环境名称：用于之后创建的题目。';}
    else if(cmd==='/model'){
@@ -141,6 +144,25 @@ export class CompetitionTerminal {
    const id=this.bound||this.requireTask();const item=this.contest.enqueue(id,text);this.notice=`已排队 → ${this.contest.taskLabel(id)} · ${item.id}`;
   }
   if(this.bound)delete this.drafts[this.bound];this.editor.setText('');this.bound=this.selected;this.editor.setText(this.drafts[this.bound]||'');this.persist();this.render();
+ }
+ configureRamKv(args){
+  const updates=Object.fromEntries(args.map(arg=>{
+   const match=/^([^=]+)=(default|\d+)$/.exec(arg);
+   if(!match)throw Error('用法：/offloadKV config 参数=非负整数MiB 或 参数=default');
+   const [,name,value]=match;
+   return [name,value==='default'?undefined:Number(value)];
+  }));
+  const {enabled,reserveMiB,cpuProjectorReserveMiB,maxCacheMiB}=this.contest.ramKvSettings(args.length?updates:undefined);
+  this.detail=[
+   enabled?'RAM KV 已配置启用':'RAM KV 待启用 · 在 modelRuntime.ramKv 配置后重启托管引擎',
+   `reserveMiB = ${reserveMiB} MiB · 系统内存余量`,
+   `cpuProjectorReserveMiB = ${cpuProjectorReserveMiB} MiB · CPU projector 额外余量`,
+   `maxCacheMiB = ${maxCacheMiB===undefined?'随可用内存变化':maxCacheMiB+' MiB'} · 快照总上限`,
+   '',
+   '/offloadKV config reserveMiB=4096 cpuProjectorReserveMiB=1536 maxCacheMiB=6144',
+   '参数=default 恢复该项的配置文件值或内置默认值。'
+  ].join('\n');
+  if(args.length)this.notice=enabled?'RAM KV 设置已保存，下次 KV 操作生效。':'RAM KV 设置已保存，启用后生效。';
  }
  async review(){
   const candidates=this.contest.queueRows().flatMap(row=>row.reviews.map(candidate=>({value:row.id+':'+candidate.review_id,taskId:row.id,candidate,label:row.title+' · '+candidate.review_id,description:candidate.candidate})));
