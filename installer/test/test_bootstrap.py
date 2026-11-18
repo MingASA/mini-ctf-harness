@@ -1,6 +1,28 @@
 import hashlib,http.server,io,json,pathlib,sys,tarfile,tempfile,threading,unittest
 sys.path.insert(0,str(pathlib.Path(__file__).resolve().parents[1]))
-from bootstrap import fetch_asset,unpack,parser,MANIFEST
+from bootstrap import configured_models,fetch_asset,unpack,parser,MANIFEST
+
+class ModelProfiles(unittest.TestCase):
+    def test_vision_profile_has_distinct_alias_and_preserves_user_models(self):
+        model_id = 'qwen3.8-27b-iq4xs'
+        custom = {'id': 'local-text-model', 'modelPath': '/models/local.gguf'}
+        existing = [{'id': model_id, 'contextTokens': 40960, 'gpuLayers': 20}, custom]
+        text, vision, extra = configured_models(
+            model_id, '/models/27b.gguf', '/models/projector.gguf', existing
+        )
+        self.assertEqual(extra, custom)
+        self.assertNotIn('nativeImages', text)
+        self.assertEqual(vision['model'], model_id + '-vision')
+        self.assertEqual(vision['modelPath'], text['modelPath'])
+        self.assertEqual(vision['mmprojPath'], '/models/projector.gguf')
+        self.assertTrue(vision['nativeImages'])
+        self.assertEqual(vision['contextTokens'], 40960)
+        self.assertEqual(vision['gpuLayers'], 20)
+        self.assertEqual(
+            configured_models(model_id, '/models/27b.gguf', '/models/projector.gguf', [text, vision, extra]),
+            [text, vision, extra],
+        )
+
 class Downloads(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.root=pathlib.Path(self.tmp.name);self.raw=b'new model bytes\n'*400;raw=self.raw;self.requests=[];requests=self.requests

@@ -21,6 +21,12 @@
       "sha256": "40fac4050e940397dbf13087afd50f4734a11805bf9d65ef8ddd7483470e6199",
       "size": 14252845984
     },
+    "qwen3.8-27b-projector": {
+      "name": "mmproj-Qwen3.8-27B-F16.gguf",
+      "url": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF/resolve/4ca720788d1e01f1bff70c033e0d0028fd02e502/mmproj-F16.gguf",
+      "sha256": "cbb841a9ee0636b2ec172f5bb8df2ea8dfeb01e90fe7c6126581d662a0b4e43e",
+      "size": 927607488
+    },
     "linux-cuda": {
       "name": "cudart-llama-b12144-bin-ubuntu-cuda-12.8-x64.tar.gz",
       "url": "https://github.com/ggml-org/llama.cpp/releases/download/b12144/cudart-llama-b12144-bin-ubuntu-cuda-12.8-x64.tar.gz",

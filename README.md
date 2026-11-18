@@ -26,7 +26,7 @@ cd mini-ctf-harness
 
 安装命令会完成：
 
-- 校验并下载固定版本的模型权重、llama.cpp 与 CUDA 运行库；支持断点续传。
+- 校验并下载固定版本的模型权重、视觉 projector、llama.cpp 与 CUDA 运行库；支持断点续传。
 - 准备 Node 22、固定 npm 依赖、独立 Docker Engine、Buildx 和 Compose；Windows 缺失 VC 运行库时一并安装。
 - 构建含 Python、pwntools、z3、sympy、Crypto、gdb、binutils、curl、nmap 等工具的容器镜像。
 - 生成可编辑的 `config.json`；每次启动自动加载模型并准备工具环境。
@@ -54,6 +54,8 @@ cd mini-ctf-harness
 ```
 
 推理引擎固定为 [llama.cpp b12144](https://github.com/ggml-org/llama.cpp/releases/tag/b12144)。全部下载地址、大小和哈希在 [installer/assets.json](installer/assets.json)。可复用已有资产：`--model-file`、`--runtime-exe`、`--docker`、`--dockerd`、`--docker-host`、`--solver-image`；权重仍校验上述 SHA256。
+
+安装器同时准备约 928 MB 的 F16 projector，并在模型列表中加入 `qwen3.8-27b-iq4xs-vision`。默认启动文本版。需要读取图片时，用 `/model qwen3.8-27b-iq4xs-vision` 切换，或启动时传入 `--model qwen3.8-27b-iq4xs-vision`。可用 `--projector-file /path/to/mmproj.gguf` 复用通过校验的本地文件。已有的额外模型配置会随重新安装保留。
 
 默认是 16 GB 显存配置：55,296 上下文、Q8 KV、单槽、无 MTP；普通生成 medium、总输出 8K；40K 软 Compact，Compact 使用 xhigh、4K 思考与 8K 总输出。硬件不同可修改数据目录的 `config.json` 中 `contextTokens`、`compactSoftTokens`、`gpuLayers`、`kvType` 等参数。预留约 30 GB 可用磁盘空间。
 
@@ -114,6 +116,8 @@ submit_flag({"candidate":"flag{...}"})
 ```
 
 `./mini-ctf --env local-web` 会启动对应 Compose 并预填目标地址。题目镜像需提前拉取或导入；正式解题时使用本地镜像。可添加 `imageArchives` 数组，由启动器导入离线镜像。
+
+Compose 描述的是独立运行的题目服务，例如一个 HTTP 应用和它的数据库。普通附件题由工具容器执行命令，不需要 Compose。给工具容器增加通用依赖时，在 `docker/Dockerfile` 中维护系统包，在 `docker/requirements.txt` 中固定 Python 包版本，然后在联网准备阶段构建新版镜像。运行中的离线容器继续使用创建时指定的镜像。
 
 ## 验证范围
 

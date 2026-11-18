@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Install pinned assets, model, Node dependencies and an isolated solver environment."""
-import argparse,hashlib,json,os,pathlib,platform,shutil,subprocess,sys,tarfile,urllib.request,zipfile,time,stat,re,ctypes.util
+import argparse,hashlib,json,os,pathlib,platform,shutil,subprocess,sys,tarfile,urllib.request,zipfile,time,stat,re,ctypes.util,tempfile
 ROOT=pathlib.Path(__file__).resolve().parent.parent
 MANIFEST=json.loads((ROOT/'installer/assets.json').read_text())
 
@@ -83,10 +83,35 @@ def privileged(args,**options):
 def write_json(file,value):
     file=pathlib.Path(file);file.parent.mkdir(parents=True,exist_ok=True);tmp=file.with_suffix(file.suffix+'.tmp');tmp.write_text(json.dumps(value,indent=2)+'\n');tmp.replace(file)
 
+def configured_models(model_id, model_path, projector_path, existing):
+    vision_id = model_id + '-vision'
+    profiles = {profile.get('id') or profile['model']: profile for profile in existing}
+    text = {
+        'id': model_id,
+        'name': 'Qwen3.8 27B IQ4_XS',
+        'contextTokens': 55296,
+        'kvType': 'q8_0',
+        **profiles.pop(model_id, {}),
+        'modelPath': str(model_path),
+    }
+    vision = {
+        'name': 'Qwen3.8 27B IQ4_XS Vision',
+        'contextTokens': text['contextTokens'],
+        'kvType': text['kvType'],
+        **{key: text[key] for key in ('baseUrl', 'gpuLayers') if key in text},
+        **profiles.pop(vision_id, {}),
+        'id': vision_id,
+        'model': vision_id,
+        'modelPath': str(model_path),
+        'mmprojPath': str(projector_path),
+        'nativeImages': True,
+    }
+    return [text, vision, *profiles.values()]
+
 def install(args):
     if platform.machine() not in ('x86_64','AMD64'):raise ValueError('The pinned installation profile requires x86-64')
     data=pathlib.Path(args.data_dir).expanduser().resolve();wsl=bool(os.environ.get('WSL_DISTRO_NAME'));host='windows' if wsl else 'linux';assets=MANIFEST['assets']
-    plan={'data_dir':str(data),'profile':args.model,'platform':host,'assets':[assets[k] for k in ['node','docker','compose','buildx',host+'-engine',host+'-cuda',args.model]],'steps':['prepare Linux storage','install Node and Docker binaries','npm ci','build solver image','verify model and engine','write config']}
+    plan={'data_dir':str(data),'profile':args.model,'platform':host,'assets':[assets[k] for k in ['node','docker','compose','buildx',host+'-engine',host+'-cuda',args.model,'qwen3.8-27b-projector']],'steps':['prepare Linux storage','install Node and Docker binaries','npm ci','build solver image','verify model, projector and engine','write config']}
     if wsl:plan['assets'].append(assets['windows-vcredist'])
     if args.plan:print(json.dumps(plan,indent=2));return
     data.mkdir(parents=True,exist_ok=True)
@@ -123,19 +148,31 @@ def install(args):
       'provision':{'workBase':str(work/'offline-harness/work')},'solver':{'memoryMiB':512,'cpus':1,'pids':128,'tmpMiB':128},'environments':{'offline':{'type':'offline'},'lan':{'type':'lan','targetUrl':''}},'services':{},'uid':os.getuid(),'gid':os.getgid(),
       'model':{'mode':'memory-skills','model':args.model,'baseUrl':'http://127.0.0.1:'+str(args.port),'contextTokens':55296,'promptTokens':40960,'compactSoftTokens':40960,'generationTokens':8192,'reasoningTokens':-1,'reasoningEffort':'medium','safetyTokens':0,'compactThinking':True,'compactReasoningEffort':'xhigh','compactReasoningTokens':4096,'compactTokens':8192,'maxTurns':10000,'maxGeneratedTokens':10000000,'maxSeconds':7200,'nativeImages':False,'kv':{'enabled':False,'slot':0}}}
     prior_file=data/'config.json'
+    prior={}
     if prior_file.exists():
         prior=json.loads(prior_file.read_text())
         for key in ['model','solver','environments','services','importLimits']:
             if key in prior:config.setdefault(key,{}).update(prior[key])
     if args.docker_host:config['runtime']['dockerHost']=args.docker_host
-    file=data/'config.json';write_json(file,config);helper=ROOT/'offline_harness/scripts/interactive_environment.py'
-    privileged(['python3',helper,'daemon','--config',file],env=env)
+    file=data/'config.json'
+    helper=ROOT/'offline_harness/scripts/interactive_environment.py'
+    with tempfile.TemporaryDirectory(prefix='install-', dir=work/'tmp') as staging:
+        daemon_config = pathlib.Path(staging)/'config.json'
+        write_json(daemon_config,config)
+        privileged(['python3',helper,'daemon','--config',daemon_config],env=env)
     docker_env=dict(env,DOCKER_HOST=args.docker_host or 'unix://'+str(work/'runtime/run/docker.sock'),DOCKER_CONFIG=str(work/'runtime/docker-config'))
     if not args.solver_image:run([docker,'build','--network=host','--pull','--tag','mini-ctf-tools:1',ROOT/'docker'],env=docker_env)
     config['runtime']['solverImage']=json.loads(subprocess.check_output([docker,'image','inspect',config['runtime']['solverImage']],env=docker_env,text=True))[0]['Id']
     model=pathlib.Path(args.model_file).resolve() if args.model_file else fetch_asset(assets[args.model],data/'models')
     print('Verifying pinned model SHA256: '+str(model),flush=True)
     if sha256(model)!=assets[args.model]['sha256']:raise ValueError('Model checksum mismatch')
+    projector_asset = assets['qwen3.8-27b-projector']
+    if args.projector_file:
+        projector = pathlib.Path(args.projector_file).resolve()
+        if projector.stat().st_size != projector_asset['size'] or sha256(projector) != projector_asset['sha256']:
+            raise ValueError('Vision projector checksum mismatch')
+    else:
+        projector = fetch_asset(projector_asset, data/'models')
     if wsl and any(not pathlib.Path('/mnt/c/Windows/System32',name).exists() for name in ['msvcp140.dll','vcruntime140.dll','vcruntime140_1.dll']):
         redist=fetch_asset(assets['windows-vcredist'],cache);helper=cache/'install-vcredist.ps1';shutil.copyfile(ROOT/'installer/install-vcredist.ps1',helper)
         windows=lambda p:subprocess.check_output(['wslpath','-w',str(p)],text=True).strip()
@@ -146,14 +183,15 @@ def install(args):
         for key in [host+'-engine',host+'-cuda']:unpack(fetch_asset(assets[key],cache),runtime)
         engine=next(runtime.rglob('llama-server.exe' if wsl else 'llama-server'))
     config['modelRuntime']={'exe':str(engine),'runDir':str(data/'model-runtime'),'hostCwd':str(data),'platform':host,'libraryDirs':sorted({str(p.parent) for p in engine.parent.parent.rglob('*.so*')}) if not wsl else []}
-    config['models']=[{'id':args.model,'name':'Qwen3.8 27B IQ4_XS','modelPath':str(model),'contextTokens':55296,'kvType':'q8_0'}]
-    if wsl and (not str(engine).startswith('/mnt/') or not str(model).startswith('/mnt/')):raise ValueError('Windows model assets must be on a Windows-mounted data drive')
+    config['models']=configured_models(args.model,model,projector,prior.get('models',[]))
+    if wsl and any(not re.match(r'^/mnt/[a-z]/', str(asset), re.IGNORECASE) for asset in (engine,model,projector)):
+        raise ValueError('Windows model, projector and engine must be on Windows-mounted drives')
     write_json(file,config)
     write_json(ROOT/'.install.json',{'data_dir':str(data),'workspace':str(work),'node':node,'config':str(file)})
     print('Installed. Start with: ./mini-ctf\nConfiguration: '+str(file))
 
 def parser():
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--data-dir',default=os.environ.get('MINI_CTF_DATA',str(ROOT/'.mini-ctf')));p.add_argument('--model',default='qwen3.8-27b-iq4xs',choices=['qwen3.8-27b-iq4xs']);p.add_argument('--plan',action='store_true');p.add_argument('--workspace-gib',type=int,default=24);p.add_argument('--port',type=int,default=8080);p.add_argument('--model-file');p.add_argument('--runtime-exe');p.add_argument('--docker');p.add_argument('--dockerd');p.add_argument('--docker-host');p.add_argument('--solver-image');return p
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--data-dir',default=os.environ.get('MINI_CTF_DATA',str(ROOT/'.mini-ctf')));p.add_argument('--model',default='qwen3.8-27b-iq4xs',choices=['qwen3.8-27b-iq4xs']);p.add_argument('--plan',action='store_true');p.add_argument('--workspace-gib',type=int,default=24);p.add_argument('--port',type=int,default=8080);p.add_argument('--model-file');p.add_argument('--projector-file',help='Reuse a local copy of the pinned Qwen3.8 vision projector');p.add_argument('--runtime-exe');p.add_argument('--docker');p.add_argument('--dockerd');p.add_argument('--docker-host');p.add_argument('--solver-image');return p
 
 if __name__=='__main__':
     try:install(parser().parse_args())
