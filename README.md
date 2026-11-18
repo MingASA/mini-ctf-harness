@@ -84,15 +84,18 @@ Thinking 采样 `temperature=1.0, top_p=0.95, top_k=20`；Non-thinking 为 `0.7,
 Ctrl+N       新建题目，粘贴题意、选择附件、填写目标地址
 /queue       查看所有题目、后台任务、待人工确认的答案
 /view 02     直接查看第 02 题的输出
-/resume 02   恢复第 02 题，并直接显示它的输出
+/resume 02   恢复第 02 题；/resume 可先选题
 /review      选择候选并记录平台通过或错误
-/model       列出模型；/model 编号或ID 切换
-/effort      查看思考设置；/effort xhigh 4096 修改
+/model       选择模型；/model 编号或ID 直接切换
+/effort      选择思考模式和预算；/effort xhigh 4096 直接修改
+/env         选择新题环境；/tab 选择面板
 /compact     当前完整轮次结束后压缩
 /tool 3      查看当前题的第 3 条工具结果；/tab output 返回对话
 Ctrl+C       停止生成，保留内容、后台命令及驻留模型；输入消息或 /resume 继续
 /quit        保存并退出前端
 ```
+
+输入 `/` 可查看命令及右侧的用途说明。用 ↑↓ 选择，Enter 确认，Esc 取消。选择「自定义上限」可直接输入思考 token 数。 `/priority` 打开数值输入框，`/offloadKV config` 先选择内存配置项，再输入 MiB。
 
 题号从 `01`、`02`、`03` 递增；已有会话使用同样的短编号，原始记录保持完整。状态栏累计显示模型调用次数与已生成 tokens，并显示当前上下文、软压缩线及总窗口刻度。上下文使用最近一次原生计数和该次生成量，Compact 后使用重建后的计数。
 
@@ -131,7 +134,7 @@ RAM 检查取 Windows 和 WSL 可用内存中较低的一项，并检查 tmpfs �
 }
 ```
 
-在终端运行 `/offloadKV config` 查看当前余量与缓存上限。也可以直接设置，例如 `/offloadKV config reserveMiB=4096 cpuProjectorReserveMiB=1536 maxCacheMiB=6144`。可以只改一项，也可以用 `maxCacheMiB=default` 恢复该项的配置文件值或内置默认值。设置保存在当前安装的会话目录，从下一次 KV 操作生效。降低上限会限制新保存，已有快照仍可回读。
+在终端运行 `/offloadKV config` 查看当前值并选择要调整的余量或缓存上限。也可以直接设置，例如 `/offloadKV config reserveMiB=4096 cpuProjectorReserveMiB=1536 maxCacheMiB=6144`。可以只改一项，输入 `default` 可恢复该项的配置文件值或内置默认值。设置保存在当前安装的会话目录，从下一次 KV 操作生效。降低上限会限制新保存，已有快照仍可回读。
 
 默认速度参数来自 5060 Ti + Windows/WSL 测试。换机器后，可在 `ramKv.profiles` 以模型 ID 分别设置速度。`roundTripMiBps` 取快照大小除以保存、复制和回读的总耗时，`prefillTokensPerSecond` 取冷前缀速度，`cpuImageSeconds` 取一张图片的 CPU 编码耗时，`admissionSeconds` 计入内存与槽位检查的固定时间。收益小、内存不足或快照已失效时，恢复使用原对话。
 

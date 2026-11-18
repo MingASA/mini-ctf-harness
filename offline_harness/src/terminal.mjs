@@ -1,20 +1,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import {TuiAltScreen,ProcessTerminal,Editor,Text,VStack,HStack,ScrollView,SelectList,Container,matchesKey,CombinedAutocompleteProvider} from '@earendil-works/pi-tui';
+import {TuiAltScreen,ProcessTerminal,Editor,Input,Text,VStack,HStack,ScrollView,SelectList,Container,matchesKey,CombinedAutocompleteProvider} from '@earendil-works/pi-tui';
 import {outputRoot} from './tool-output.mjs';
 import {sessionUsage,contextLine,usageLine,budgetText} from './session-usage.mjs';
 import {safeText,toolResultText,transcriptText} from './transcript-display.mjs';
 import {atomic} from './store.mjs';
 import {projectorPlacement} from './model-catalog.mjs';
+import {slashCommands,effortOptions,effortBudgetOptions,budgetLabel,panelOptions,verdictOptions} from './terminal-options.mjs';
 const plain=s=>s;
 const selectTheme={selectedPrefix:plain,selectedText:s=>'\x1b[36m'+s+'\x1b[0m',description:plain,scrollInfo:plain,noMatch:plain};
 const theme={borderColor:s=>'\x1b[36m'+s+'\x1b[0m',selectList:selectTheme};
 export {safeText};
 const stringify=v=>safeText(typeof v==='string'?v:JSON.stringify(v,null,2));
 const HELP=`Ctrl+N 创建题目 · Ctrl+L 切换查看 · Ctrl+P 暂停当前题推理 · Ctrl+R 恢复 · Ctrl+C 中断生成并保留缓存
-/start 启动调度   /queue 题目队列   /review 确认答案   /view [题号]   /priority 数值   /switch 题号（安全边界保存对话/KV并切题）
-/env 查看或选择题目环境\n/model 查看模型 · /model 编号或ID 切换模型\n/compact 本轮结束后压缩 · /effort off|low|medium|high|xhigh [思考tokens|-1]\n/pause  /resume [题号]  /offloadKV 暂停并保存驻留题的 KV 到 RAM\n/offloadKV config [参数=MiB …] 查看或修改 RAM KV 余量及总上限\n/cancel 命令ID  /checkpoint  /feedback 候选ID correct|incorrect|pending 说明
-/tab output|jobs|budget|files|inbox|candidates|compact  /tool 序号 查看工具输出  /read 文件路径  /archive 消息ID
+/start 启动调度   /queue 题目队列   /review 确认答案   /view [题号]   /priority [数值]   /switch [题号]（保存进度并切题）
+/env [环境] 选择新题环境\n/model [编号或ID] 选择模型\n/compact 本轮结束后压缩 · /effort [强度] [思考tokens|-1] 选择思考设置\n/pause  /resume [题号]  /offloadKV 暂停并保存驻留题的 KV 到 RAM\n/offloadKV config [参数=MiB …] 查看或修改 RAM KV 余量及总上限\n/cancel 命令ID  /checkpoint  /feedback 候选ID correct|incorrect|pending 说明
+/tab [面板]  /tool 序号 查看工具输出  /read 文件路径  /archive 消息ID
 /skills [检索词] 查看技能元数据 · /use-skill NAME 将读取请求加入本题消息队列\n/new 创建题目（题意可多行粘贴） /discard 清空当前草稿  /quit 保存退出
 直接输入补充消息；Enter 发送，Shift+Enter 换行；已送达表示服务已接受包含该消息的请求。`;
 export class CompetitionTerminal {
@@ -23,7 +24,7 @@ export class CompetitionTerminal {
   this.file=path.join(contest.root,'ui-state.json');const saved=fs.existsSync(this.file)?JSON.parse(fs.readFileSync(this.file)):{};
   this.selected=contest.records.has(saved.selected)?saved.selected:contest.records.keys().next().value;this.drafts=saved.drafts||{};this.wizard=saved.wizard||null;this.bound=this.selected;this.tab='output';this.live=new Map();this.notice='';this.detail=null;
   this.header=new Text('',1,0);this.sidebar=new Text('',1,0);this.content=new Text('',1,0);this.footer=new Text('',1,0);this.binding=new Text('',1,0);
-  this.editor=new Editor(this.tui,theme);this.editor.setAutocompleteProvider(new CombinedAutocompleteProvider(['start','queue','review','new','view','priority','switch','pause','resume','offloadKV','cancel','compact','effort','model','env','checkpoint','feedback','tab','tool','read','archive','help','skills','use-skill','discard','quit'].map(name=>({name,description:name})),contest.root));
+  this.editor=new Editor(this.tui,theme);this.editor.setAutocompleteProvider(new CombinedAutocompleteProvider(slashCommands,contest.root));
   this.editor.onChange=()=>{if(!this.bound&&!this.wizard)this.bound=this.selected;this.persistDraft();this.render();};
   this.editor.onSubmit=text=>{if(this.submitting)return;this.submitting=true;this.editor.disableSubmit=true;this.submit(text).catch(e=>{this.notice=e.message;this.render();}).finally(()=>{this.submitting=false;this.editor.disableSubmit=false;});};
   this.scroll=new ScrollView(this.content,{follow:'end',primary:true,scrollbar:'auto'});
@@ -36,7 +37,7 @@ export class CompetitionTerminal {
   this.tui.addInputListener(data=>{
    if(matchesKey(data,'ctrl+c')){this.interrupt();return {consume:true};}
    if(matchesKey(data,'ctrl+n')){this.beginNew();return {consume:true};}
-   if(matchesKey(data,'ctrl+l')){this.chooseTask();return {consume:true};}
+   if(matchesKey(data,'ctrl+l')){this.attempt(()=>this.chooseTask());return {consume:true};}
    if(matchesKey(data,'ctrl+p')){this.attempt(()=>contest.pause(this.requireTask()));return {consume:true};}
    if(matchesKey(data,'ctrl+r')){this.attempt(()=>{this.setView(this.requireTask());contest.resume(this.requireTask());});return {consume:true};}
   });
@@ -55,11 +56,36 @@ export class CompetitionTerminal {
  persistDraft(){const text=this.editor.getExpandedText();if(this.wizard)this.wizard.draft=text;else if(this.bound)this.drafts[this.bound]=text;this.persist();}
  setView(id){id=this.contest.resolveTaskId(id);this.contest.session(id);this.selected=id;this.tab='output';this.detail=null;this.scroll.scrollToEnd();this.notice='正在查看 '+this.contest.taskLabel(id)+' · '+this.contest.taskTitle(id);if(!this.editor.getExpandedText()&&!this.wizard){this.bound=id;this.editor.setText(this.drafts[id]||'');}this.persist();this.render();}
  beginNew(){this.persistDraft();this.wizard={step:0,values:{},draft:''};this.editor.setText('');this.render();}
- async chooseTask(){const item=await this.select('切换查看（不打断推理）',[...this.contest.records.values()].map(r=>({value:r.task.id,label:safeText(this.contest.taskTitle(r.task.id)),description:this.contest.taskLabel(r.task.id)+' '+this.contest.status(r.task.id)})));if(item)this.setView(item.value);}
- select(title,items){return new Promise(resolve=>{
-  const list=new SelectList(items,12,selectTheme),box=new Container();box.addChild(new Text(safeText(title),1,1));box.addChild(list);
-  box.handleInput=data=>list.handleInput(data);const overlay=this.tui.showOverlay(box,{width:'80%',maxHeight:'80%'});
-  const finish=item=>{overlay.hide();this.tui.setFocus(this.editor);resolve(item);};list.onSelect=finish;list.onCancel=()=>finish(null);this.tui.requestRender();
+ async chooseTask(){const id=await this.pickTask('选择要查看的题目');if(id)this.setView(id);}
+ async pickTask(title){
+  const items=[...this.contest.records.keys()].map(id=>({value:id,label:safeText(this.contest.taskLabel(id)+' · '+this.contest.taskTitle(id)),description:this.contest.status(id)}));
+  if(!items.length)throw Error('先创建题目');
+  return (await this.select(title,items,this.selected))?.value;
+ }
+ dialog(title,component,footer){
+  const box=new Container();box.addChild(new Text(safeText(title),1,1));box.addChild(component);
+  if(footer)box.addChild(footer);
+  box.handleInput=data=>component.handleInput(data);
+  const overlay=this.tui.showOverlay(box,{width:'80%',maxHeight:'80%'});
+  return ()=>{overlay.hide();this.tui.setFocus(this.editor);};
+ }
+ select(title,items,current){return new Promise(resolve=>{
+  const list=new SelectList(items,12,selectTheme);
+  const currentIndex=items.findIndex(item=>item.value===current);
+  if(currentIndex>=0)list.setSelectedIndex(currentIndex);
+  const close=this.dialog(title,list);
+  list.onSelect=item=>{close();resolve(item);};list.onCancel=()=>{close();resolve(null);};
+ });}
+ inputValue(title,placeholder,validate){return new Promise(resolve=>{
+  const input=new Input({prompt:'› ',placeholder}),error=new Text('Enter 确认 · Esc 取消',1,0);
+  input.focused=true;
+  const close=this.dialog(title,input,error);
+  input.onSubmit=raw=>{
+   const value=raw.trim(),message=validate(value);
+   if(message){error.setText(message);return;}
+   close();resolve(value);
+  };
+  input.onEscape=()=>{close();resolve(undefined);};
  });}
  async directory(start){let dir=path.resolve(start||process.cwd());while(true){
   const entries=fs.readdirSync(dir,{withFileTypes:true}).filter(e=>e.isDirectory()&&!e.isSymbolicLink()).sort((a,b)=>a.name.localeCompare(b.name));
@@ -90,12 +116,21 @@ export class CompetitionTerminal {
    else if(cmd==='/queue'){this.tab='queue';this.detail=null;}
    else if(cmd==='/review')await this.review();
    else if(cmd==='/view'){if(args.length>1)throw Error('用法：/view [题号]');if(args[0])this.setView(args[0]);else await this.chooseTask();}
-   else if(cmd==='/priority')this.contest.priority(this.requireTask(),Number(args[0]));
-   else if(cmd==='/switch'){const target=args[0]?this.contest.resolveTaskId(args[0]):this.requireTask();this.setView(target);this.contest.switchInference(target);}
+   else if(cmd==='/priority'){
+    if(args.length>1)throw Error('用法：/priority [数值]');
+    const task=this.requireTask(),current=this.contest.queue.item(task)?.priority??0;
+    const value=args[0]??await this.inputValue('调整队列优先级 · 当前 '+current,'输入 -1000 到 1000',
+     input=>/^-?\d+$/.test(input)&&Math.abs(Number(input))<=1000?null:'请输入 -1000 到 1000 之间的整数。');
+    if(value!==undefined){this.contest.priority(task,Number(value));this.notice='优先级已设为 '+Number(value);}
+   }
+   else if(cmd==='/switch'||cmd==='/resume'){
+    if(args.length>1)throw Error('用法：'+cmd+' [题号]');
+    const target=args[0]??await this.pickTask(cmd==='/switch'?'选择要切换到的推理题目':'选择要恢复的题目');
+    if(target){this.setView(target);if(cmd==='/switch')this.contest.switchInference(this.selected);else this.contest.resume(this.selected);}
+   }
    else if(cmd==='/pause')this.contest.pause(this.requireTask());
-   else if(cmd==='/resume'){if(args.length>1)throw Error('用法：/resume [题号]');if(args[0])this.setView(args[0]);else this.setView(this.requireTask());this.contest.resume(this.requireTask());}
    else if(cmd==='/offloadKV'){
-    if(args[0]==='config')this.configureRamKv(args.slice(1));
+    if(args[0]==='config')await this.configureRamKv(args.slice(1));
     else{
      if(args.length)throw Error('用法：/offloadKV 或 /offloadKV config [参数=MiB …]');
      this.notice='正在暂停并检查 RAM KV…';this.render();
@@ -105,54 +140,165 @@ export class CompetitionTerminal {
       :'已暂停并保留对话。RAM KV 未保存：'+result.reason;
     }
    }
-   else if(cmd==='/env'){if(args.length>1)throw Error('用法：/env [环境名称]');const environments=this.contest.config.environments??{};if(args.length){if(!environments[args[0]])throw Error('未知环境');this.contest.environmentName=args[0];this.contest.newTaskTarget=environments[args[0]].targetUrl??'';this.notice='新题环境已设为 '+args[0];}else this.detail=Object.entries(environments).map(([name,e])=>`${name===this.contest.environmentName?'▶ ':''}${name} · ${e.type} · ${e.targetUrl??''}`).join('\n')+'\n/env 环境名称：用于之后创建的题目。';}
+   else if(cmd==='/env')await this.chooseEnvironment(args);
    else if(cmd==='/model'){
     if(args.length>2)throw Error('用法：/model [编号或ID] [cpu|gpu]');
-    if(args.length){
-     const [value,device]=args;
-     let projectorDevice=device;
-     if(!projectorDevice){
-      const {profile,current}=this.contest.modelProfile(id,value);
-      if(projectorPlacement(profile,current)){
-       const choice=await this.select('视觉 projector 放置位置',[
-        {label:'CPU · 使用系统内存',value:'cpu'},
-        {label:'GPU · 使用显存',value:'gpu'},
-       ]);
-       if(!choice)return;
-       projectorDevice=choice.value;
-      }
+    const choice=args.length?null:await this.chooseModel(id);
+    const value=args[0]??choice?.value;
+    if(!value)return;
+    let projectorDevice=args[1];
+    if(!projectorDevice){
+     const {profile,current}=this.contest.modelProfile(id,value);
+     const placement=projectorPlacement(profile,current);
+     if(placement){
+      const device=await this.select('视觉 projector 放置位置',[
+       {label:'CPU · 使用系统内存',value:'cpu'},
+       {label:'GPU · 使用显存',value:'gpu'},
+      ],placement);
+      if(!device)return;
+      projectorDevice=device.value;
      }
-     this.notice='正在切换模型…';this.render();
-     this.contest.switchModel(id,value,{projectorDevice}).then(()=>{this.notice=this.contest.notice;this.detail=null;this.render();})
-      .catch(error=>{this.notice='模型切换未完成：'+error.message;this.render();});
-    }else{
-     const models=await this.contest.models(id);
-     this.detail=models.map(m=>`${m.current?'▶ ':'  '}${m.number}. ${m.name} (${m.id})\n${m.online?'服务在线':m.managed&&m.installed?'本地已安装，可加载':'服务未就绪'} · ${m.baseUrl}`).join('\n\n')+
-      '\n\n/model 编号或ID [cpu|gpu] 切换；视觉型号可选择 projector 的放置位置。';
+     if(choice?.active&&(!placement||projectorDevice===placement))return;
     }
+    this.notice='正在切换模型…';this.render();
+    this.contest.switchModel(id,value,{projectorDevice}).then(()=>{this.notice=this.contest.notice;this.detail=null;this.render();})
+     .catch(error=>{this.notice='模型切换未完成：'+error.message;this.render();});
    }
    else if(cmd==='/compact'){this.contest.compact(this.requireTask());this.notice='Compact 已排队，将在完整轮次边界执行。';}
-   else if(cmd==='/effort'){if(args.length>2)throw Error('用法：/effort 强度 [思考tokens|-1]');this.detail=stringify(this.contest.effort(this.requireTask(),args[0],args[1]));this.notice='思考设置将在下一次模型请求前生效；/effort 查看设置。';}
-   else if(cmd==='/cancel')await this.contest.cancel(this.requireTask(),args[0]);
-   else if(cmd==='/checkpoint')await this.contest.checkpoint(this.requireTask());
-   else if(cmd==='/feedback')this.contest.feedback(this.requireTask(),args[0],args[1],args.slice(2).join(' '));
-   else if(cmd==='/tab'){if(!['output','jobs','budget','files','inbox','candidates','compact','queue'].includes(args[0]))throw Error('未知面板');this.tab=args[0];this.detail=null;if(this.tab==='output')this.scroll.scrollToEnd();}
-   else if(cmd==='/tool'){
-    if(args.length!==1||!/^[1-9]\d*$/.test(args[0]))throw Error('用法：/tool 序号');
-    const result=this.contest.session(this.requireTask()).messages().filter(m=>m.role==='toolResult')[Number(args[0])-1];
-    if(!result)throw Error('当前题没有这个工具结果');
-    this.detail=`[工具结果 ${args[0]} · ${result.toolName??'工具'}]\n/tab output 返回对话\n\n`+toolResultText(result);
-    this.scroll.scrollTo(0,{disableFollow:true});
+   else if(cmd==='/effort')await this.chooseEffort(this.requireTask(),args);
+   else if(cmd==='/cancel'){
+    if(args.length>1)throw Error('用法：/cancel [命令ID]');
+    const task=this.requireTask(),jobs=this.contest.session(task).dependencies().filter(job=>job.kind==='command');
+    if(!args[0]&&!jobs.length)throw Error('当前题没有可取消的后台命令');
+    const job=args[0]??(await this.select('选择要取消的后台命令',jobs.map(({id})=>({value:id,label:safeText(id)}))))?.value;
+    if(job)await this.contest.cancel(task,job);
    }
-   else if(cmd==='/read')this.detail=(await this.contest.session(this.requireTask()).tools().find(t=>t.name==='read').execute('operator-read-'+Date.now(),{path:args[0]})).content.filter(x=>x.type==='text').map(x=>x.text).join('\n');
-   else if(cmd==='/archive')this.contest.session(this.requireTask()).inbox.retire(args[0]);
+   else if(cmd==='/checkpoint')await this.contest.checkpoint(this.requireTask());
+   else if(cmd==='/feedback')await this.chooseFeedback(this.requireTask(),args);
+   else if(cmd==='/tab')await this.choosePanel(args);
+   else if(cmd==='/tool')await this.chooseToolResult(this.requireTask(),args);
+   else if(cmd==='/read'){
+    const task=this.requireTask();
+    const file=args.length?args.join(' '):await this.inputValue('读取当前题文件','输入文件路径',value=>value?null:'请输入文件路径。');
+    if(file)this.detail=(await this.contest.session(task).tools().find(t=>t.name==='read').execute('operator-read-'+Date.now(),{path:file})).content.filter(x=>x.type==='text').map(x=>x.text).join('\n');
+   }
+   else if(cmd==='/archive'){
+    if(args.length>1)throw Error('用法：/archive [消息ID]');
+    const inbox=this.contest.session(this.requireTask()).inbox;
+    const notes=inbox.items().filter(item=>item.status==='delivered'&&!item.retired);
+    if(!args[0]&&!notes.length)throw Error('当前题没有可归档的补充消息');
+    const note=args[0]??(await this.select('选择要归档的消息',notes.map(item=>({
+     value:item.id,label:safeText(item.text.slice(0,100)),description:safeText(item.id),
+    }))))?.value;
+    if(note)inbox.retire(note);
+   }
    else throw Error('未知命令；/help 查看帮助');
   }else{
    const id=this.bound||this.requireTask();const item=this.contest.enqueue(id,text);this.notice=`已排队 → ${this.contest.taskLabel(id)} · ${item.id}`;
   }
   if(this.bound)delete this.drafts[this.bound];this.editor.setText('');this.bound=this.selected;this.editor.setText(this.drafts[this.bound]||'');this.persist();this.render();
  }
- configureRamKv(args){
+ async chooseEffort(id,args){
+  if(args.length>2)throw Error('用法：/effort [强度] [思考tokens|-1]');
+  let [level,budget]=args;
+  if(!level){
+   const {current,pending}=this.contest.effort(id);
+   const selected=pending??current;
+   const describe=settings=>settings.thinking?settings.reasoningEffort+' · '+budgetLabel(settings.reasoningTokens):'off';
+   const choice=await this.select('思考模式 · 当前 '+describe(current)+(pending?' · 待生效 '+describe(pending):''),
+    effortOptions,selected.thinking?selected.reasoningEffort:'off');
+   if(!choice)return;
+   level=choice.value;
+   if(level!=='off'){
+    const limit=this.contest.session(id).config.generationTokens;
+    const preset=await this.select('思考预算 · '+level,effortBudgetOptions(selected.reasoningTokens,limit));
+    if(!preset)return;
+    if(preset.value==='custom'){
+     budget=await this.inputValue('自定义思考预算','1–'+(limit-1)+' tokens，或 -1',
+      value=>value==='-1'||(/^[1-9]\d*$/.test(value)&&Number(value)<limit)?null:'请输入小于 '+limit+' 的正整数，或 -1。');
+     if(budget===undefined)return;
+    }else if(preset.value!=='keep')budget=preset.value;
+   }
+  }
+  const {settings,pending}=this.contest.effort(id,level,budget);
+  const summary=settings.thinking?settings.reasoningEffort+' · '+budgetLabel(settings.reasoningTokens):'关闭';
+  this.tab='output';this.detail=null;this.scroll.scrollToEnd();
+  this.notice='思考设置 '+summary+(pending?' · 下一次模型请求生效':' · 已保存');
+ }
+ async chooseModel(id){
+  const models=await this.contest.models(id);
+  if(!models.length)throw Error('暂无可选模型');
+  const settings=id?this.contest.session(id).config:this.contest.defaultModel;
+  const current=settings.modelSelection??models.find(m=>m.current)?.id;
+  return this.select('选择模型 · 切换会暂停当前推理',models.map(m=>({
+   value:m.id,label:safeText(m.number+'. '+m.name),active:m.id===current&&m.online,
+   description:safeText([m.id===current?'当前模型':null,m.online?'服务在线':m.managed&&m.installed?'本地已安装，可加载':'服务未就绪',m.id].filter(Boolean).join(' · ')),
+  })),current);
+ }
+ async chooseEnvironment(args){
+  if(args.length>1)throw Error('用法：/env [环境名称]');
+  const environments=this.contest.config.environments??{};
+  let name=args[0];
+  if(!name){
+   const options=Object.entries(environments).map(([value,env])=>({
+    value,label:safeText(value),description:safeText([env.type,env.targetUrl].filter(Boolean).join(' · ')),
+   }));
+   if(!options.length)throw Error('暂无已配置环境');
+   name=(await this.select('选择环境 · 用于新建题目',options,this.contest.environmentName))?.value;
+   if(!name)return;
+  }
+  if(!Object.hasOwn(environments,name))throw Error('未知环境');
+  this.contest.environmentName=name;
+  this.contest.newTaskTarget=environments[name].targetUrl??'';
+  this.notice='新题环境已设为 '+name;
+ }
+ async choosePanel(args){
+  if(args.length>1)throw Error('用法：/tab [面板]');
+  const pane=args[0]??(await this.select('选择面板',panelOptions,this.tab))?.value;
+  if(!pane)return;
+  if(!panelOptions.some(option=>option.value===pane))throw Error('未知面板');
+  this.tab=pane;this.detail=null;
+  if(pane==='output')this.scroll.scrollToEnd();
+ }
+ async chooseFeedback(id,args){
+  let [candidate,status]=args;
+  if(!candidate){
+   const options=this.contest.session(id).candidates().filter(item=>!item.feedback||item.feedback.status==='pending').map(item=>({
+    value:item.review_id,label:safeText(item.review_id),description:safeText(item.candidate),
+   }));
+   if(!options.length)throw Error('当前题没有待确认的候选答案');
+   candidate=(await this.select('选择候选答案',options))?.value;
+   if(!candidate)return;
+  }
+  status??=(await this.select('选择判题结果 · '+candidate,verdictOptions))?.value;
+  if(status)this.contest.feedback(id,candidate,status,args.slice(2).join(' '));
+ }
+ async chooseToolResult(id,args){
+  if(args.length>1||args[0]&&!/^[1-9]\d*$/.test(args[0]))throw Error('用法：/tool [序号]');
+  const results=this.contest.session(id).messages().filter(m=>m.role==='toolResult');
+  if(!results.length)throw Error('当前题没有工具结果');
+  const index=args[0]??(await this.select('选择工具结果',results.map((result,i)=>({
+   value:String(i+1),label:safeText((i+1)+' · '+(result.toolName??'工具')),
+  })).reverse()))?.value;
+  if(!index)return;
+  const result=results[Number(index)-1];
+  if(!result)throw Error('当前题没有这个工具结果');
+  this.detail=`[工具结果 ${index} · ${result.toolName??'工具'}]\n/tab output 返回对话\n\n`+toolResultText(result);
+  this.scroll.scrollTo(0,{disableFollow:true});
+ }
+ async configureRamKv(args){
+  const fields={reserveMiB:'系统内存余量',cpuProjectorReserveMiB:'CPU projector 额外余量',maxCacheMiB:'快照总上限'};
+  if(!args.length||args.length===1&&Object.hasOwn(fields,args[0])){
+   const current=this.contest.ramKvSettings();
+   const field=args[0]??(await this.select('RAM KV 设置',Object.entries(fields).map(([value,label])=>({
+    value,label,description:current[value]===undefined?'随可用内存变化':current[value]+' MiB',
+   }))))?.value;
+   if(!field)return;
+   const value=await this.inputValue(fields[field],'输入 MiB 或 default',
+    input=>input==='default'||(/^\d+$/.test(input)&&Number.isSafeInteger(Number(input)))?null:'请输入非负整数 MiB，或 default。');
+   if(value===undefined)return;
+   args=[field+'='+value];
+  }
   const updates=Object.fromEntries(args.map(arg=>{
    const match=/^([^=]+)=(default|\d+)$/.exec(arg);
    if(!match)throw Error('用法：/offloadKV config 参数=非负整数MiB 或 参数=default');

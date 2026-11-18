@@ -12,6 +12,41 @@ class Terminal {
  drainInput(){return Promise.resolve();}moveBy(){}hideCursor(){}showCursor(){}clearLine(){}clearFromCursor(){}clearScreen(){}setTitle(){}setProgress(){}setProgramStatus(){}
 }
 const delay=()=>new Promise(r=>setTimeout(r,60));
+const down='\x1b[B';
+
+test('slash completion describes effort inline and Enter opens a picker with a retryable custom budget',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'pi-effort-picker-'));let c,ui,session;
+ try{
+  c=new Contest({contestDir:path.join(root,'contest'),model:{baseUrl:'http://127.0.0.1:9'}},{testMode:true,guard:()=>{throw Error('No inference');},provision:async id=>{const workDir=path.join(root,id);fs.mkdirSync(workDir);return {containerId:id,workDir};},sessionOptions:()=>({broker:{validate:async()=>{}},knowledge:{docs:[]}})});
+  await c.add({id:'fixture',objective:'Exercise keyboard interaction'});session=c.session('fixture');session.running=true;
+  const terminal=new Terminal();ui=new CompetitionTerminal(c,{terminal});ui.start();await delay();
+  const screen=()=>ui.tui.getScreenLines().join('\n');
+  for(const key of '/eff')terminal.input(key);
+  await delay();assert.match(screen(),/effort\s+选择思考模式、强度和预算/);
+  for(const key of 'ort')terminal.input(key);
+  await delay();terminal.input('\r');await delay();assert.match(screen(),/思考模式 · 当前 medium/);
+  terminal.input(down);terminal.input(down);terminal.input('\r');await delay();
+  assert.match(screen(),/思考预算 · xhigh/);
+  for(let i=0;i<5;i++)terminal.input(down);
+  terminal.input('\r');await delay();assert.match(screen(),/自定义思考预算/);
+  for(const key of '8192')terminal.input(key);
+  terminal.input('\r');await delay();
+  assert.match(screen(),/请输入小于 8192 的正整数/);
+  assert.equal(session.generationControls().pending,undefined);
+  for(let i=0;i<4;i++)terminal.input('\x7f');
+  for(const key of '3000')terminal.input(key);
+  terminal.input('\r');await delay();
+  assert.deepEqual(session.generationControls().pending,{thinking:true,reasoningEffort:'xhigh',reasoningTokens:3000});
+  assert.equal(session.generationControls().current.reasoningEffort,'medium');
+  assert.equal(ui.tab,'output');
+  const cancelled=ui.submit('/effort');await delay();terminal.input('\x1b');await cancelled;
+  assert.equal(session.store.events.filter(e=>e.type==='effort_requested').length,1);
+  const priority=ui.submit('/priority');await delay();assert.match(screen(),/调整队列优先级/);
+  terminal.input('1');terminal.input('5');terminal.input('\r');await priority;
+  assert.equal(c.queue.item('fixture').priority,15);
+ }finally{if(session)session.running=false;await ui?.close();await c?.close();fs.rmSync(root,{recursive:true,force:true});}
+});
+
 test('transcript labels live and saved reasoning and folds long tool results into a separate view',async()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'pi-output-ui-'));let c,ui;
  try{
@@ -94,10 +129,19 @@ test('TUI routes Compact and effort to the viewed task while Ctrl+C interrupts t
 test('model and environment commands show choices and leave input responsive during model loading',async()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'pi-model-ui-'));let c,ui,release;
  try{
-  const config={contestDir:path.join(root,'contest'),model:{baseUrl:'http://127.0.0.1:9'},environments:{offline:{type:'offline'},web:{type:'internal',targetUrl:'http://172.28.248.10:8000'}}};
-  c=new Contest(config,{testMode:true,guard:()=>{throw Error('No inference in UI test');}});ui=new CompetitionTerminal(c,{terminal:new Terminal()});c.models=async()=>[{id:'small',name:'Small model',number:1,current:true,online:false,managed:true,installed:true,baseUrl:'http://127.0.0.1:8080'}];
-  await ui.submit('/model');assert.match(ui.detail,/Small model/);assert.match(ui.detail,/本地已安装/);
-  const gate=new Promise(r=>release=r);c.switchModel=async(id,value)=>{assert.equal(id,undefined);assert.equal(value,'1');await gate;c.notice='Ready';};await ui.submit('/model 1');await ui.submit('/env web');assert.equal(c.environmentName,'web');assert.equal(c.newTaskTarget,'http://172.28.248.10:8000');release();await new Promise(r=>setTimeout(r,0));assert.equal(ui.notice,'Ready');
+  const config={contestDir:path.join(root,'contest'),model:{model:'base',baseUrl:'http://127.0.0.1:9'},models:[{id:'small'}],environments:{offline:{type:'offline'},web:{type:'internal',targetUrl:'http://172.28.248.10:8000'}}};
+  c=new Contest(config,{testMode:true,guard:()=>{throw Error('No inference in UI test');}});c.environmentName='offline';
+  const terminal=new Terminal();ui=new CompetitionTerminal(c,{terminal});ui.start();
+  c.models=async()=>[{id:'base',name:'Base model',number:1,current:true,online:true},{id:'small',name:'Small model',number:2,managed:true,installed:true}];
+  const gate=new Promise(r=>release=r);const switched=[];c.switchModel=async(id,value)=>{assert.equal(id,undefined);switched.push(value);await gate;c.notice='Ready';};
+  const current=ui.submit('/model');await delay();terminal.input('\r');await current;assert.deepEqual(switched,[]);
+  const model=ui.submit('/model');await delay();
+  assert.match(ui.tui.getScreenLines().join('\n'),/Small model\s+本地已安装/);
+  terminal.input(down);terminal.input('\r');await model;assert.deepEqual(switched,['small']);
+  const environment=ui.submit('/env');await delay();terminal.input(down);terminal.input('\r');await environment;
+  assert.equal(c.environmentName,'web');assert.equal(c.newTaskTarget,'http://172.28.248.10:8000');
+  const tab=ui.submit('/tab');await delay();terminal.input(down);terminal.input(down);terminal.input('\r');await tab;assert.equal(ui.tab,'budget');
+  release();await new Promise(r=>setTimeout(r,0));assert.equal(ui.notice,'Ready');
  }finally{release?.();await ui?.close();await c?.close();fs.rmSync(root,{recursive:true,force:true});}
 });
 
@@ -110,6 +154,9 @@ test('queue exposes manual review and confirms a short candidate ID without runn
   assert.equal(JSON.parse(result.content[0].text).status,'awaiting_review');
   const terminal=new Terminal();ui=new CompetitionTerminal(c,{terminal});ui.start();await ui.submit('/queue');await delay();
   assert.match(ui.content.text,/synthetic/);assert.equal(c.queueRows()[0].reviews[0].review_id,'c1');
+  const feedback=ui.submit('/feedback c1');await delay();assert.match(ui.tui.getScreenLines().join('\n'),/选择判题结果 · c1/);
+  terminal.input(down);terminal.input(down);terminal.input('\r');await feedback;
+  assert.equal(c.session('review').candidates()[0].feedback.status,'pending');
   const reviewing=ui.submit('/review');await delay();assert.match(ui.tui.getScreenLines().join('\n'),/选择待确认答案/);terminal.input('\r');await delay();assert.match(ui.tui.getScreenLines().join('\n'),/平台判题结果/);terminal.input('\r');await reviewing;assert.equal(c.status('review'),'correct');assert.equal(c.queueRows()[0].reviews.length,0);
   assert.ok(fs.readdirSync(path.join(c.root,'startups')).length);assert.match(ui.header.text,new RegExp(c.source.commit.slice(0,8)));
  }finally{await ui?.close();await c?.close();fs.rmSync(root,{recursive:true,force:true});}
@@ -128,7 +175,10 @@ test('vision model selection offers CPU and GPU and accepts an explicit device a
   assert.match(ui.tui.getScreenLines().join('\n'),/GPU.*显存/);
   terminal.input('\r');await choosing;
   await ui.submit('/model vision gpu');
-  assert.deepEqual(choices,[['vision','cpu'],['vision','gpu']]);
+  c.models=async()=>[{id:'vision',number:1,name:'Vision',current:true,online:true}];
+  const changingDevice=ui.submit('/model');await delay();terminal.input('\r');await delay();
+  terminal.input(down);terminal.input('\r');await changingDevice;
+  assert.deepEqual(choices,[['vision','cpu'],['vision','gpu'],['vision','gpu']]);
  }finally{await ui?.close();await c?.close();fs.rmSync(root,{recursive:true,force:true});}
 });
 
@@ -138,9 +188,13 @@ test('RAM KV slash settings work without a selected task, update admission polic
  const cfg={contestDir:root,modelRuntime:{platform:'linux',ramKv:basePolicy}};
  const options={testMode:true,guard:()=>{throw Error('Configuration must not call the model');}};
  try{
-  c=new Contest(cfg,options);ui=new CompetitionTerminal(c,{terminal:new Terminal()});
-  await ui.submit('/offloadKV config');assert.match(ui.detail,/reserveMiB = 3072 MiB/);
-  assert.match(ui.detail,/cpuProjectorReserveMiB = 1280 MiB/);
+  c=new Contest(cfg,options);const terminal=new Terminal();ui=new CompetitionTerminal(c,{terminal});ui.start();
+  const menu=ui.submit('/offloadKV config');await delay();
+  assert.match(ui.tui.getScreenLines().join('\n'),/系统内存余量\s+3072 MiB/);
+  assert.match(ui.tui.getScreenLines().join('\n'),/CPU projector 额外余量\s+1280 MiB/);
+  terminal.input('\r');await delay();assert.match(ui.tui.getScreenLines().join('\n'),/输入 MiB 或 default/);
+  for(const key of '4096')terminal.input(key);
+  terminal.input('\r');await menu;assert.match(ui.detail,/reserveMiB = 4096 MiB/);
   await ui.submit('/offloadKV config reserveMiB=4096 cpuProjectorReserveMiB=1536 maxCacheMiB=6144');
   assert.match(ui.detail,/maxCacheMiB = 6144 MiB/);
   assert.deepEqual(c.catalog.config.modelRuntime.ramKv,{reserveMiB:4096,cpuProjectorReserveMiB:1536,maxCacheMiB:6144,admissionSeconds:5});
@@ -150,7 +204,7 @@ test('RAM KV slash settings work without a selected task, update admission polic
   assert.equal(c.ramKvSettings().reserveMiB,4096);
   await ui.close();
   c=new Contest(cfg,options);ui=new CompetitionTerminal(c,{terminal:new Terminal()});
-  await ui.submit('/offloadKV config');assert.match(ui.detail,/maxCacheMiB = 6144 MiB/);
+  assert.equal(c.ramKvSettings().maxCacheMiB,6144);
   await ui.submit('/offloadKV config maxCacheMiB=default reserveMiB=0');
   assert.deepEqual(c.ramKvSettings(),{enabled:true,reserveMiB:0,cpuProjectorReserveMiB:1536,maxCacheMiB:4096});
   assert.deepEqual(cfg.modelRuntime.ramKv,{reserveMiB:3072,maxCacheMiB:4096,admissionSeconds:5});
@@ -166,6 +220,8 @@ test('resume and view accept short task numbers and open output from any panel',
   assert.equal(ui.selected,'task-old-beta');assert.equal(ui.tab,'output');assert.equal(ui.detail,null);assert.equal(ui.bound,'task-old-beta');assert.match(ui.content.text,/Second session output/);assert.equal(c.status('02'),'ready_resume');assert.equal(c.active,null);assert.match(ui.binding.text,/已用 0 轮/);assert.match(ui.binding.text,/软线 40K/);assert.match(ui.binding.text,/54K/);assert.ok(!ui.binding.text.includes('剩余'));
   ui.tab='budget';terminal.input('\x12');await delay();assert.equal(ui.tab,'output');
   ui.tab='jobs';await ui.submit('/view 01');assert.equal(ui.tab,'output');assert.equal(ui.selected,'task-old-alpha');assert.match(ui.notice,/01/);
+  const resume=ui.submit('/resume');await delay();assert.match(ui.tui.getScreenLines().join('\n'),/选择要恢复的题目/);
+  terminal.input(down);terminal.input('\r');await resume;assert.equal(ui.selected,'task-old-beta');
   assert.ok(!ui.sidebar.text.includes('task-old-'));
  }finally{await ui?.close();await c?.close();fs.rmSync(root,{recursive:true,force:true});}
 });
