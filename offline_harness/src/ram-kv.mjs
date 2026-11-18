@@ -52,8 +52,8 @@ export function estimateRamKv(spec,tokens) {
  return Math.ceil((spec.stateMiB*MiB+tokens*(spec.bytesPerToken+32))/MiB)*MiB;
 }
 
-export function worthSaving({tokens,sharedTokens,bytes,roundTripMiBps,prefillTokensPerSecond,imageSeconds=0}) {
+export function worthSaving({tokens,sharedTokens,bytes,roundTripMiBps,prefillTokensPerSecond,imageSeconds=0,admissionSeconds=2}) {
  const avoidedSeconds=Math.max(0,tokens-sharedTokens)/prefillTokensPerSecond+imageSeconds;
  const transferSeconds=bytes/MiB/roundTripMiBps;
- return avoidedSeconds>transferSeconds*1.10+2;
+ return avoidedSeconds>transferSeconds*1.10+admissionSeconds;
 }

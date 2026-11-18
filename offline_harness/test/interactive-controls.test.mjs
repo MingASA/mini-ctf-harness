@@ -171,6 +171,10 @@ test('RAM admission distinguishes projector workspace, transfer cost and unsuppo
  assert.equal(worthSaving({...timings,bytes,tokens:55296}),true);
  assert.equal(worthSaving({...timings,bytes:estimateRamKv(spec,3000),tokens:3000}),false);
  assert.equal(worthSaving({...timings,bytes:estimateRamKv(spec,1056),tokens:1056,imageSeconds:20}),true);
+ const windows={...timings,roundTripMiBps:60,prefillTokensPerSecond:520,sharedTokens:1024,admissionSeconds:6.5};
+ const measured={...spec,stateMiB:spec.measuredStateMiB};
+ assert.equal(worthSaving({...windows,bytes:estimateRamKv(measured,8193),tokens:8193}),false);
+ assert.equal(worthSaving({...windows,bytes:estimateRamKv(measured,24577),tokens:24577}),true);
  assert.doesNotThrow(()=>admitRamKv({directory,availableMiB:5500,vision:false,phase:'save',bytes}));
  assert.throws(()=>admitRamKv({directory,availableMiB:5500,vision:true,phase:'save',bytes}),/RAM available/);
  assert.doesNotThrow(()=>admitRamKv({directory,availableMiB:12000,vision:true,phase:'save',bytes,reserveMiB:4096,maxCacheMiB:6144}));

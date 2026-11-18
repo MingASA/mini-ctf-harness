@@ -96,8 +96,9 @@ export class ModelCatalog {
   const policy=this.config.modelRuntime?.ramKv;
   const spec=policy&&profile?.modelPath&&ramKvProfile(profile.id,profile.kvType??'q8_0',fs.statSync(profile.modelPath).size,settings.contextTokens);
   if(!spec)return null;
-  const tuning={roundTripMiBps:60,...spec,...policy,...policy.profiles?.[profile.id.replace(/-vision$/,'')],...policy.profiles?.[profile.id]};
-  const {roundTripMiBps,prefillTokensPerSecond,cpuImageSeconds}=tuning;
+  const linux=this.config.modelRuntime.platform==='linux';
+  const tuning={roundTripMiBps:60,admissionSeconds:linux?1:6.5,...spec,...policy,...policy.profiles?.[profile.id.replace(/-vision$/,'')],...policy.profiles?.[profile.id]};
+  const {roundTripMiBps,prefillTokensPerSecond,cpuImageSeconds,admissionSeconds}=tuning;
   const {reserveMiB,cpuProjectorReserveMiB,maxCacheMiB}=policy;
   if(![roundTripMiBps,prefillTokensPerSecond].every(x=>Number.isFinite(x)&&x>0))
    throw Error('RAM KV requires measured positive roundTripMiBps and prefillTokensPerSecond');
@@ -105,7 +106,8 @@ export class ModelCatalog {
    throw Error('RAM KV memory limits must be nonnegative integer MiB');
   if(cpuImageSeconds!==undefined&&(!Number.isFinite(cpuImageSeconds)||cpuImageSeconds<0))
    throw Error('RAM KV cpuImageSeconds must be a nonnegative number');
-  const linux=this.config.modelRuntime.platform==='linux';
+  if(!Number.isFinite(admissionSeconds)||admissionSeconds<0)
+   throw Error('RAM KV admissionSeconds must be a nonnegative number');
   const directory=ramKvLocation(this.runtimeRoot());
   let stage,hostDirectory=directory;
   if(!linux){
@@ -115,7 +117,7 @@ export class ModelCatalog {
    fs.mkdirSync(stage,{recursive:true,mode:0o700});
    if(!fs.lstatSync(stage).isDirectory()||fs.realpathSync(stage)!==stage)throw Error('Invalid KV staging directory');
   }
-  return {...spec,directory,stage,hostDirectory,roundTripMiBps,prefillTokensPerSecond,cpuImageSeconds,reserveMiB,cpuProjectorReserveMiB,maxCacheMiB,
+  return {...spec,directory,stage,hostDirectory,roundTripMiBps,prefillTokensPerSecond,cpuImageSeconds,admissionSeconds,reserveMiB,cpuProjectorReserveMiB,maxCacheMiB,
    readWindows:linux?null:()=>Number(execFileSync(this.config.modelRuntime.powershell??WINDOWS_POWERSHELL,
     ['-NoProfile','-NonInteractive','-Command','(Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory'],
     {encoding:'utf8',timeout:5000,env:windowsInteropEnv(),cwd:'/mnt/c'}).trim())/1024};
