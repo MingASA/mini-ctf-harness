@@ -15,7 +15,7 @@ state=root/'.install.json'
 if not state.exists():raise SystemExit('Run ./mini-ctf install --data-dir /path/to/data first.')
 s=json.loads(state.read_text());env=dict(os.environ,MINI_CTF_DATA=s['data_dir'],MINI_CTF_CONFIG=s['config'],TMPDIR=s['workspace']+'/tmp')
 env['PATH']=str(pathlib.Path(s['node']).parent)+':'+env.get('PATH','')
-action=args[0] if args and args[0] in ['doctor','prepare','skills','run','terminal','guard'] else 'start'
+action=args[0] if args and args[0] in ['doctor','prepare','skills','run','terminal','guard','update'] else 'start'
 extra=args[1:] if args and args[0]==action else args
 if action not in ['doctor','skills','guard']:
     kind=subprocess.check_output(['findmnt','-n','-o','FSTYPE','-T',s['workspace']],text=True).strip()
@@ -23,4 +23,5 @@ if action not in ['doctor','skills','guard']:
         if os.environ.get('WSL_DISTRO_NAME') and os.environ.get('MINI_CTF_MOUNT_ENTERED')!='1':
             os.environ['MINI_CTF_ENTER_MOUNT']='1';os.execv(sys.executable,[sys.executable,str(root/'mini-ctf'),*args])
         subprocess.run([sys.executable,str(root/'installer/ensure_storage.py')],check=True,env=env)
+if action=='update':os.execve(sys.executable,[sys.executable,str(root/'installer/update.py'),*extra],env)
 os.chdir(root/'offline_harness');os.execve(s['node'],[s['node'],'src/cli.mjs',action,*extra],env)

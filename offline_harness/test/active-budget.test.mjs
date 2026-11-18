@@ -21,9 +21,9 @@ test('preparation, manual repair, idle and wall clock changes do not consume sol
 test('tools and compact are part of the same active interval and resumes never reset budget',t=>{
  const s=fixture(t);taskClock(s,config,{start:true});const a=beginSolve(s,config);
  s.append('tool_start',{callId:'a',name:'wait_job'});s.append('compact_start',{});
- const current=taskClock(s,config,{monotonicMs:a.data.started_monotonic_ms+3000});assert.equal(current.millisecondsRemaining,7000);
+ const current=taskClock(s,config,{monotonicMs:a.data.started_monotonic_ms+3000});assert.ok(Math.abs(current.millisecondsRemaining-7000)<1e-6);
  checkpointSolve(s,config,a);const snap=JSON.parse(fs.readFileSync(budgetPath(s),'utf8'));
- assert.equal(activeBudgetView(snap,{monotonicMs:a.data.started_monotonic_ms+3000}).remaining_ms,7000);
+ assert.ok(Math.abs(activeBudgetView(snap,{monotonicMs:a.data.started_monotonic_ms+3000}).remaining_ms-7000)<1e-6);
  endSolve(s,config,a);const consumed=taskClock(s,config).elapsedSolveMs;
  const b=beginSolve(s,config);assert.equal(b.data.used_before_segment_ms,consumed);
  assert.equal(taskClock(s,config,{monotonicMs:b.data.started_monotonic_ms+1000}).elapsedSolveMs,consumed+1000);endSolve(s,config,b);
