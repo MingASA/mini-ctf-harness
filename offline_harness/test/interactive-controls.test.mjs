@@ -8,6 +8,7 @@ import {once} from 'node:events';
 import {InteractiveSession} from '../src/interactive-session.mjs';
 import {Contest} from '../src/contest.mjs';
 import {KvCache} from '../src/kv-cache.mjs';
+import {admitRamKv,estimateRamKv,ramKvProfile,worthSaving} from '../src/ram-kv.mjs';
 import {COMPACT_FIELDS} from '../src/compact-prompts.mjs';
 const temp=()=>fs.mkdtempSync(path.join(os.tmpdir(),'interactive-controls-'));
 const tokens=b=>Math.ceil(JSON.stringify({messages:b.messages,tools:b.tools}).length/4);
@@ -119,6 +120,61 @@ test('serialized KV is rejected when generation settings or Compact view changed
   const kv=new KvCache(s.config,{guard:()=>{},fetchFn:async(url,opt)=>{calls++;const b=opt.body?JSON.parse(opt.body):{};return {ok:true,json:async()=>url.endsWith('/slots')?[{id:0,is_processing:false}]:url.includes('action=save')?{id_slot:0,filename:b.filename,n_saved:10,n_written:100}:{id_slot:0,filename:b.filename,n_restored:10,n_read:100}};}});
   assert.equal((await kv.save(s)).status,'saved');assert.equal((await kv.restore(s)).status,'restored');s.requestEffort('low');const before=calls;assert.equal((await kv.restore(s)).status,'stale');assert.equal(calls,before);s.requestEffort('medium');s.store.append('compact_commit',{checkpoint:{}});assert.equal((await kv.restore(s)).status,'stale');assert.equal(calls,before);
  }finally{fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('offload pauses the resident task, keeps its transcript and restores its RAM snapshot before inference',async()=>{
+ const root=temp(),ready=deferred(),calls=[];
+ const p=await fixture(async(n,b,f,res)=>{
+  calls.push('generation');
+  if(n===1){f({content:'preserve this text'});ready.resolve();await new Promise(r=>res.once('close',r));}
+  else done(b,f,res);
+ });
+ let contest;
+ try{
+  const stage=fs.mkdtempSync(path.join(root,'slot-stage-'));
+  const ram={identity:'fixture-engine',processId:'fixture-process',directory:root,stage,bytesPerToken:64,stateMiB:1,
+   roundTripMiBps:70,prefillTokensPerSecond:400,readWindows:()=>8192};
+  const cfg={contestDir:path.join(root,'contest'),modelLease:path.join(root,'lease.json'),model:config('',p.url)};
+  contest=new Contest(cfg,{guard:opts.guard,modelCatalog:{ramKvOwned:()=>ram},sessionOptions:()=>opts,
+   provision:async id=>{const workDir=path.join(root,id);fs.mkdirSync(workDir);return {workDir,containerId:id};},
+   kvFetch:async(url,{body})=>{
+    if(url.endsWith('/slots'))return Response.json([{id:0,n_ctx:30000,n_prompt_tokens:12000,is_processing:false}]);
+    const {filename}=JSON.parse(body),file=path.join(stage,filename);
+    if(url.endsWith('save')){calls.push('save');fs.writeFileSync(file,'snapshot');return Response.json({id_slot:0,filename,n_saved:12000,n_written:8});}
+    calls.push('restore');assert.equal(fs.readFileSync(file,'utf8'),'snapshot');
+    return Response.json({id_slot:0,filename,n_restored:12000,n_read:8});
+   }});
+  await contest.add({id:'alpha',objective:'Original test session'});
+  await contest.add({id:'beta',objective:'Different test session'});
+  contest.enabled=true;const first=contest.tick();await ready.promise;await settle();
+  await assert.rejects(contest.offloadKV('beta'),/驻留/);
+  const saved=await contest.offloadKV('alpha');await first;
+  assert.equal(saved.status,'saved');assert.equal(contest.status('alpha'),'paused');assert.equal(contest.enabled,false);
+  assert.equal(fs.readFileSync(path.join(root,saved.filename),'utf8'),'snapshot');
+  assert.deepEqual(fs.readdirSync(stage),[]);
+  assert.match(JSON.stringify(contest.session('alpha').messages()),/preserve this text/);
+  contest.enabled=true;contest.manualNext='beta';await contest.tick();
+  contest.resume('alpha');await contest.tick();
+  assert.deepEqual(calls,['generation','save','generation','restore','generation']);
+  assert.equal(contest.session('alpha').store.events.findLast(e=>e.type==='checkpoint_restore').data.status,'restored');
+  assert.equal(fs.existsSync(path.join(root,saved.filename)),false);
+  assert.deepEqual(fs.readdirSync(stage),[]);
+ }finally{await contest?.close();await p.close();fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('RAM admission distinguishes projector workspace, transfer cost and unsupported KV geometry',t=>{
+ const directory=temp();t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
+ const spec=ramKvProfile('qwen3.8-27b-iq4xs', 'q8_0',14252845984,55296);
+ assert.equal(ramKvProfile('qwen3.8-27b-iq4xs','q4_0',14252845984,55296),null);
+ const bytes=estimateRamKv(spec,55296);
+ const timings={roundTripMiBps:70,prefillTokensPerSecond:400,sharedTokens:2048};
+ assert.equal(worthSaving({...timings,bytes,tokens:55296}),true);
+ assert.equal(worthSaving({...timings,bytes:estimateRamKv(spec,3000),tokens:3000}),false);
+ assert.equal(worthSaving({...timings,bytes:estimateRamKv(spec,1056),tokens:1056,imageSeconds:20}),true);
+ assert.doesNotThrow(()=>admitRamKv({directory,availableMiB:5500,vision:false,phase:'save',bytes}));
+ assert.throws(()=>admitRamKv({directory,availableMiB:5500,vision:true,phase:'save',bytes}),/RAM available/);
+ assert.doesNotThrow(()=>admitRamKv({directory,availableMiB:12000,vision:true,phase:'save',bytes,reserveMiB:4096,maxCacheMiB:6144}));
+ assert.throws(()=>admitRamKv({directory,availableMiB:12000,vision:true,phase:'save',bytes,maxCacheMiB:1024}),/maxCacheMiB/);
 });
 
 test('interrupt during broker preparation cannot be cleared by the later model start',async()=>{

@@ -297,6 +297,7 @@ export class NativeClient {
       } catch(error) {
         if(this.operatorSignal?.aborted){
           const drafts=[...calls.values()].map(({id,name,arguments:args})=>({id,name,arguments:args}));
+          const decoded=message.content.some(p=>p.type==='text'||p.type==='thinking')||drafts.length>0;
           const ref=this.store.put({requestId,message:structuredClone(message),drafts,unparsed_tail:buffer,raw_file:rawFile,native_usage:usage,executed:false},'model:operator_interrupted');
           message.content=message.content.filter(p=>['text','thinking'].includes(p.type));
           if(!message.content.length)message.content.push({type:'text',text:'[Generation interrupted by the operator. No tool drafts from this response were executed.]'});
@@ -305,7 +306,7 @@ export class NativeClient {
             if(!this.store.events.some(e=>e.type==='model_usage'&&e.data.requestId===requestId))this.store.append('model_usage',{requestId,completion_tokens:usage.completion_tokens});
             message.usage={...message.usage,input:usage.prompt_tokens,output:usage.completion_tokens,totalTokens:usage.total_tokens};
           }
-          this.store.append('model_interrupted',{requestId,evidence_id:ref.id,raw_file:rawFile,tool_drafts:drafts.length,executed:false,usage_known:Boolean(usage)});
+          this.store.append('model_interrupted',{requestId,evidence_id:ref.id,raw_file:rawFile,tool_drafts:drafts.length,executed:false,usage_known:Boolean(usage),decoded});
           stream.push({type:'done',reason:'stop',message});stream.end();return;
         }
         message.content=[];message.errorMessage=String(error.message);message.stopReason=signal?.aborted?'aborted':'error';

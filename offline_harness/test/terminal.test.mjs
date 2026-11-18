@@ -79,6 +79,23 @@ test('queue exposes manual review and confirms a short candidate ID without runn
  }finally{await ui?.close();await c?.close();fs.rmSync(root,{recursive:true,force:true});}
 });
 
+test('vision model selection offers CPU and GPU and accepts an explicit device argument',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'pi-projector-ui-'));let c,ui;
+ try{
+  c=new Contest({contestDir:path.join(root,'contest'),model:{baseUrl:'http://127.0.0.1:9'},
+   models:[{id:'vision',modelPath:path.join(root,'vision.gguf'),nativeImages:true}]},{testMode:true,guard:()=>{}});
+  const choices=[];
+  c.switchModel=async(_id,name,{projectorDevice})=>choices.push([name,projectorDevice]);
+  const terminal=new Terminal();ui=new CompetitionTerminal(c,{terminal});ui.start();
+  const choosing=ui.submit('/model vision');await delay();
+  assert.match(ui.tui.getScreenLines().join('\n'),/CPU.*系统内存/);
+  assert.match(ui.tui.getScreenLines().join('\n'),/GPU.*显存/);
+  terminal.input('\r');await choosing;
+  await ui.submit('/model vision gpu');
+  assert.deepEqual(choices,[['vision','cpu'],['vision','gpu']]);
+ }finally{await ui?.close();await c?.close();fs.rmSync(root,{recursive:true,force:true});}
+});
+
 test('resume and view accept short task numbers and open output from any panel',async()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'pi-short-view-'));let c,ui;
  try{

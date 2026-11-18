@@ -8,7 +8,7 @@ import {CompetitionTerminal} from './terminal.mjs';
 import {assertExperimentIdle} from './native.mjs';
 const args=process.argv.slice(2);
 try {
-  if(['help','--help'].includes(args[0]))console.log('Usage: start [CONFIG.json] [--env NAME] [--model ID] [--target PRIVATE_URL] | doctor [CONFIG.json] | prepare [CONFIG.json] [--no-model] | terminal CONFIG.json | skills list|check|search');
+  if(['help','--help'].includes(args[0]))console.log('Usage: start [CONFIG.json] [--env NAME] [--model ID] [--projector-device cpu|gpu] [--target PRIVATE_URL] | doctor [CONFIG.json] | prepare [CONFIG.json] [--no-model] | terminal CONFIG.json | skills list|check|search');
   else if(args[0]==='skills') {
     const action=args[1]||'list',root=args[action==='search'?3:2]||DEFAULT_SKILLS_DIR;
     const knowledge=new Skills(root);
@@ -19,7 +19,7 @@ try {
   }
   else if(['start','doctor','prepare'].includes(args[0])||(args[0]==='terminal'&&args[1])) {
     const start=args[0]!=='terminal';let startup,config,startOptions={};
-    if(start){const opts={};let file;for(let i=1;i<args.length;i++){if(['--env','--model','--target'].includes(args[i])){if(!args[i+1])throw Error('Missing value for '+args[i]);opts[{'--env':'environment','--model':'model','--target':'target'}[args[i]]]=args[++i];}else if(args[i]==='--no-model')opts.noModel=true;else if(args[i].startsWith('-'))throw Error('Unknown option '+args[i]);else if(!file)file=args[i];else throw Error('Unexpected argument '+args[i]);}startOptions=opts;const read=readStartConfig(file??DEFAULT_START_CONFIG,opts);config=read.config;startup=new Startup(config,read.file);if(args[0]==='doctor'){console.log(JSON.stringify(startup.doctor(),null,2));process.exit(0);}if(args[0]==='prepare'){const c=new Contest(config,{provision:(...a)=>startup.provision(...a)});startup.attach(c);try{console.log(JSON.stringify(await startup.start(c,{noModel:opts.noModel}),null,2));}finally{await c.close();}process.exit(0);}}else config=JSON.parse(fs.readFileSync(args[1],'utf8'));
+    if(start){const opts={},fields={'--env':'environment','--model':'model','--target':'target','--projector-device':'projectorDevice'};let file;for(let i=1;i<args.length;i++){if(Object.hasOwn(fields,args[i])){if(!args[i+1])throw Error('Missing value for '+args[i]);opts[fields[args[i]]]=args[++i];}else if(args[i]==='--no-model')opts.noModel=true;else if(args[i].startsWith('-'))throw Error('Unknown option '+args[i]);else if(!file)file=args[i];else throw Error('Unexpected argument '+args[i]);}startOptions=opts;const read=readStartConfig(file??DEFAULT_START_CONFIG,opts);config=read.config;startup=new Startup(config,read.file);if(args[0]==='doctor'){console.log(JSON.stringify(startup.doctor(),null,2));process.exit(0);}if(args[0]==='prepare'){const c=new Contest(config,{provision:(...a)=>startup.provision(...a)});startup.attach(c);try{console.log(JSON.stringify(await startup.start(c,{noModel:opts.noModel}),null,2));}finally{await c.close();}process.exit(0);}}else config=JSON.parse(fs.readFileSync(args[1],'utf8'));
     if(!process.stdin.isTTY||!process.stdout.isTTY)throw Error('Competition terminal needs an interactive TTY');
     const contest=new Contest(config,startup?{provision:(...args)=>startup.provision(...args)}:{});if(startup)startup.attach(contest);
     const interrupt=()=>terminal.interrupt(),terminate=()=>terminal.close();

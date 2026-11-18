@@ -20,6 +20,10 @@ export function readStartConfig(file=DEFAULT_START_CONFIG,overrides={}){
  const config=JSON.parse(fs.readFileSync(file));config.uid=process.getuid();config.gid=process.getgid();
  if(overrides.environment)config.environment=overrides.environment;
  if(overrides.model)config.initialModel=overrides.model;
+ if(overrides.projectorDevice!==undefined){
+  if(!['cpu','gpu'].includes(overrides.projectorDevice))throw Error('Use --projector-device cpu or gpu');
+  config.initialProjectorDevice=overrides.projectorDevice;
+ }
  if(overrides.target){validateServiceUrl(overrides.target);config.target=overrides.target;}
  if(!config.environments?.[config.environment??'offline'])throw Error('Unknown environment; configure environments in '+file);
  for(const name of ['contestDir'])if(!path.isAbsolute(config[name]))throw Error('Interactive data needs an absolute path');
@@ -48,7 +52,7 @@ export class Startup {
   return this.root('provision',['--task',id,'--work-dir',workDir,'--environment',environment,'--target',target]);
  }
  attach(contest){
-  this.contest=contest;if(contest.catalog){const profile=contest.catalog.resolve(this.config.initialModel??contest.defaultModel.modelSelection??contest.defaultModel.model,contest.defaultModel);contest.pendingDefaultModel=contest.catalog.settings(profile,contest.defaultModel);}
+  this.contest=contest;if(contest.catalog){const profile=contest.catalog.resolve(this.config.initialModel??contest.defaultModel.modelSelection??contest.defaultModel.model,contest.defaultModel);contest.pendingDefaultModel=contest.catalog.settings(profile,contest.defaultModel,{projectorDevice:this.config.initialProjectorDevice});}
   contest.environmentName=this.environment;contest.newTaskTarget=this.config.target??this.config.environments[this.environment]?.targetUrl??'';
   contest.cancelInitialization=()=>this.controller?.abort();contest.retryInitialization=()=>this.start(contest);
  }
@@ -60,7 +64,11 @@ export class Startup {
    try{
     progress('正在准备 Docker 与解题工具…');const docker=await this.root('prepare',[],this.controller.signal);this.resolveDocker(docker);
     progress('正在连接题目环境…');await this.root('environment',['--environment',contest.environmentName],this.controller.signal);
-    if(!noModel){progress('正在加载模型；可先创建题目，Ctrl+C 可取消加载。');await contest.switchModel(undefined,this.config.initialModel??contest.defaultModel.modelSelection??contest.defaultModel.model);}
+    if(!noModel){
+     progress('正在加载模型；可先创建题目，Ctrl+C 可取消加载。');
+     await contest.switchModel(undefined,this.config.initialModel??contest.defaultModel.modelSelection??contest.defaultModel.model,
+      {projectorDevice:this.config.initialProjectorDevice,initializing:!this.config.initialModel&&!this.config.initialProjectorDevice});
+    }
     contest.booting=false;if(this.config.autoStart&&!noModel)contest.start();progress('环境已就绪。Ctrl+N 创建题目，输入题意即可开始。');return {ready:true,docker,model:noModel?null:contest.defaultModel.model};
    }catch(error){this.failed=true;this.rejectDocker(error);contest.booting=false;contest.bootError=error.message;progress('启动未完成：'+error.message+'。检查配置后 /start 重试。');throw error;}
    finally{this.pending=null;}

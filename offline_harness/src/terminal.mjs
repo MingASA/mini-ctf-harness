@@ -5,6 +5,7 @@ import {outputRoot} from './tool-output.mjs';
 import {sessionUsage,contextLine,usageLine,budgetText} from './session-usage.mjs';
 import {toolText} from './tool-display.mjs';
 import {atomic} from './store.mjs';
+import {projectorPlacement} from './model-catalog.mjs';
 const plain=s=>s;
 const selectTheme={selectedPrefix:plain,selectedText:s=>'\x1b[36m'+s+'\x1b[0m',description:plain,scrollInfo:plain,noMatch:plain};
 const theme={borderColor:s=>'\x1b[36m'+s+'\x1b[0m',selectList:selectTheme};
@@ -12,7 +13,7 @@ export const safeText=value=>String(value??'').replace(/[\x00-\x08\x0b-\x1f\x7f-
 const stringify=v=>safeText(typeof v==='string'?v:JSON.stringify(v,null,2));
 const HELP=`Ctrl+N 创建题目 · Ctrl+L 切换查看 · Ctrl+P 暂停当前题推理 · Ctrl+R 恢复 · Ctrl+C 中断生成并保留缓存
 /start 启动调度   /queue 题目队列   /review 确认答案   /view [题号]   /priority 数值   /switch 题号（安全边界保存对话/KV并切题）
-/env 查看或选择题目环境\n/model 查看模型 · /model 编号或ID 切换模型\n/compact 本轮结束后压缩 · /effort off|low|medium|high|xhigh [思考tokens|-1]\n/pause  /resume [题号]  /cancel 命令ID  /checkpoint  /feedback 候选ID correct|incorrect|pending 说明
+/env 查看或选择题目环境\n/model 查看模型 · /model 编号或ID 切换模型\n/compact 本轮结束后压缩 · /effort off|low|medium|high|xhigh [思考tokens|-1]\n/pause  /resume [题号]  /offloadKV 暂停并保存驻留题的 KV 到 RAM\n/cancel 命令ID  /checkpoint  /feedback 候选ID correct|incorrect|pending 说明
 /tab output|jobs|budget|files|inbox|candidates|compact  /read 文件路径  /archive 消息ID
 /skills [检索词] 查看技能元数据 · /use-skill NAME 将读取请求加入本题消息队列\n/new 创建题目（题意可多行粘贴） /discard 清空当前草稿  /quit 保存退出
 直接输入补充消息；Enter 发送，Shift+Enter 换行；已送达表示服务已接受包含该消息的请求。`;
@@ -22,7 +23,7 @@ export class CompetitionTerminal {
   this.file=path.join(contest.root,'ui-state.json');const saved=fs.existsSync(this.file)?JSON.parse(fs.readFileSync(this.file)):{};
   this.selected=contest.records.has(saved.selected)?saved.selected:contest.records.keys().next().value;this.drafts=saved.drafts||{};this.wizard=saved.wizard||null;this.bound=this.selected;this.tab='output';this.live=new Map();this.notice='';this.detail=null;
   this.header=new Text('',1,0);this.sidebar=new Text('',1,0);this.content=new Text('',1,0);this.footer=new Text('',1,0);this.binding=new Text('',1,0);
-  this.editor=new Editor(this.tui,theme);this.editor.setAutocompleteProvider(new CombinedAutocompleteProvider(['start','queue','review','new','view','priority','switch','pause','resume','cancel','compact','effort','model','env','checkpoint','feedback','tab','read','archive','help','skills','use-skill','discard','quit'].map(name=>({name,description:name})),contest.root));
+  this.editor=new Editor(this.tui,theme);this.editor.setAutocompleteProvider(new CombinedAutocompleteProvider(['start','queue','review','new','view','priority','switch','pause','resume','offloadKV','cancel','compact','effort','model','env','checkpoint','feedback','tab','read','archive','help','skills','use-skill','discard','quit'].map(name=>({name,description:name})),contest.root));
   this.editor.onChange=()=>{if(!this.bound&&!this.wizard)this.bound=this.selected;this.persistDraft();this.render();};
   this.editor.onSubmit=text=>{if(this.submitting)return;this.submitting=true;this.editor.disableSubmit=true;this.submit(text).catch(e=>{this.notice=e.message;this.render();}).finally(()=>{this.submitting=false;this.editor.disableSubmit=false;});};
   this.scroll=new ScrollView(this.content,{follow:'end',primary:true,scrollbar:'auto'});
@@ -93,8 +94,40 @@ export class CompetitionTerminal {
    else if(cmd==='/switch'){const target=args[0]?this.contest.resolveTaskId(args[0]):this.requireTask();this.setView(target);this.contest.switchInference(target);}
    else if(cmd==='/pause')this.contest.pause(this.requireTask());
    else if(cmd==='/resume'){if(args.length>1)throw Error('用法：/resume [题号]');if(args[0])this.setView(args[0]);else this.setView(this.requireTask());this.contest.resume(this.requireTask());}
+   else if(cmd==='/offloadKV'){
+    if(args.length)throw Error('用法：/offloadKV');
+    this.notice='正在暂停并检查 RAM KV…';this.render();
+    const result=await this.contest.offloadKV(this.requireTask());
+    this.notice=result.status==='saved'
+     ?`已保存 ${result.receipt.n_saved} tokens 的 KV（${(result.receipt.n_written/1024**2).toFixed(0)} MiB）。用 /resume 题号 继续。`
+     :'已暂停并保留对话。RAM KV 未保存：'+result.reason;
+   }
    else if(cmd==='/env'){if(args.length>1)throw Error('用法：/env [环境名称]');const environments=this.contest.config.environments??{};if(args.length){if(!environments[args[0]])throw Error('未知环境');this.contest.environmentName=args[0];this.contest.newTaskTarget=environments[args[0]].targetUrl??'';this.notice='新题环境已设为 '+args[0];}else this.detail=Object.entries(environments).map(([name,e])=>`${name===this.contest.environmentName?'▶ ':''}${name} · ${e.type} · ${e.targetUrl??''}`).join('\n')+'\n/env 环境名称：用于之后创建的题目。';}
-   else if(cmd==='/model'){if(args.length>1)throw Error('用法：/model [编号或ID]');if(args.length){this.notice='正在切换模型…';this.render();this.contest.switchModel(this.selected,args[0]).then(()=>{this.notice=this.contest.notice;this.detail=null;this.render();}).catch(error=>{this.notice='模型切换未完成：'+error.message;this.render();});}else{const models=await this.contest.models(this.selected);this.detail=models.map(m=>`${m.current?'▶ ':'  '}${m.number}. ${m.name} (${m.id})\n${m.online?'服务在线':m.managed&&m.installed?'本地已安装，可加载':'服务未就绪'} · ${m.baseUrl}`).join('\n\n')+'\n\n/model 编号或ID 切换；对话保留，旧 KV 失效。';}}
+   else if(cmd==='/model'){
+    if(args.length>2)throw Error('用法：/model [编号或ID] [cpu|gpu]');
+    if(args.length){
+     const [value,device]=args;
+     let projectorDevice=device;
+     if(!projectorDevice){
+      const {profile,current}=this.contest.modelProfile(id,value);
+      if(projectorPlacement(profile,current)){
+       const choice=await this.select('视觉 projector 放置位置',[
+        {label:'CPU · 使用系统内存',value:'cpu'},
+        {label:'GPU · 使用显存',value:'gpu'},
+       ]);
+       if(!choice)return;
+       projectorDevice=choice.value;
+      }
+     }
+     this.notice='正在切换模型…';this.render();
+     this.contest.switchModel(id,value,{projectorDevice}).then(()=>{this.notice=this.contest.notice;this.detail=null;this.render();})
+      .catch(error=>{this.notice='模型切换未完成：'+error.message;this.render();});
+    }else{
+     const models=await this.contest.models(id);
+     this.detail=models.map(m=>`${m.current?'▶ ':'  '}${m.number}. ${m.name} (${m.id})\n${m.online?'服务在线':m.managed&&m.installed?'本地已安装，可加载':'服务未就绪'} · ${m.baseUrl}`).join('\n\n')+
+      '\n\n/model 编号或ID [cpu|gpu] 切换；视觉型号可选择 projector 的放置位置。';
+    }
+   }
    else if(cmd==='/compact'){this.contest.compact(this.requireTask());this.notice='Compact 已排队，将在完整轮次边界执行。';}
    else if(cmd==='/effort'){if(args.length>2)throw Error('用法：/effort 强度 [思考tokens|-1]');this.detail=stringify(this.contest.effort(this.requireTask(),args[0],args[1]));this.notice='思考设置将在下一次模型请求前生效；/effort 查看设置。';}
    else if(cmd==='/cancel')await this.contest.cancel(this.requireTask(),args[0]);

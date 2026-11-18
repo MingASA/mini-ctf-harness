@@ -115,21 +115,28 @@ export class Contest extends EventEmitter {
   this.notice='已停止生成与调度，保留输出及驻留模型；输入消息或 /resume 继续，/quit 退出。';this.emit('change');return id;
  }
  async models(id){return this.catalog.list(id?this.session(id).config:this.defaultModel);}
- switchModel(id,value){
-  if(this.modelSwitchPromise)throw Error('A model switch is already in progress');
-  const pending=this.performModelSwitch(id,value);this.modelSwitchPromise=pending;pending.finally(()=>{this.modelSwitchPromise=null;}).catch(()=>{});return pending;
+ modelProfile(id,value){
+  const current=id?this.session(id).config:this.defaultModel;
+  return {profile:this.catalog.resolve(value,current),current};
  }
- async performModelSwitch(id,value){
+ switchModel(id,value,options){
+  if(this.offloadingKV)throw Error('Wait for the RAM KV operation to finish');
+  if(this.modelSwitchPromise)throw Error('A model switch is already in progress');
+  const pending=this.performModelSwitch(id,value,options);this.modelSwitchPromise=pending;pending.finally(()=>{this.modelSwitchPromise=null;}).catch(()=>{});return pending;
+ }
+ async performModelSwitch(id,value,{projectorDevice,initializing=false}={}){
   if(this.modelSwitching)throw Error('A model switch is already in progress');
   const session=id?this.session(id):null,current=session?.config??this.defaultModel,profile=this.catalog.resolve(value,current);
   // Resolve and validate before interrupting any live generation.
-  const pendingSettings=this.catalog.settings(profile,current);this.pendingDefaultModel=pendingSettings;this.interruptActive();this.modelSwitching=true;const controller=new AbortController();this.modelSwitchController=controller;
+  const pendingSettings=this.catalog.settings(profile,current,{projectorDevice});this.pendingDefaultModel=pendingSettings;this.interruptActive();this.modelSwitching=true;const controller=new AbortController();this.modelSwitchController=controller;
   this.resident=null;this.checkpointRequested=false;
-  for(const s of this.sessions.values())s.store.append('kv_invalidated',{reason:'model_switch',model:profile.model});
+  this.ramKvResident=null;
+  if(!initializing||!this.config.modelRuntime?.ramKv||current.model!==pendingSettings.model||current.projectorDevice!==pendingSettings.projectorDevice)
+   for(const s of this.sessions.values())s.store.append('kv_invalidated',{reason:'model_switch',model:profile.model});
   this.notice='正在切换模型：'+profile.name;this.emit('change');
   try{
    await this.execution;controller.signal.throwIfAborted();this.acquire();
-   const result=await this.catalog.activate(profile,current,{signal:controller.signal});controller.signal.throwIfAborted();
+   const result=await this.catalog.activate(profile,current,{signal:controller.signal,projectorDevice});controller.signal.throwIfAborted();
    if(session)session.selectModel(result.settings,result.receipt);Object.assign(this.defaultModel,result.settings);
    atomic(path.join(this.root,'model-selection.json'),{id:profile.id,...result,time:Date.now()});
    this.notice='模型已切换到 '+profile.name+'；输入消息或 /resume 继续。';return result;
@@ -156,6 +163,30 @@ export class Contest extends EventEmitter {
  async cancel(id,job){id=this.resolveTaskId(id);const result=await this.session(id).cancelCommand(job);await this.poll();this.emit('change');return result;}
  switchInference(id){id=this.resolveTaskId(id);this.session(id);if(this.active===id)return;if(this.status(id)==='correct')throw Error('Task already correct');if(this.session(id).store.pending().length)throw Error('Target has uncertain tools');this.manualNext=id;this.checkpointRequested=Boolean(this.active);if(this.active)this.session(this.active).requestYield();else this.resume(id);this.emit('change');}
  async checkpoint(id){id=this.resolveTaskId(id);if(this.active!==id)throw Error('KV can only be saved for the task currently owning inference');this.checkpointRequested=true;this.session(id).requestYield();}
+ offloadKV(id){
+  if(this.kvOperation)throw Error('Another RAM KV operation is in progress');
+  const operation=this.performRamOffload(id);
+  this.kvOperation=operation;
+  operation.finally(()=>{this.kvOperation=null;}).catch(()=>{});
+  return operation;
+ }
+ async performRamOffload(id){
+  id=this.resolveTaskId(id);
+  const session=this.session(id);
+  if(this.offloadingKV||this.modelSwitching||this.closing)throw Error('Another model operation is in progress');
+  if((this.active??this.resident)!==id)throw Error('只有当前驻留题的 KV 可以保存');
+  if(!this.catalog.ramKvOwned?.(session.config))throw Error('当前引擎未启用 RAM KV。需通过 modelRuntime.ramKv 配置后重新启动引擎');
+  this.offloadingKV=true;
+  try{
+   this.interruptActive();
+   await this.execution;
+   const ram=this.catalog.ramKvOwned(session.config);
+   if(!ram||this.ramKvResident?.id!==id||this.ramKvResident.processId!==ram.processId||!this.lease)
+    throw Error('未确认该题拥有当前槽位，已保留完整对话');
+   const kv=new KvCache(session.config,{guard:this.guard,fetchFn:this.options.kvFetch||fetch,ram});
+   return await kv.save(session);
+  }finally{this.offloadingKV=false;this.emit('change');}
+ }
  start(){if(this.bootError&&this.retryInitialization){this.retryInitialization().catch(()=>{});return;}this.enabled=true;this.notice='';if(!this.interval)this.interval=setInterval(()=>{this.tick().catch(e=>{this.notice=e.message;this.emit('change');});},1000);this.tick().catch(e=>{this.notice=e.message;this.emit('change');});this.emit('change');}
  async poll(){
   if(this.pollPromise)return this.pollPromise;
@@ -172,7 +203,7 @@ export class Contest extends EventEmitter {
  release(){if(this.lease){fs.unlinkSync(this.lease);this.lease=null;}}
  async tick(){
   if(this.closing)return;await this.poll();this.emit('change');
-  if(this.booting||this.modelSwitching||(!this.enabled&&!this.maintenance.has(this.manualNext))||this.busy||(!this.manualNext&&!this.queue.state.readyResume.length&&!this.queue.state.readyFresh.length))return;
+  if(this.booting||this.modelSwitching||this.offloadingKV||(!this.enabled&&!this.maintenance.has(this.manualNext))||this.busy||(!this.manualNext&&!this.queue.state.readyResume.length&&!this.queue.state.readyFresh.length))return;
   this.busy=true;
   this.execution=this.dispatch();await this.execution;
  }
@@ -184,16 +215,28 @@ export class Contest extends EventEmitter {
    if(!item)return;id=item.taskId;this.active=id;this.notice='';this.emit('change');const s=this.session(id);
    if(this.defaultModel.modelSelection){const profile=this.catalog.resolve(s.config.modelSelection??s.config.model,s.config);await this.catalog.activate(profile,s.config);}
    const kv=new KvCache(s.config,{guard:this.guard,fetchFn:this.options.kvFetch||fetch});
-   const restored=this.resident===id?{status:'resident'}:await kv.restore(s);if(restored.status!=='not_saved')s.store.append('checkpoint_restore',restored);
+   const ram=this.catalog.ramKvOwned?.(s.config);
+   const ramCache=ram&&new KvCache(s.config,{guard:this.guard,fetchFn:this.options.kvFetch||fetch,ram});
+   const resident=this.resident===id&&(!ram||(this.ramKvResident?.id===id&&this.ramKvResident.processId===ram.processId));
+   const restored=resident?{status:'resident'}:ramCache?await ramCache.restore(s):await kv.restore(s);
+   if(restored.status!=='not_saved')s.store.append('checkpoint_restore',restored);
+   this.ramKvResident=null;
+   const previousRequest=s.store.events.findLast(event=>event.type==='model_accepted');
    const maintenanceOnly=this.maintenance.has(id),prior=this.maintenance.get(id);this.maintenance.delete(id);
    const result=epoch===this.interruptEpoch?await s.runSlice({maintenanceOnly}):{status:'paused',dependencies:s.dependencies()};this.resident=id;
+   if(ram&&(resident||restored.status==='restored'||s.store.events.findLast(event=>event.type==='model_accepted')!==previousRequest))
+    this.ramKvResident={id,processId:ram.processId};
    if(maintenanceOnly&&result.status==='awaiting_input')result.status=['ready_resume','ready_fresh'].includes(prior)?'ready':['waiting_tool','waiting_service','correct','awaiting_judge','awaiting_review','paused'].includes(prior)?prior:'awaiting_input';
    s.store.snapshot('conversation-checkpoint',{taskId:id,messages:s.messages(),time:Date.now()});
    if(this.checkpointRequested){const saved=await kv.save(s);s.store.append('checkpoint_result',saved);this.checkpointRequested=false;}
    this.queue.settle(id,result.status,result.dependencies||[]);
    if(result.status==='needs_review')this.retryLocally(id);
   }catch(e){this.notice=e.message;if(id){this.session(id).store.append('dispatch_error',{error:e.message});this.queue.settle(id,this.session(id).pauseRequested?'paused':'needs_review');this.retryLocally(id);}else this.enabled=false;}
-  finally{this.active=null;if(!this.holdResident){this.release();this.resident=null;}this.busy=false;this.emit('change');}
+  finally{
+   this.active=null;
+   if(!this.holdResident&&!this.ramKvResident){this.release();this.resident=null;}
+   this.busy=false;this.emit('change');
+  }
  }
- async close(){this.cancelInitialization?.();this.modelSwitchController?.abort();this.closing=true;this.enabled=false;clearInterval(this.interval);if(this.active)this.session(this.active).pause();await this.execution;await this.modelSwitchPromise?.catch(()=>{});await this.initialization?.catch(()=>{});while(this.polling)await new Promise(r=>setTimeout(r,10));this.release();if(fs.existsSync(this.lock))fs.unlinkSync(this.lock);}
+ async close(){this.cancelInitialization?.();this.modelSwitchController?.abort();this.closing=true;this.enabled=false;clearInterval(this.interval);if(this.active)this.session(this.active).pause();await this.execution;await this.kvOperation?.catch(()=>{});await this.modelSwitchPromise?.catch(()=>{});await this.initialization?.catch(()=>{});while(this.polling)await new Promise(r=>setTimeout(r,10));this.release();if(fs.existsSync(this.lock))fs.unlinkSync(this.lock);}
 }

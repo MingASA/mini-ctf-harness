@@ -104,6 +104,7 @@ def configured_models(model_path, projector_path, qwen35_model_path, qwen35_proj
             'name':name+' Vision',
             'contextTokens':text['contextTokens'],
             'kvType':text['kvType'],
+            'projectorDevice':'cpu',
             **{key:text[key] for key in ('baseUrl','gpuLayers') if key in text},
             **profiles.pop(vision_id,{}),
             'id':vision_id,

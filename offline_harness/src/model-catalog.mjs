@@ -5,6 +5,7 @@ import {execFile,spawn} from 'node:child_process';
 import {promisify} from 'node:util';
 import {setTimeout as delay} from 'node:timers/promises';
 import {hash} from './store.mjs';
+import {ramKvLocation,ramKvProfile} from './ram-kv.mjs';
 const execute=promisify(execFile);
 const WINDOWS_POWERSHELL='/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe';
 export function localOrigin(value){
@@ -21,6 +22,17 @@ export function windowsInteropEnv(){
  if(fs.existsSync('/run/WSL')){const sockets=fs.readdirSync('/run/WSL').filter(n=>/^\d+_interop$/.test(n)).map(n=>path.join('/run/WSL',n)).filter(p=>fs.existsSync(p)).sort((a,b)=>fs.statSync(b).mtimeMs-fs.statSync(a).mtimeMs);if(sockets.length)env.WSL_INTEROP=sockets[0];}return env;
 }
 const descriptor=profile=>hash(JSON.stringify({id:profile.id,model:profile.model,baseUrl:profile.baseUrl,modelPath:profile.modelPath??null,contextTokens:profile.contextTokens??null}));
+export function projectorPlacement(profile,current,choice){
+ if(choice!==undefined&&!['cpu','gpu'].includes(choice))throw Error('Projector device must be cpu or gpu');
+ const managedVision=profile.modelPath&&(profile.nativeImages??Boolean(current.nativeImages&&profile.mmprojPath));
+ if(!managedVision){
+  if(choice!==undefined)throw Error('Projector placement requires a managed vision model');
+  return null;
+ }
+ const device=choice??(current.modelSelection===profile.id?current.projectorDevice:undefined)??profile.projectorDevice??'cpu';
+ if(!['cpu','gpu'].includes(device))throw Error('Projector device must be cpu or gpu');
+ return device;
+}
 export class ModelCatalog {
  constructor(config,{guard=()=>{},fetchFn=fetch,executeFn=execute}={}){this.config=config;this.guard=guard;this.fetch=fetchFn;this.execute=executeFn;this.cache=[];}
  profiles(current){
@@ -68,12 +80,60 @@ export class ModelCatalog {
   const matches=profiles.filter(p=>p.model===value);const result=profiles.find(p=>p.id===value)??(number?profiles[number-1]:null)??(matches.length===1?matches[0]:null);
   if(!result)throw Error('Unknown model; use /model to list available models');return result;
  }
- settings(profile,current){
+ settings(profile,current,{projectorDevice}={}){
   const contextTokens=profile.contextTokens??current.contextTokens;
   if(!Number.isInteger(contextTokens)||contextTokens<current.generationTokens+(current.safetyTokens??2048)+512)throw Error('Model context is too small for the existing output reserve');
   const compactSoftTokens=Math.min(current.compactSoftTokens??Math.min(current.promptTokens,40960),contextTokens-current.generationTokens-(current.safetyTokens??2048));
   return {model:profile.model,modelSelection:profile.id,baseUrl:profile.baseUrl,contextTokens,promptTokens:Math.min(current.promptTokens,contextTokens-current.generationTokens-64),compactSoftTokens,
-   nativeImages:profile.nativeImages??(profile.modelPath?Boolean(current.nativeImages&&profile.mmprojPath):current.nativeImages),localRecovery:profile.localRecovery??null,kv:{...(current.kv??{}),identity:profile.identity??descriptor(profile)},verifyModel:true};
+   nativeImages:profile.nativeImages??(profile.modelPath?Boolean(current.nativeImages&&profile.mmprojPath):current.nativeImages),
+   projectorDevice:projectorPlacement(profile,current,projectorDevice),localRecovery:profile.localRecovery??null,
+   kv:{...(current.kv??{}),identity:profile.identity??descriptor(profile)},verifyModel:true};
+ }
+ runtimeRoot(){
+  return path.resolve(this.config.modelRuntime?.runDir??path.join(path.dirname(this.config.contestDir),'model-runtime'));
+ }
+ ramKv(profile,settings){
+  const policy=this.config.modelRuntime?.ramKv;
+  const spec=policy&&profile?.modelPath&&ramKvProfile(profile.id,profile.kvType??'q8_0',fs.statSync(profile.modelPath).size,settings.contextTokens);
+  if(!spec)return null;
+  const tuning={roundTripMiBps:60,...spec,...policy,...policy.profiles?.[profile.id.replace(/-vision$/,'')],...policy.profiles?.[profile.id]};
+  const {roundTripMiBps,prefillTokensPerSecond,cpuImageSeconds}=tuning;
+  const {reserveMiB,cpuProjectorReserveMiB,maxCacheMiB}=policy;
+  if(![roundTripMiBps,prefillTokensPerSecond].every(x=>Number.isFinite(x)&&x>0))
+   throw Error('RAM KV requires measured positive roundTripMiBps and prefillTokensPerSecond');
+  if([reserveMiB,cpuProjectorReserveMiB,maxCacheMiB].some(x=>x!==undefined&&(!Number.isSafeInteger(x)||x<0)))
+   throw Error('RAM KV memory limits must be nonnegative integer MiB');
+  if(cpuImageSeconds!==undefined&&(!Number.isFinite(cpuImageSeconds)||cpuImageSeconds<0))
+   throw Error('RAM KV cpuImageSeconds must be a nonnegative number');
+  const linux=this.config.modelRuntime.platform==='linux';
+  const directory=ramKvLocation(this.runtimeRoot());
+  let stage,hostDirectory=directory;
+  if(!linux){
+   stage=path.join(path.resolve(policy.stagingRoot??this.runtimeRoot()),'slot-staging');
+   hostDirectory=windowsPath(stage);
+   if(/^c:/i.test(hostDirectory))throw Error('Choose a Windows data drive for RAM KV staging');
+   fs.mkdirSync(stage,{recursive:true,mode:0o700});
+   if(!fs.lstatSync(stage).isDirectory()||fs.realpathSync(stage)!==stage)throw Error('Invalid KV staging directory');
+  }
+  return {...spec,directory,stage,hostDirectory,roundTripMiBps,prefillTokensPerSecond,cpuImageSeconds,reserveMiB,cpuProjectorReserveMiB,maxCacheMiB,
+   readWindows:linux?null:()=>Number(execFileSync(this.config.modelRuntime.powershell??WINDOWS_POWERSHELL,
+    ['-NoProfile','-NonInteractive','-Command','(Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory'],
+    {encoding:'utf8',timeout:5000,env:windowsInteropEnv(),cwd:'/mnt/c'}).trim())/1024};
+ }
+ ramKvOwned(current){
+  if(!this.config.modelRuntime?.ramKv)return null;
+  const profile=this.profiles(current).find(p=>p.id===(current.modelSelection??current.model));
+  const ram=this.ramKv(profile,current);
+  if(!ram)return null;
+  const file=path.join(this.runtimeRoot(),'owner.json');
+  if(!fs.existsSync(file))return null;
+  const owner=JSON.parse(fs.readFileSync(file,'utf8'));
+  const slotPathIndex=owner.args?.indexOf('--slot-save-path')??-1;
+  if(owner.model!==current.model||owner.baseUrl!==localOrigin(current.baseUrl)||
+     owner.contextTokens!==current.contextTokens||!owner.key||!owner.requestId||
+     slotPathIndex<0||owner.args[slotPathIndex+1]!==ram.hostDirectory)return null;
+  return {...ram,identity:owner.key,processId:owner.requestId,vision:owner.args.includes('--mmproj'),
+   cpuProjector:owner.args.includes('--no-mmproj-offload')};
  }
  async verify(profile,settings,signal){
   const health=await this.json(profile.baseUrl,'/health',{signal});if(health.status!=='ok')throw Error('Selected model is not ready');
@@ -82,19 +142,26 @@ export class ModelCatalog {
   const slots=await this.json(profile.baseUrl,'/slots',{signal});if(!Array.isArray(slots)||slots.some(s=>s.is_processing))throw Error('Selected model still has an active request');
   return {model:profile.model,baseUrl:profile.baseUrl,contextTokens:settings.contextTokens};
  }
- async activate(profile,current,{signal}={}){
-  this.guard();signal?.throwIfAborted();const settings=this.settings(profile,current);
+ async activate(profile,current,{signal,projectorDevice}={}){
+  this.guard();signal?.throwIfAborted();const settings=this.settings(profile,current,{projectorDevice});
   let startup;
   if(profile.modelPath){
    if(!fs.existsSync(profile.modelPath))throw Error('Model weight file is missing: '+profile.modelPath);
    const exe=this.config.modelRuntime?.exe??'';if(!fs.existsSync(exe))throw Error('Managed model runtime is missing: '+exe);
-   const runtimeRoot=path.resolve(this.config.modelRuntime?.runDir??path.join(path.dirname(this.config.contestDir),'model-runtime'));
+   const runtimeRoot=this.runtimeRoot();
    fs.mkdirSync(runtimeRoot,{recursive:true});
    const script=path.join(runtimeRoot,'Terminal-Model.ps1');fs.copyFileSync(new URL('../scripts/Terminal-Model.ps1',import.meta.url),script);
    const hostPath=this.config.modelRuntime?.platform==='linux'?x=>x:windowsPath;
    const port=Number(new URL(profile.baseUrl).port||80),args=['-m',hostPath(profile.modelPath),'--alias',profile.model,'--host','127.0.0.1','--port',String(port),'-c',String(settings.contextTokens),'-np','1','-ngl',String(profile.gpuLayers??99),'--flash-attn','on','-ctk',profile.kvType??'q8_0','-ctv',profile.kvType??'q8_0','-b','64','-ub','32','--fit','off','--load-mode','none','--cache-ram','0','--ctx-checkpoints','2','--checkpoint-min-step','256','--jinja','--metrics','--no-context-shift','--slots'];
-   if(settings.nativeImages){if(!profile.mmprojPath||!fs.existsSync(profile.mmprojPath))throw Error('Selected model projector is missing');args.push('--mmproj',hostPath(profile.mmprojPath),'--no-mmproj-offload','--image-max-tokens','8192','--image-min-tokens','1024');}
-   const launch={libraryDirs:this.config.modelRuntime?.libraryDirs??[],requestId:crypto.randomUUID(),key:hash(JSON.stringify({profile:descriptor({...profile,contextTokens:settings.contextTokens}),exe,args,weight:fs.statSync(profile.modelPath).mtimeMs})),model:profile.model,baseUrl:profile.baseUrl,contextTokens:settings.contextTokens,exe:hostPath(exe),args,root:hostPath(runtimeRoot)};
+   if(settings.nativeImages){
+    if(!profile.mmprojPath||!fs.existsSync(profile.mmprojPath))throw Error('Selected model projector is missing');
+    args.push('--mmproj',hostPath(profile.mmprojPath),settings.projectorDevice==='gpu'?'--mmproj-offload':'--no-mmproj-offload',
+     '--image-max-tokens','8192','--image-min-tokens','1024');
+   }
+   const ram=this.ramKv(profile,settings);
+   if(ram)args.push('--slot-save-path',ram.hostDirectory);
+   const ramIdentity=ram?{exeTime:fs.statSync(exe).mtimeMs,projectorTime:settings.nativeImages?fs.statSync(profile.mmprojPath).mtimeMs:null}:undefined;
+   const launch={libraryDirs:this.config.modelRuntime?.libraryDirs??[],requestId:crypto.randomUUID(),key:hash(JSON.stringify({profile:descriptor({...profile,contextTokens:settings.contextTokens}),exe,args,weight:fs.statSync(profile.modelPath).mtimeMs,ramIdentity})),model:profile.model,baseUrl:profile.baseUrl,contextTokens:settings.contextTokens,exe:hostPath(exe),args,root:hostPath(runtimeRoot)};
    const ownerFile=path.join(runtimeRoot,'owner.json');
    if(fs.existsSync(ownerFile)&&JSON.parse(fs.readFileSync(ownerFile)).key===launch.key){try{const receipt=await this.verify(profile,settings,signal);return {settings,receipt};}catch(error){if(signal?.aborted)throw error;}}
    const config=path.join(runtimeRoot,'selection.json');fs.writeFileSync(config,JSON.stringify(launch));
