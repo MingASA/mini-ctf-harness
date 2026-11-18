@@ -12,6 +12,42 @@ class Terminal {
  drainInput(){return Promise.resolve();}moveBy(){}hideCursor(){}showCursor(){}clearLine(){}clearFromCursor(){}clearScreen(){}setTitle(){}setProgress(){}setProgramStatus(){}
 }
 const delay=()=>new Promise(r=>setTimeout(r,60));
+test('transcript labels live and saved reasoning and folds long tool results into a separate view',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'pi-output-ui-'));let c,ui;
+ try{
+  c=new Contest({contestDir:path.join(root,'contest'),model:{baseUrl:'http://127.0.0.1:9'}},{testMode:true,guard:()=>{throw Error('No inference');},provision:async id=>{const workDir=path.join(root,id);fs.mkdirSync(workDir);return {containerId:id,workDir};},sessionOptions:()=>({broker:{validate:async()=>{}},knowledge:{docs:[]}})});
+  await c.add({id:'output',objective:'Render messages in the terminal'});
+  const session=c.session('output');
+  const persisted={role:'assistant',content:[{type:'thinking',thinking:'之前的思考'},{type:'text',text:'之前的回复'}]};
+  const toolResult={role:'toolResult',toolName:'run_command',toolCallId:'call-1',content:[{type:'text',text:JSON.stringify({status:'finished',job_id:'j1',exit_code:0,stdout:Array.from({length:30},(_,i)=>'fixture-file-'+i).join('\n')+'\x1b[35m',stdout_file:'/work/.tool-output/full.txt'})}]};
+  session.store.append('message',toolResult);
+  session.store.append('message',persisted);
+  const terminal=new Terminal();ui=new CompetitionTerminal(c,{terminal});ui.start();
+  c.emit('agent',{taskId:'output',event:{type:'message_update',message:{role:'assistant',content:[{type:'thinking',thinking:'实时思考内容'},{type:'text',text:'实时回复内容'}]}}});
+  ui.renderNow();
+  assert.match(ui.content.text,/\[模型思考 · 生成中\]\n实时思考内容/);
+  assert.match(ui.content.text,/\[正式回复 · 生成中\]\n实时回复内容/);
+  assert.match(ui.content.text,/\[模型思考\]\n之前的思考/);
+  assert.match(ui.content.text,/\[正式回复\]\n之前的回复/);
+  assert.match(ui.content.text,/j1 · 已结束 · 退出码 0/);
+  assert.match(ui.content.text,/已折叠 · \/tool 1 查看/);
+  assert.doesNotMatch(ui.content.text,/fixture-file-29/);
+  if(!process.env.NO_COLOR){
+   assert.ok(ui.content.text.includes('\x1b[36m[模型思考'));
+   assert.ok(ui.content.text.includes('\x1b[32m[正式回复'));
+  }
+  await ui.submit('/tool 1');ui.renderNow();
+  assert.match(ui.content.text,/fixture-file-29/);
+  assert.match(ui.content.text,/\/work\/\.tool-output\/full\.txt/);
+  assert.ok(!ui.content.text.includes('\x1b'));
+  assert.equal(ui.scroll.isFollowingEnd,false);
+  await ui.submit('/tab output');ui.renderNow();
+  assert.match(ui.content.text,/已折叠/);
+  assert.equal(ui.scroll.isFollowingEnd,true);
+  for(const line of ui.tui.getScreenLines())assert.ok(visibleWidth(line)<=terminal.columns);
+ }finally{await ui?.close();await c?.close();fs.rmSync(root,{recursive:true,force:true});}
+});
+
 test('actual Pi fullscreen components render Chinese; view switch keeps draft task, restart retains draft and wizard',async()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'pi-tui-test-'));let c,ui;
  const cfg={contestDir:path.join(root,'contest'),model:{baseUrl:'http://127.0.0.1:9'}};

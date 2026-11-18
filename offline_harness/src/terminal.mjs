@@ -3,18 +3,18 @@ import path from 'node:path';
 import {TuiAltScreen,ProcessTerminal,Editor,Text,VStack,HStack,ScrollView,SelectList,Container,matchesKey,CombinedAutocompleteProvider} from '@earendil-works/pi-tui';
 import {outputRoot} from './tool-output.mjs';
 import {sessionUsage,contextLine,usageLine,budgetText} from './session-usage.mjs';
-import {toolText} from './tool-display.mjs';
+import {safeText,toolResultText,transcriptText} from './transcript-display.mjs';
 import {atomic} from './store.mjs';
 import {projectorPlacement} from './model-catalog.mjs';
 const plain=s=>s;
 const selectTheme={selectedPrefix:plain,selectedText:s=>'\x1b[36m'+s+'\x1b[0m',description:plain,scrollInfo:plain,noMatch:plain};
 const theme={borderColor:s=>'\x1b[36m'+s+'\x1b[0m',selectList:selectTheme};
-export const safeText=value=>String(value??'').replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g,c=>c==='\t'?'    ':'�');
+export {safeText};
 const stringify=v=>safeText(typeof v==='string'?v:JSON.stringify(v,null,2));
 const HELP=`Ctrl+N 创建题目 · Ctrl+L 切换查看 · Ctrl+P 暂停当前题推理 · Ctrl+R 恢复 · Ctrl+C 中断生成并保留缓存
 /start 启动调度   /queue 题目队列   /review 确认答案   /view [题号]   /priority 数值   /switch 题号（安全边界保存对话/KV并切题）
 /env 查看或选择题目环境\n/model 查看模型 · /model 编号或ID 切换模型\n/compact 本轮结束后压缩 · /effort off|low|medium|high|xhigh [思考tokens|-1]\n/pause  /resume [题号]  /offloadKV 暂停并保存驻留题的 KV 到 RAM\n/offloadKV config [参数=MiB …] 查看或修改 RAM KV 余量及总上限\n/cancel 命令ID  /checkpoint  /feedback 候选ID correct|incorrect|pending 说明
-/tab output|jobs|budget|files|inbox|candidates|compact  /read 文件路径  /archive 消息ID
+/tab output|jobs|budget|files|inbox|candidates|compact  /tool 序号 查看工具输出  /read 文件路径  /archive 消息ID
 /skills [检索词] 查看技能元数据 · /use-skill NAME 将读取请求加入本题消息队列\n/new 创建题目（题意可多行粘贴） /discard 清空当前草稿  /quit 保存退出
 直接输入补充消息；Enter 发送，Shift+Enter 换行；已送达表示服务已接受包含该消息的请求。`;
 export class CompetitionTerminal {
@@ -23,7 +23,7 @@ export class CompetitionTerminal {
   this.file=path.join(contest.root,'ui-state.json');const saved=fs.existsSync(this.file)?JSON.parse(fs.readFileSync(this.file)):{};
   this.selected=contest.records.has(saved.selected)?saved.selected:contest.records.keys().next().value;this.drafts=saved.drafts||{};this.wizard=saved.wizard||null;this.bound=this.selected;this.tab='output';this.live=new Map();this.notice='';this.detail=null;
   this.header=new Text('',1,0);this.sidebar=new Text('',1,0);this.content=new Text('',1,0);this.footer=new Text('',1,0);this.binding=new Text('',1,0);
-  this.editor=new Editor(this.tui,theme);this.editor.setAutocompleteProvider(new CombinedAutocompleteProvider(['start','queue','review','new','view','priority','switch','pause','resume','offloadKV','cancel','compact','effort','model','env','checkpoint','feedback','tab','read','archive','help','skills','use-skill','discard','quit'].map(name=>({name,description:name})),contest.root));
+  this.editor=new Editor(this.tui,theme);this.editor.setAutocompleteProvider(new CombinedAutocompleteProvider(['start','queue','review','new','view','priority','switch','pause','resume','offloadKV','cancel','compact','effort','model','env','checkpoint','feedback','tab','tool','read','archive','help','skills','use-skill','discard','quit'].map(name=>({name,description:name})),contest.root));
   this.editor.onChange=()=>{if(!this.bound&&!this.wizard)this.bound=this.selected;this.persistDraft();this.render();};
   this.editor.onSubmit=text=>{if(this.submitting)return;this.submitting=true;this.editor.disableSubmit=true;this.submit(text).catch(e=>{this.notice=e.message;this.render();}).finally(()=>{this.submitting=false;this.editor.disableSubmit=false;});};
   this.scroll=new ScrollView(this.content,{follow:'end',primary:true,scrollbar:'auto'});
@@ -53,7 +53,7 @@ export class CompetitionTerminal {
  attempt(fn){Promise.resolve().then(fn).catch(e=>{this.notice=e.message;this.render();});}
  persist(){atomic(this.file,{selected:this.selected,drafts:this.drafts,wizard:this.wizard});}
  persistDraft(){const text=this.editor.getExpandedText();if(this.wizard)this.wizard.draft=text;else if(this.bound)this.drafts[this.bound]=text;this.persist();}
- setView(id){id=this.contest.resolveTaskId(id);this.contest.session(id);this.selected=id;this.tab='output';this.detail=null;this.notice='正在查看 '+this.contest.taskLabel(id)+' · '+this.contest.taskTitle(id);if(!this.editor.getExpandedText()&&!this.wizard){this.bound=id;this.editor.setText(this.drafts[id]||'');}this.persist();this.render();}
+ setView(id){id=this.contest.resolveTaskId(id);this.contest.session(id);this.selected=id;this.tab='output';this.detail=null;this.scroll.scrollToEnd();this.notice='正在查看 '+this.contest.taskLabel(id)+' · '+this.contest.taskTitle(id);if(!this.editor.getExpandedText()&&!this.wizard){this.bound=id;this.editor.setText(this.drafts[id]||'');}this.persist();this.render();}
  beginNew(){this.persistDraft();this.wizard={step:0,values:{},draft:''};this.editor.setText('');this.render();}
  async chooseTask(){const item=await this.select('切换查看（不打断推理）',[...this.contest.records.values()].map(r=>({value:r.task.id,label:safeText(this.contest.taskTitle(r.task.id)),description:this.contest.taskLabel(r.task.id)+' '+this.contest.status(r.task.id)})));if(item)this.setView(item.value);}
  select(title,items){return new Promise(resolve=>{
@@ -136,7 +136,14 @@ export class CompetitionTerminal {
    else if(cmd==='/cancel')await this.contest.cancel(this.requireTask(),args[0]);
    else if(cmd==='/checkpoint')await this.contest.checkpoint(this.requireTask());
    else if(cmd==='/feedback')this.contest.feedback(this.requireTask(),args[0],args[1],args.slice(2).join(' '));
-   else if(cmd==='/tab'){if(!['output','jobs','budget','files','inbox','candidates','compact','queue'].includes(args[0]))throw Error('未知面板');this.tab=args[0];this.detail=null;}
+   else if(cmd==='/tab'){if(!['output','jobs','budget','files','inbox','candidates','compact','queue'].includes(args[0]))throw Error('未知面板');this.tab=args[0];this.detail=null;if(this.tab==='output')this.scroll.scrollToEnd();}
+   else if(cmd==='/tool'){
+    if(args.length!==1||!/^[1-9]\d*$/.test(args[0]))throw Error('用法：/tool 序号');
+    const result=this.contest.session(this.requireTask()).messages().filter(m=>m.role==='toolResult')[Number(args[0])-1];
+    if(!result)throw Error('当前题没有这个工具结果');
+    this.detail=`[工具结果 ${args[0]} · ${result.toolName??'工具'}]\n/tab output 返回对话\n\n`+toolResultText(result);
+    this.scroll.scrollTo(0,{disableFollow:true});
+   }
    else if(cmd==='/read')this.detail=(await this.contest.session(this.requireTask()).tools().find(t=>t.name==='read').execute('operator-read-'+Date.now(),{path:args[0]})).content.filter(x=>x.type==='text').map(x=>x.text).join('\n');
    else if(cmd==='/archive')this.contest.session(this.requireTask()).inbox.retire(args[0]);
    else throw Error('未知命令；/help 查看帮助');
@@ -194,9 +201,7 @@ export class CompetitionTerminal {
    if(this.tab==='queue')content='题目 | 状态 | 模型 | 后台任务 | 待确认答案\n'+c.queueRows().map(r=>`${r.title} (${c.taskLabel(r.id)}) | ${r.status==='awaiting_review'?'待人工确认':r.status} | ${r.model} | ${r.jobs} | ${r.reviews.map(x=>x.review_id+': '+x.candidate).join(', ')||'—'}`).join('\n\n')+'\n\n/review：选择答案并记录通过或错误；/view [题号]：查看对话。';
    else if(!s)content=HELP;
    else if(this.tab==='output'){
-    const messages=s.messages().slice(-100);
-    const live=this.live.get(this.selected);if(live)messages.push(live);
-    content=messages.map(m=>`${m===live?'[实时 · 未完成] ':''}${m.role}${m.harnessInboxId?' · '+m.harnessInboxId:''}\n${typeof m.content==='string'?m.content:(m.content||[]).map(x=>x.type==='text'?(m.role==='toolResult'?toolText(m.toolName,x.text):x.text):x.type==='thinking'?'[推理] '+x.thinking:x.type==='toolCall'?'[工具] '+x.name+' '+JSON.stringify(x.arguments):'[附件]').join('\n')}${m.harnessInterruptedEvidence?'\n[手动中断，工具草稿未执行] /read '+m.harnessInterruptedEvidence:''}${m.errorMessage?'\n[中断] '+m.errorMessage:''}`).join('\n\n')||'题目已入队，等待推理。';
+    this.content.setText(transcriptText(s.messages(),this.live.get(this.selected),{useColor:!process.env.NO_COLOR}));
    }else if(this.tab==='jobs')content=s.store.events.filter(e=>e.type==='job_launch_attempt').map(e=>{const id=e.data.job_id,last=s.store.events.findLast(x=>x.type==='job_output_cursor'&&x.data.job_id===id);const dep=s.dependencies().some(x=>x.id===id);return `${id} · ${dep?'运行中':'已结束'} · ${last?'已有输出':'等待输出'}`;}).join('\n')||'暂无后台命令';
    else if(this.tab==='budget')content=budgetText(s);
    else if(this.tab==='files'){const dir=outputRoot(s.store,s.broker);content=fs.existsSync(dir)?fs.readdirSync(dir).map(f=>'/read /work/.tool-output/'+f).join('\n'):'暂无保存的长输出';}
@@ -204,7 +209,7 @@ export class CompetitionTerminal {
    else if(this.tab==='candidates')content=s.candidates().map(x=>`${x.review_id} · ${x.candidate}\n${x.feedback?.status??'待人工确认'} · /review`).join('\n\n')||'暂无候选答案';
    else content=stringify({pending:s.pendingControl('compact')?.seq??null,lastResult:s.store.events.findLast(e=>e.type==='compact_resolved')?.data,summary:s.store.events.findLast(e=>e.type==='compact_commit')?.data.checkpoint?.summary??'尚无 Compact 摘要',partial:s.store.events.findLast(e=>e.type==='model_auxiliary_interrupted')?.data});
   }
-  this.content.setText(safeText(content).slice(-160000));
+  if(content!==null)this.content.setText(safeText(content).slice(-160000));
   const usage=s?sessionUsage(s.store,s.config):null;
   this.binding.setText(safeText(this.wizard?`创建 ${this.wizard.step+1}/4：${['题目标题','粘贴题意（支持多行）','附件目录：路径 /browse 或 - 跳过','内网目标 URL 或 - 跳过'][this.wizard.step]} · /back 取消`:`输入绑定 → ${c.taskLabel(this.bound||this.selected)||'无题目'} · 面板 ${this.tab}${usage?' · '+usageLine(usage)+'\n'+contextLine(usage):''}`));
   this.footer.setText(safeText((this.notice||c.notice||'Ctrl+C 中断生成 · Ctrl+R 恢复 · /compact 压缩 · /effort 调整思考 · /quit 退出')+'\n'+(c.notice&&this.notice?c.notice:'暂停推理保留命令运行；/cancel 命令ID 单独取消。')));
