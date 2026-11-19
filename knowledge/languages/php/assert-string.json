@@ -1,0 +1,22 @@
+{
+  "title": "assert() 字符串断言的版本边界",
+  "summary": "PHP 7.2 弃用字符串断言，8.0 起字符串按普通值判断真假。",
+  "applies": "PHP 7.x 与 PHP 8.x；断言已启用",
+  "aliases": [
+    "assert",
+    "assert()",
+    "zend.assertions",
+    "string assertion",
+    "断言"
+  ],
+  "detail": "PHP 7.x 在断言实际执行时对字符串内容求值。7.2 起此行为被弃用，8.0 移除字符串内容求值。",
+  "boundary": "7.2 的弃用仍保留旧语义。断言可由配置关闭或跳过，版本号本身无法证明某次调用发生了求值。",
+  "sources": {
+    "reference": "https://www.php.net/manual/en/function.assert.php",
+    "context": "https://ctf-wiki.org/web/php/php/"
+  },
+  "relevance": "阅读旧题附带的 PHP 源码时，同一个字符串参数在不同版本可能代表不同的判断。",
+  "tags": [
+    "web"
+  ]
+}

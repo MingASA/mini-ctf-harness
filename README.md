@@ -78,6 +78,27 @@ de632c79cb58be69c4685967e114a329fd819ba6fb9e87c1c79843dc7a2e73bd
 
 Thinking 采样 `temperature=1.0, top_p=0.95, top_k=20`；Non-thinking 为 `0.7, 0.80, 20`。内置 15 个原始 SKILL.md 与 32 个 References；Pi 直接发现 `.agents/skills/`，按需使用通用 `read` 读取。
 
+## 离线知识查阅
+
+在仓库根目录可以直接查随仓库分发的知识卡。需要 Node.js，已安装 harness 时使用它登记的 Node。首次查询从本地卡片建立内存索引。
+
+```sh
+./mini-ctf knowledge search 'PHP 7.2 字符串断言'
+./mini-ctf knowledge browse --scope languages/php
+./mini-ctf knowledge get languages/php/assert-string
+./mini-ctf knowledge search '块长度' --tag misc --limit 1
+```
+
+`search` 默认返回 3 条摘要，最多 5 条；`browse` 按层列出分类计数或卡片标题，下一页使用返回的 `nextOffset` 作为 `--offset`；`get` 展开一个 ID 的条件、边界和出处。卡片按定义性质的语言或格式归档，题型标签可选。
+
+已启动支持工具调用的本地模型时，可在独立的只读问答中查阅同一知识库。将下方模型名替换为服务实际加载的 ID。默认连接 `http://127.0.0.1:8080/v1`，其他本机端口可通过 `MINI_CTF_KNOWLEDGE_MODEL_URL` 指定。模型启动时只看到工具定义，每次请求时收到本次所选的摘要或单卡正文。这一入口与交互终端的任务工具分开运行。
+
+```sh
+./mini-ctf knowledge ask --model MODEL_ID 'PNG 的块长度包含 CRC 吗？'
+```
+
+每个 `knowledge/<分类>/<技术对象>/*.json` 文件描述一个可验证的判断。文件名和分类组成稳定 ID。新增卡片时，在 `summary` 给出结论，在 `applies`、`detail` 和 `boundary` 说明版本、前提、反例；`sources.reference` 链到定义该行为的规范或手册，`sources.context` 与 `relevance` 说明它与题目的关系。为新知识添加真实的查询问法和期望命中 ID，并用 `node --test offline_harness/test/knowledge.test.mjs` 验证。
+
 ## 交互
 
 ```text
