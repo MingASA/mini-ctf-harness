@@ -19,6 +19,7 @@ const stringify=v=>safeText(typeof v==='string'?v:JSON.stringify(v,null,2));
 const HELP=`Ctrl+N 创建题目 · Ctrl+L 切换查看 · Ctrl+P 暂停当前题推理 · Ctrl+R 恢复 · Ctrl+C 中断生成并保留缓存
 /start 启动调度   /queue 题目队列   /review 确认答案   /view [题号]   /delete [题号]   /priority [数值]   /switch [题号]（保存进度并切题）
 /env [环境] 选择新题环境\n/model [编号或ID] 选择模型\n/compact 本轮结束后压缩 · /effort [normal|compact] [强度] [思考tokens|-1] 选择思考设置\n/pause  /resume [题号]  /offloadKV 暂停并保存驻留题的 KV 到 RAM\n/offloadKV config [参数=MiB …] 查看或修改 RAM KV 余量及总上限\n/cancel 命令ID  /checkpoint  /feedback 候选ID correct|incorrect|pending 说明
+/btw 开始或进入只读分支 · /btw free 释放分支 KV · /btw resume 继续 · /btw close 删除 · /main 返回主线
 /context [窗口 软压缩线] 调整当前会话，例如 /context 64K 48K
 /tab [面板]  /tool 序号 查看工具输出  /read 文件路径  /archive 消息ID
 /skills [检索词] 查看技能元数据 · /use-skill NAME 将读取请求加入本题消息队列\n/new 创建题目（题意可多行粘贴） /discard 清空当前草稿  /quit 保存退出
@@ -27,17 +28,17 @@ export class CompetitionTerminal {
  constructor(contest,{terminal=new ProcessTerminal(),onClose=()=>{}}={}){
   this.contest=contest;this.onClose=onClose;this.tui=new TuiAltScreen(terminal,true,undefined,{mouse:true,copyOnSelect:false,openUrl:()=>{}});
   this.file=path.join(contest.root,'ui-state.json');const saved=fs.existsSync(this.file)?JSON.parse(fs.readFileSync(this.file)):{};
-  this.selected=contest.records.has(saved.selected)?saved.selected:contest.records.keys().next().value;this.drafts=saved.drafts||{};this.wizard=saved.wizard||null;this.bound=this.selected;this.tab='output';this.live=new Map();this.notice='';this.detail=null;
+  this.selected=contest.records.has(saved.selected)?saved.selected:contest.records.keys().next().value;this.drafts=saved.drafts||{};this.wizard=saved.wizard||null;this.bound=this.selected;this.btwFocused=false;this.tab='output';this.live=new Map();this.notice='';this.detail=null;
   this.header=new Text('',1,0);this.sidebar=new Text('',1,0);this.content=new Text('',1,0);this.footer=new Text('',1,0);this.binding=new Text('',1,0);
-  this.slotBar=new Text('',1,0);
+  this.slotBar=new Text('',1,0);this.btwContent=new Text('',1,0);this.btwScroll=new ScrollView(this.btwContent,{follow:'end',scrollbar:'auto'});
   this.editor=new Editor(this.tui,theme);this.editor.setAutocompleteProvider(new CombinedAutocompleteProvider(slashCommands,contest.root));
   this.editor.onChange=()=>{if(!this.bound&&!this.wizard)this.bound=this.selected;this.persistDraft();this.render();};
   this.editor.onSubmit=text=>{if(this.submitting)return;this.submitting=true;this.editor.disableSubmit=true;this.submit(text).catch(e=>{this.notice=e.message;this.render();}).finally(()=>{this.submitting=false;this.editor.disableSubmit=false;});};
   this.scroll=new ScrollView(this.content,{follow:'end',primary:true,scrollbar:'auto'});
   this.tui.setLayoutRoot(new VStack([
    {component:this.header,basis:2,shrink:0},
-   {component:this.slotBar,basis:'auto',minSize:1,maxSize:9},
-   {component:new HStack([{component:new ScrollView(this.sidebar,{follow:'none'}),basis:30,minSize:16,maxSize:40},{component:this.scroll,grow:1,minSize:10}],{gap:1}),grow:1,minSize:3},
+   {component:this.slotBar,basis:'auto',minSize:1,maxSize:12},
+   {component:new HStack([{component:new ScrollView(this.sidebar,{follow:'none'}),basis:30,minSize:16,maxSize:40,visible:viewport=>!this.showBtw()||viewport.width>=110},{component:this.scroll,grow:1,minSize:10},{component:this.btwScroll,grow:1,minSize:18,visible:()=>this.showBtw()}],{gap:1}),grow:1,minSize:3},
    {component:this.binding,basis:2,shrink:0},{component:this.editor,basis:'auto',maxSize:9,minSize:3,shrink:0},{component:this.footer,basis:2,shrink:0}
   ]));
   this.tui.setFocus(this.editor);
@@ -56,13 +57,26 @@ export class CompetitionTerminal {
   contest.on('auxiliary',this.auxiliaryEvent);contest.on('change',this.changed);contest.on('agent',this.agentEvent);
   this.editor.setText(this.wizard?.draft||this.drafts[this.bound]||'');this.render();
  }
- interrupt(){this.persistDraft();this.contest.cancelInitialization?.();this.contest.interruptActive();this.notice='已请求中断；完整输出会保存，模型和 KV 保持驻留。输入消息或 /resume 继续。';this.render();}
+ interrupt(){
+  this.persistDraft();
+  if(this.btwFocused&&this.contest.btw){
+   if(this.contest.btw.status==='generating'&&this.contest.btw.pause())this.notice='已暂停分支生成；/btw resume 继续。';
+   else this.attempt(async()=>{await this.contest.deleteBtw();this.setInputTarget(false);this.notice='分支已删除，主线保持运行。';this.render();});
+  }else{this.contest.cancelInitialization?.();this.contest.interruptActive();this.notice='已请求中断；完整输出会保存，模型和 KV 保持驻留。输入消息或 /resume 继续。';}
+  this.render();
+ }
+ showBtw(){return Boolean(this.contest.btw&&this.contest.btw.session.task.id===this.selected);}
+ draftKey(){return this.btwFocused?'btw:'+this.bound:this.bound;}
+ setInputTarget(branch){
+  if(this.editor.getExpandedText().trim().startsWith('/'))this.editor.setText('');
+  this.persistDraft();this.btwFocused=Boolean(branch);this.bound=this.selected;this.editor.setText(this.drafts[this.draftKey()]||'');this.persist();this.render();
+ }
  requireTask(){if(!this.selected)throw Error('先创建或选择题目');return this.selected;}
  attempt(fn){Promise.resolve().then(fn).catch(e=>{this.notice=e.message;this.render();});}
  persist(){atomic(this.file,{selected:this.selected,drafts:this.drafts,wizard:this.wizard});}
- persistDraft(){const text=this.editor.getExpandedText();if(this.wizard)this.wizard.draft=text;else if(this.bound)this.drafts[this.bound]=text;this.persist();}
- setView(id){id=this.contest.resolveTaskId(id);this.contest.session(id);this.selected=id;this.tab='output';this.detail=null;this.scroll.scrollToEnd();this.notice='正在查看 '+this.contest.taskLabel(id)+' · '+this.contest.taskTitle(id);if(!this.editor.getExpandedText()&&!this.wizard){this.bound=id;this.editor.setText(this.drafts[id]||'');}this.persist();this.render();}
- beginNew(){this.persistDraft();this.wizard={step:0,values:{},draft:''};this.editor.setText('');this.render();}
+ persistDraft(){const text=this.editor.getExpandedText();if(this.wizard)this.wizard.draft=text;else if(this.bound)this.drafts[this.draftKey()]=text;this.persist();}
+ setView(id){id=this.contest.resolveTaskId(id);this.contest.session(id);if(id!==this.selected&&this.btwFocused){this.persistDraft();this.btwFocused=false;this.editor.setText('');}this.selected=id;this.tab='output';this.detail=null;this.scroll.scrollToEnd();this.notice='正在查看 '+this.contest.taskLabel(id)+' · '+this.contest.taskTitle(id);if(!this.editor.getExpandedText()&&!this.wizard){this.bound=id;this.editor.setText(this.drafts[id]||'');}this.persist();this.render();}
+ beginNew(){this.persistDraft();this.btwFocused=false;this.wizard={step:0,values:{},draft:''};this.editor.setText('');this.render();}
  async chooseTask(){const id=await this.pickTask('选择要查看的题目');if(id)this.setView(id);}
  async pickTask(title){
   const items=[...this.contest.records.keys()].map(id=>({value:id,label:safeText(this.contest.taskLabel(id)+' · '+this.contest.taskTitle(id)),description:this.contest.status(id)}));
@@ -120,7 +134,7 @@ export class CompetitionTerminal {
   if(!text.trim())return;
   if(text.startsWith('/')){
    const [cmd,...args]=text.trim().split(/\s+/);const id=this.selected;
-   if(cmd==='/discard'){if(this.bound)delete this.drafts[this.bound];this.editor.setText('');this.bound=id;this.editor.setText(this.drafts[id]||'');this.render();return;}
+   if(cmd==='/discard'){if(this.bound)delete this.drafts[this.draftKey()];this.editor.setText('');this.bound=id;this.editor.setText(this.drafts[this.draftKey()]||'');this.render();return;}
    if(cmd==='/new'){this.beginNew();return;}
    if(cmd==='/quit'){await this.close();return;}
    if(cmd==='/help'){this.detail=HELP;}
@@ -198,6 +212,20 @@ export class CompetitionTerminal {
      .catch(error=>{this.notice='模型切换未完成：'+error.message;this.render();});
    }
    else if(cmd==='/compact'){this.contest.compact(this.requireTask());this.notice='Compact 已排队，将在完整轮次边界执行。';}
+   else if(cmd==='/main'){if(args.length)throw Error('用法：/main');this.setInputTarget(false);this.notice='输入已切回主线。';this.render();return;}
+   else if(cmd==='/btw'){
+    if(args.length>1)throw Error('用法：/btw [free|resume|close|main]');
+    if(args[0]==='free'){await this.contest.freeBtw();this.notice='已释放分支 KV；聊天记录保留，下次提问时重建。';}
+    else if(args[0]==='close'){await this.contest.deleteBtw();this.setInputTarget(false);this.notice='已删除分支。';this.render();return;}
+    else if(args[0]==='main'){this.setInputTarget(false);this.notice='输入已切回主线。';this.render();return;}
+    else if(args[0]==='resume'){
+     const branch=await this.contest.openBtw(this.requireTask());this.setInputTarget(true);
+     this.contest.askBtw('请从刚才中断的位置继续回答。').catch(error=>{this.notice=error.message;this.render();});
+     return;
+    }
+    else if(!args.length){await this.contest.openBtw(this.requireTask());this.tab='output';this.detail=null;this.setInputTarget(true);this.notice='分支已打开；输入问题，/main 返回主线。';this.refreshSlotStatus();this.render();return;}
+    else throw Error('用法：/btw [free|resume|close|main]');
+   }
    else if(cmd==='/context')await this.chooseContext(this.requireTask(),args);
    else if(cmd==='/effort')await this.chooseEffort(this.requireTask(),args);
    else if(cmd==='/cancel'){
@@ -228,9 +256,13 @@ export class CompetitionTerminal {
    }
    else throw Error('未知命令；/help 查看帮助');
   }else{
-   const id=this.bound||this.requireTask();const item=this.contest.enqueue(id,text);this.notice=`已排队 → ${this.contest.taskLabel(id)} · ${item.id}`;
+   const id=this.bound||this.requireTask();
+   if(this.btwFocused){
+    const branch=this.contest.btw;if(!branch||branch.session.task.id!==id)throw Error('分支已关闭，请重新输入 /btw');
+    this.contest.askBtw(text).catch(error=>{this.notice=error.message;this.render();});this.notice='分支问题已提交；主线继续运行。';
+   }else{const item=this.contest.enqueue(id,text);this.notice=`已排队 → ${this.contest.taskLabel(id)} · ${item.id}`;}
   }
-  if(this.bound)delete this.drafts[this.bound];this.editor.setText('');this.bound=this.selected;this.editor.setText(this.drafts[this.bound]||'');this.persist();this.render();
+  if(this.bound)delete this.drafts[this.draftKey()];this.editor.setText('');this.bound=this.selected;this.editor.setText(this.drafts[this.draftKey()]||'');this.persist();this.render();
  }
  async chooseContext(id,args){
   const session=this.contest.session(id);
@@ -457,6 +489,10 @@ export class CompetitionTerminal {
   this.slotBar.setText(safeText(!origin?'后端 slot：未配置模型服务':
    this.slotStatus?.origin===origin?this.slotStatus.text:'等待后端 slot 状态'));
   this.sidebar.setText([...c.records.values()].map(r=>`${r.task.id===this.selected?'▶':' '} ${c.taskTitle(r.task.id)}\n${c.taskLabel(r.task.id)}\n${c.status(r.task.id)} · 优先级 ${c.queue.item(r.task.id)?.priority??0}`).map(safeText).join('\n\n')||'Ctrl+N 创建第一题');
+  if(this.showBtw()){
+   const branch=c.btw,labels={idle:'空闲',waiting:'等待 KV 余量',generating:'生成中',paused:'已暂停',error:'出错'};
+   this.btwContent.setText(safeText(`【/btw 分支 · ${labels[branch.status]??branch.status}】\n${branch.error||''}\n`)+transcriptText(branch.messages(),branch.live,{useColor:!process.env.NO_COLOR}));
+  }
   let content=this.detail;
   if(content===null){
    if(this.tab==='queue')content='题目 | 状态 | 模型 | 后台任务 | 待确认答案\n'+c.queueRows().map(r=>`${r.title} (${c.taskLabel(r.id)}) | ${r.status==='awaiting_review'?'待人工确认':r.status} | ${r.model} | ${r.jobs} | ${r.reviews.map(x=>x.review_id+': '+x.candidate).join(', ')||'—'}`).join('\n\n')+'\n\n/review：选择答案并记录通过或错误；/view [题号]：查看对话。';
@@ -472,7 +508,7 @@ export class CompetitionTerminal {
   }
   if(content!==null)this.content.setText(safeText(content).slice(-160000));
   const usage=s?sessionUsage(s.store,s.config,s.sessionWindow):null;
-  this.binding.setText(safeText(this.wizard?`创建 ${this.wizard.step+1}/4：${['题目标题','粘贴题意（支持多行）','附件：文件或目录路径 · /browse 选择 · - 跳过','内网目标 URL 或 - 跳过'][this.wizard.step]} · /back 上一步 · /cancel 取消`:`输入绑定 → ${c.taskLabel(this.bound||this.selected)||'无题目'} · 面板 ${this.tab}${usage?' · '+usageLine(usage)+'\n'+contextLine(usage):''}`));
+  this.binding.setText(safeText(this.wizard?`创建 ${this.wizard.step+1}/4：${['题目标题','粘贴题意（支持多行）','附件：文件或目录路径 · /browse 选择 · - 跳过','内网目标 URL 或 - 跳过'][this.wizard.step]} · /back 上一步 · /cancel 取消`:`输入绑定 → ${c.taskLabel(this.bound||this.selected)||'无题目'} · ${this.btwFocused?'分支 /btw':'主线'} · 面板 ${this.tab}${usage?' · '+usageLine(usage)+'\n'+contextLine(usage):''}`));
   this.footer.setText(safeText((this.notice||c.notice||'Ctrl+C 中断生成 · Ctrl+R 恢复 · /compact 压缩 · /effort 调整思考 · /quit 退出')+'\n'+(c.notice&&this.notice?c.notice:'暂停推理保留命令运行；/cancel 命令ID 单独取消。')));
   this.tui.requestRender();
  }
@@ -489,7 +525,9 @@ export class CompetitionTerminal {
   try{
    try {
     const snapshot=await this.contest.catalog.json(origin,'/kv-cache',{signal:controller.signal,timeout:1500});
-    status=backendUsageText(snapshot);
+    const hasBranchBackend=this.showBtw()&&snapshot.ctf_btw?.enabled;
+    status=backendUsageText(snapshot,{mainSlot:0,branchSlot:hasBranchBackend?1:undefined});
+    if(this.showBtw()&&!hasBranchBackend)status+='\n分支 KV：当前后端未启用并发';
    }catch(error){
     controller.signal.throwIfAborted();
     const slots=await this.contest.catalog.json(origin,'/slots',{signal:controller.signal,timeout:1500});

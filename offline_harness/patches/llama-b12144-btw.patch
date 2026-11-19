@@ -1,0 +1,229 @@
+diff --git a/common/arg.cpp b/common/arg.cpp
+index 67b492e..fa25fc1 100644
+--- a/common/arg.cpp
++++ b/common/arg.cpp
+@@ -1679,6 +1679,16 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
+             params.kv_unified = value;
+         }
+     ).set_env("LLAMA_ARG_KV_UNIFIED").set_examples({LLAMA_EXAMPLE_SERVER, LLAMA_EXAMPLE_PERPLEXITY, LLAMA_EXAMPLE_BATCHED, LLAMA_EXAMPLE_BENCH, LLAMA_EXAMPLE_PARALLEL, LLAMA_EXAMPLE_SPECULATIVE}));
++    add_opt(common_arg(
++        {"--ctf-btw-reserve"}, "N",
++        "enable the CTF two-slot scheduler and reserve N free KV cells for the main slot",
++        [](common_params & params, int value) {
++            if (value < 1) {
++                throw std::invalid_argument("ctf-btw-reserve must be positive");
++            }
++            params.ctf_btw_reserve = value;
++        }
++    ).set_examples({LLAMA_EXAMPLE_SERVER}));
+     add_opt(common_arg(
+         {"--cache-idle-slots"},
+         {"--no-cache-idle-slots"},
+diff --git a/common/common.h b/common/common.h
+index 303e0c2..8b65e17 100644
+--- a/common/common.h
++++ b/common/common.h
+@@ -638,6 +638,7 @@ struct common_params {
+     int32_t n_cache_reuse       = 0;     // min chunk size to reuse from the cache via KV shifting
+     bool    cache_prompt        = true;  // whether to enable prompt caching
+     bool    cache_idle_slots    = true;  // save and clear idle slots upon starting a new task
++    int32_t ctf_btw_reserve     = 0;     // reserve free KV cells for slot zero; 0 disables CTF branch scheduling
+     int32_t n_ctx_checkpoints   = 32;    // max number of context checkpoints per slot
+     int32_t kv_unified_per_slot = 0;     // max context per parallel slot; 0 = unset
+     int32_t checkpoint_min_step = 8192;  // minimum spacing between context checkpoints
+diff --git a/tools/server/server-context.cpp b/tools/server/server-context.cpp
+index e2cbf72..6a2eb4d 100644
+--- a/tools/server/server-context.cpp
++++ b/tools/server/server-context.cpp
+@@ -56,6 +56,23 @@ struct kv_stat_identities {
+     uint64_t unique_tensor_bytes = 0;
+ };
+
++// The observation callback runs on the scheduler thread. Test every attention
++// pool, including the independently allocated MTP draft pool; recurrent state
++// has a different, per-sequence capacity and is not measured in token cells.
++struct ctf_kv_headroom {
++    bool saw_attention = false;
++    uint64_t free_min = UINT64_MAX;
++
++    static void receive(const llama_memory_stat_event * event, void * user_data) {
++        if (event->event_type != LLAMA_MEMORY_STAT_POOL || !event->kind) return;
++        const std::string kind(event->kind);
++        if (kind != "attention" && kind != "attention_swa") return;
++        auto & self = *static_cast<ctf_kv_headroom *>(user_data);
++        self.saw_attention = true;
++        self.free_min = std::min(self.free_min, event->capacity_cells - event->occupied_cells);
++    }
++};
++
+ struct kv_stat_collector {
+     kv_stat_identities & identities;
+     json pools = json::array();
+@@ -1586,6 +1603,12 @@ private:
+             SRV_TRC("%s", "speculative decoding will use checkpoints\n");
+         }
+
++        if (params_base.ctf_btw_reserve &&
++            (params_base.n_parallel != 2 || !params_base.kv_unified || params_base.cache_idle_slots)) {
++            SRV_ERR("%s", "--ctf-btw-reserve requires -np 2 --kv-unified --no-cache-idle-slots\n");
++            return false;
++        }
++
+         // setup slots
+         SRV_INF("initializing, n_slots = %d, n_ctx_slot = %d, kv_unified = '%s'\n",
+                 params_base.n_parallel, n_ctx_slot(), params_base.kv_unified ? "true" : "false");
+@@ -2023,7 +2046,12 @@ private:
+             return res;
+         }
+
++        // A CTF branch may be discarded under pressure; the main slot must
++        // never be picked by the generic idle-slot eviction policy.
+         for (auto & slot : slots) {
++            if (params_base.ctf_btw_reserve && slot.id == 0) {
++                continue;
++            }
+             if (slot.is_processing()) {
+                 continue;
+             }
+@@ -2043,6 +2071,58 @@ private:
+         return res;
+     }
+
++    uint64_t ctf_btw_required_cells() const {
++        return uint64_t(params_base.ctf_btw_reserve) + 2u * llama_n_batch(ctx_tgt) +
++            2u * common_speculative_n_max(&params_base.speculative) + 16u;
++    }
++
++    bool ctf_btw_has_headroom(uint64_t extra = 0, uint64_t * available = nullptr) {
++        if (!params_base.ctf_btw_reserve) return true;
++        ctf_kv_headroom stats;
++        if (!llama_memory_get_cell_stats(llama_get_memory(ctx_tgt), ctf_kv_headroom::receive, &stats)) return false;
++        if (ctx_dft && !llama_memory_get_cell_stats(llama_get_memory(ctx_dft), ctf_kv_headroom::receive, &stats)) return false;
++        // Leave room for a whole target and draft batch, including speculative
++        // tokens, between successive checks. Admission fails closed.
++        if (available) *available = stats.saw_attention ? stats.free_min : 0;
++        return stats.saw_attention && stats.free_min > ctf_btw_required_cells() + extra;
++    }
++
++    // Mirror the checkpoint selection used when starting a prompt. The result
++    // is a conservative lower bound on the prefix that can be reused without
++    // rewinding a recurrent state. If no checkpoint qualifies, budget for a
++    // complete prefill instead of repeatedly evicting and retrying a branch.
++    size_t ctf_btw_reusable(const server_slot & source, const server_task & task) const {
++        size_t n_past = source.prompt.tokens.get_common_prefix(task.tokens);
++        if (!n_past) return 0;
++        const llama_pos pos_next = source.prompt.tokens.pos_next(n_past);
++        const llama_pos pos_eval = pos_next - (n_past < task.tokens.size() ? 0 : 1);
++        const llama_pos threshold = std::max(0, n_swa > 0 ? pos_eval - n_swa + 2 : pos_eval);
++        const llama_pos pos_min = llama_memory_seq_pos_min(llama_get_memory(ctx_tgt), source.id);
++        if (pos_min < 0) return 0;
++        if (pos_min < threshold) return n_past;
++        for (auto it = source.prompt.checkpoints.rbegin(); it != source.prompt.checkpoints.rend(); ++it) {
++            const auto & ckpt = **it;
++            if (ckpt.pos_max > pos_next || !(ckpt.pos_min < threshold || ckpt.pos_min == 0)) continue;
++            const llama_pos pos = std::min(pos_next, std::max(ckpt.pos_min + 1, ckpt.pos_max));
++            return std::min(n_past, std::min(source.prompt.tokens.size_up_to_pos(pos), (size_t) ckpt.n_tokens));
++        }
++        return 0;
++    }
++
++    void ctf_btw_protect_main() {
++        if (!params_base.ctf_btw_reserve || slots.size() != 2) return;
++        auto & branch = slots[1];
++        if (!branch.is_processing() && branch.prompt.n_tokens() == 0) return;
++        if (ctf_btw_has_headroom()) return;
++        if (branch.is_processing()) {
++            send_error(branch, "CTF_BTW_WAIT: KV headroom reserved for main slot");
++            branch.release();
++        }
++        // Full-sequence removal drops only this sequence's memberships in
++        // both target and draft contexts, leaving shared cells owned by main.
++        branch.prompt_clear();
++    }
++
+     std::vector<common_adapter_lora_info> construct_lora_list(const std::map<int, float> & config) const {
+         std::vector<common_adapter_lora_info> output = params_base.lora_adapters; // copy
+         for (size_t i = 0; i < output.size(); ++i) {
+@@ -3166,6 +3246,37 @@ private:
+                         break;
+                     }
+
++                    if (params_base.ctf_btw_reserve && slot->id == 1) {
++                        auto & main = slots[0];
++                        const size_t reuse_main = ctf_btw_reusable(main, task);
++                        const size_t reuse_branch = ctf_btw_reusable(*slot, task);
++                        const bool copy_main = reuse_main > reuse_branch;
++                        const size_t reuse = copy_main ? reuse_main : reuse_branch;
++                        if (task.params.n_predict < 1) {
++                            send_error(task, "CTF_BTW_WAIT: branch output must have a finite positive token limit", ERROR_TYPE_INVALID_REQUEST);
++                            break;
++                        }
++                        const uint64_t prefill = task.tokens.pos_next() - task.tokens.pos_next(reuse);
++                        const uint64_t extra = prefill + uint64_t(task.params.n_predict);
++                        uint64_t available = 0;
++                        if (!ctf_btw_has_headroom(extra, &available)) {
++                            send_error(task, string_format("CTF_BTW_WAIT: KV headroom reserved for main slot; required=%" PRIu64 ", available=%" PRIu64,
++                                ctf_btw_required_cells() + extra, available), ERROR_TYPE_UNAVAILABLE);
++                            break;
++                        }
++                        if (copy_main) {
++                            // Copy the full, currently valid sequence on this
++                            // scheduler thread. Normal prefix/checkpoint logic
++                            // restores a safe recurrent state if it diverges.
++                            main.copy_prompt_to(*slot);
++                            const llama_pos pos = llama_memory_seq_pos_max(llama_get_memory(ctx_tgt), main.id);
++                            slot->prompt.tokens.keep_first(pos < 0 ? 0 : slot->prompt.tokens.size_up_to_pos(pos + 1));
++                            std::vector<uint8_t> state;
++                            common_speculative_get_state(spec.get(), main.id, state);
++                            common_speculative_set_state(spec.get(), slot->id, state);
++                        }
++                    }
++
+                     if (task.is_parent()) {
+                         // try getting free slots for all child tasks
+                         size_t n_child_tasks = task.child_tasks.size();
+@@ -3363,6 +3474,10 @@ private:
+                     res->id = task.id;
+                     res->snapshot = {
+                         {"schema_version", 1},
++                        {"ctf_btw", {{"enabled", params_base.ctf_btw_reserve > 0},
++                            {"main_slot", 0}, {"branch_slot", 1}, {"reserve_cells", params_base.ctf_btw_reserve},
++                            {"required_free_cells", ctf_btw_required_cells()},
++                            {"kv_unified", params_base.kv_unified}}},
+                         {"snapshot_unix_ms", std::chrono::duration_cast<std::chrono::milliseconds>(
+                             std::chrono::system_clock::now().time_since_epoch()).count()},
+                         {"contexts", std::move(contexts)}, {"slots", std::move(slot_stats)},
+@@ -3736,6 +3851,8 @@ private:
+         }
+ #endif
+
++        ctf_btw_protect_main();
++
+         // check if all slots are idle
+         // a realtime slot waiting for audio has no work, the next audio control task wakes the loop
+         {
+@@ -6055,11 +6172,6 @@ void server_routes::init_routes() {
+
+     this->post_slots = [this](const server_http_req & req) {
+         auto res = create_response();
+-        if (params.slot_save_path.empty()) {
+-            res->error(format_error_response("This server does not support slots action. Start it with `--slot-save-path`", ERROR_TYPE_NOT_SUPPORTED));
+-            return res;
+-        }
+-
+         std::string id_slot_str = req.get_param("id_slot");
+
+         int id_slot;
+@@ -6072,6 +6184,12 @@ void server_routes::init_routes() {
+
+         std::string action = req.get_param("action");
+
++        if (params.slot_save_path.empty() &&
++            !(params.ctf_btw_reserve && action == "erase" && id_slot == 1)) {
++            res->error(format_error_response("This server does not support slots action. Start it with `--slot-save-path`", ERROR_TYPE_NOT_SUPPORTED));
++            return res;
++        }
++
+         if (action == "save") {
+             return handle_slots_save(req, id_slot);
+         }

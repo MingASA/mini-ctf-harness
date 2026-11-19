@@ -233,7 +233,7 @@ export class InteractiveSession extends EventEmitter {
   await this.broker.validate();this.operatorController.signal.throwIfAborted();this.applyEffort();
   const cfg={...this.config,...this.sessionWindow,engineContextTokens:this.config.contextTokens,nativeSlot:this.config.kv?.slot??this.config.nativeSlot??0};
   if(this.sessionWindow)cfg.compactHardTokens=null;
-  const client=new NativeClient(cfg,this.store,{fetchFn:this.options.fetchFn||fetch,localRecovery:this.localModel,operatorSignal:this.operatorController.signal,requestSignal:this.requestSignal,onAuxiliary:event=>this.emit('auxiliary',event),onAccepted:e=>this.inbox.accepted(e),guard:({activeRequestId}={})=>{
+  const client=new NativeClient(cfg,this.store,{fetchFn:this.options.fetchFn||fetch,localRecovery:this.localModel,operatorSignal:this.operatorController.signal,requestSignal:this.requestSignal,allowParallel:()=>this.options.allowParallel?.(cfg.baseUrl)??false,onAuxiliary:event=>this.emit('auxiliary',event),onAccepted:e=>this.inbox.accepted(e),guard:({activeRequestId}={})=>{
    this.guard();if(this.pauseRequested)throw Error('Inference paused');
    const budget=this.budget(activeRequestId);if(!budget.turnsRemaining||!budget.tokensRemaining||budget.millisecondsRemaining<=stopReserveMs(this.config))throw Error('Run budget exhausted');
    Object.assign(cfg,generationSettings(this.config));cfg.generationTokens=Math.min(this.config.generationTokens,budget.tokensRemaining);cfg.reasoningTokens=this.config.reasoningTokens===-1?-1:Math.min(this.config.reasoningTokens,Math.max(1,cfg.generationTokens-1));

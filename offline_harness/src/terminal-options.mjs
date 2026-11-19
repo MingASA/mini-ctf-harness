@@ -14,6 +14,8 @@ export const slashCommands=[
  ['offloadKV','保存驻留 KV 到内存，或配置缓存余量'],
  ['cancel','取消当前题的后台命令'],
  ['compact','在本轮结束后压缩上下文'],
+ ['btw','分叉只读讨论；free 释放 KV，main 返回主线，close 删除分支'],
+ ['main','将输入切回主线'],
  ['context','设置当前会话的窗口和软压缩线'],
  ['effort','设置正常推理或 Compact 压缩的思考强度和预算'],
  ['model','查看并选择模型'],
