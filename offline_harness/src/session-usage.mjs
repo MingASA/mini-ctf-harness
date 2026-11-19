@@ -20,13 +20,18 @@ export function contextLine(stats,width=20){
 }
 export function usageLine(stats){return `已用 ${stats.turns} 轮 · 累计生成 ${stats.generated.toLocaleString('en-US')} tokens${stats.unreported?' · '+stats.unreported+' 次用量未确认':''}`;}
 export function budgetText(session){
- const s=sessionUsage(session.store,session.config,session.sessionWindow),g=session.generationControls();
+ const s=sessionUsage(session.store,session.config,session.sessionWindow);
+ const thinking=scope=>{
+  const {current,pending}=session.generationControls(scope);
+  const describe=settings=>settings.thinking?`${settings.reasoningEffort} · 思考上限 ${settings.reasoningTokens===-1?'随输出预算':settings.reasoningTokens}`:'关闭';
+  return describe(current)+(pending?' · 待生效 '+describe(pending):'');
+ };
  const latest=lastWindowEvent(session.store);
  return [usageLine(s),`普通调用 ${s.ordinary} 次 · Compact ${s.compacts} 次`,contextLine(s),
   `软压缩线 ${s.soft.toLocaleString('en-US')} tokens · 上下文总长 ${s.total.toLocaleString('en-US')} tokens`,
   `后端容量 ${session.config.contextTokens.toLocaleString('en-US')} tokens`,
   ...(latest?.type==='window_requested'?[`待应用：窗口 ${latest.data.settings.contextTokens} · 软线 ${latest.data.settings.compactSoftTokens}`]:[]),
   ...(latest?.type==='window_failed'?['窗口设置未生效：'+latest.data.error]:[]),
-  `思考 ${g.current.thinking?'开启':'关闭'} · 强度 ${g.current.reasoningEffort} · 思考上限 ${g.current.reasoningTokens===-1?'随输出预算':g.current.reasoningTokens}`,
+  '正常推理思考 '+thinking('normal'),'Compact 压缩思考 '+thinking('compact'),
   `单次输出上限 ${session.config.generationTokens.toLocaleString('en-US')} tokens`].join('\n');
 }

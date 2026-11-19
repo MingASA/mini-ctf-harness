@@ -218,7 +218,7 @@ export class Contest extends EventEmitter {
   }catch(error){this.notice='模型切换未完成：'+error.message;throw error;}
   finally{if(this.pendingDefaultModel===pendingSettings)this.pendingDefaultModel=null;this.modelSwitching=false;this.modelSwitchController=null;this.emit('change');}
  }
- effort(id,level,budget){const s=this.session(id);return level?s.requestEffort(level,budget):s.generationControls();}
+ effort(id,level,budget,scope='normal'){const s=this.session(id);return level?s.requestEffort(level,budget,scope):s.generationControls(scope);}
  compact(id){id=this.resolveTaskId(id);
   const s=this.session(id),result=s.requestCompact();
   if(this.active!==id&&s.messages().filter(m=>m.role!=='system').length<2){s.store.append('compact_resolved',{request_seq:result.request_seq,status:'no_history'});this.emit('change');return {...result,pending:false,status:'no_history'};}

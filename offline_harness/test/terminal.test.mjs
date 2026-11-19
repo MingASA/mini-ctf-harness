@@ -22,9 +22,10 @@ test('slash completion describes effort inline and Enter opens a picker with a r
   const terminal=new Terminal();ui=new CompetitionTerminal(c,{terminal});ui.start();await delay();
   const screen=()=>ui.tui.getScreenLines().join('\n');
   for(const key of '/eff')terminal.input(key);
-  await delay();assert.match(screen(),/effort\s+选择思考模式、强度和预算/);
+  await delay();assert.match(screen(),/effort\s+设置正常推理或 Compact/);
   for(const key of 'ort')terminal.input(key);
-  await delay();terminal.input('\r');await delay();assert.match(screen(),/思考模式 · 当前 medium/);
+  await delay();terminal.input('\r');await delay();assert.match(screen(),/选择要调整的思考设置/);
+  terminal.input('\r');await delay();assert.match(screen(),/正常推理思考模式 · 当前 medium/);
   terminal.input(down);terminal.input(down);terminal.input('\r');await delay();
   assert.match(screen(),/思考预算 · xhigh/);
   for(let i=0;i<5;i++)terminal.input(down);
@@ -41,6 +42,15 @@ test('slash completion describes effort inline and Enter opens a picker with a r
   assert.equal(ui.tab,'output');
   const cancelled=ui.submit('/effort');await delay();terminal.input('\x1b');await cancelled;
   assert.equal(session.store.events.filter(e=>e.type==='effort_requested').length,1);
+  const compact=ui.submit('/effort');await delay();
+  terminal.input(down);terminal.input('\r');await delay();
+  assert.match(screen(),/Compact 压缩思考模式 · 当前 off/);
+  terminal.input(down);terminal.input('\r');await delay();
+  terminal.input('\r');await compact;
+  assert.equal(session.generationControls('compact').pending.reasoningEffort,'low');
+  assert.equal(session.generationControls().pending.reasoningEffort,'xhigh');
+  await ui.submit('/effort compact off');
+  assert.equal(session.generationControls('compact').pending.thinking,false);
   const priority=ui.submit('/priority');await delay();assert.match(screen(),/调整队列优先级/);
   terminal.input('1');terminal.input('5');terminal.input('\r');await priority;
   assert.equal(c.queue.item('fixture').priority,15);

@@ -39,7 +39,7 @@ export class NativeClient {
       temperature:this.config.compactThinking?(this.config.temperature??1):(this.config.compactTemperature??0.7),
       top_p:this.config.compactThinking?0.95:0.80,top_k:20,
       chat_template_kwargs:{enable_thinking:this.config.compactThinking??false,reasoning_effort:this.config.compactReasoningEffort??this.config.reasoningEffort??'medium'},
-      reasoning_budget_tokens:this.config.compactThinking?(this.config.compactReasoningTokens??4096):this.config.reasoningTokens,
+      reasoning_budget_tokens:this.config.compactThinking?(this.config.compactReasoningTokens??4096):-1,
       response_format:{type:'json_schema',json_schema:{name:'compact_checkpoint',strict:true,schema:COMPACT_SCHEMA}},
       max_tokens:Math.min(maxTokens??this.config.compactTokens??this.config.generationTokens,this.config.generationTokens)
     });

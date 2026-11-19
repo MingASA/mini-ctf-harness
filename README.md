@@ -74,7 +74,7 @@ de632c79cb58be69c4685967e114a329fd819ba6fb9e87c1c79843dc7a2e73bd
 
 在终端选择视觉型号时，可选 CPU（使用系统内存）或 GPU（使用显存）。也可以直接指定 `/model qwen3.5-9b-ctf-web-q8-vision gpu`，或在启动命令中传入 `--model qwen3.5-9b-ctf-web-q8-vision --projector-device gpu`。启动时省略此参数会使用已保存的选择，首次使用默认 CPU。视觉配置也接受 `"projectorDevice": "cpu"` 或 `"gpu"`。
 
-默认是 16 GB 显存配置：55,296 上下文、Q8 KV、单槽、无 MTP；普通生成 medium、总输出 8K；40K 软 Compact，Compact 使用 xhigh、4K 思考与 8K 总输出。硬件不同可修改数据目录的 `config.json` 中 `contextTokens`、`compactSoftTokens`、`gpuLayers`、`kvType` 等参数。两套权重和 projector 约 26 GB；连同引擎、下载缓存、工具镜像和可增长的 ext4 工作区，建议数据盘至少预留 55 GB。
+默认是 16 GB 显存配置：55,296 上下文、Q8 KV、单槽、无 MTP；普通生成 medium、总输出 8K；40K 软 Compact，Compact 默认关闭思考，单次总输出上限为 8K。硬件不同可修改数据目录的 `config.json` 中 `contextTokens`、`compactSoftTokens`、`gpuLayers`、`kvType` 等参数。两套权重和 projector 约 26 GB；连同引擎、下载缓存、工具镜像和可增长的 ext4 工作区，建议数据盘至少预留 55 GB。
 
 Thinking 采样 `temperature=1.0, top_p=0.95, top_k=20`；Non-thinking 为 `0.7, 0.80, 20`。内置 15 个原始 SKILL.md 与 32 个 References；Pi 直接发现 `.agents/skills/`，按需使用通用 `read` 读取。
 
@@ -88,7 +88,7 @@ Ctrl+N       新建题目，粘贴题意、选择附件、填写目标地址
 /resume 02   恢复第 02 题；/resume 可先选题
 /review      选择候选并记录平台通过或错误
 /model       选择模型；/model 编号或ID 直接切换
-/effort      选择思考模式和预算；/effort xhigh 4096 直接修改
+/effort      选择正常推理或 Compact 压缩，分别设置思考开关、强度和 token 预算
 /env         选择新题环境；/tab 选择面板
 /compact     当前完整轮次结束后压缩
 /context     输入当前会话的窗口和软压缩线，也可直接输入 /context 64K 48K
@@ -205,3 +205,37 @@ python3 -m unittest discover -s ../installer/test
 `offline_harness/src/` 是运行时，`prompts/` 是普通解题和 Compact 提示词，`installer/` 管理安装及校验，`docker/` 定义工具环境。模型权重、运行记录、用户配置和依赖目录保存在本机并由 Git 忽略。
 
 依赖 Pi、llama.cpp、Docker、Node.js 和模型各自的上游许可；下载的模型权重遵循模型发布方的许可。
+
+## 斜杠命令速查
+
+输入 `/` 可浏览命令，按 Enter 确认，Esc 取消。下表中方括号表示可选参数。
+
+| 命令 | 用途 |
+| --- | --- |
+| `/new` | 新建会话，依次填写标题、题意、附件和可选目标。 |
+| `/view [题号]` | 查看指定会话。省略题号时从列表选择。 |
+| `/delete [题号或 ID]` | 删除所选会话、容器和工作目录。 |
+| `/queue` | 查看队列、题目状态和待确认答案。 |
+| `/start` | 启动题目调度。 |
+| `/priority [数值]` | 调整当前题的队列优先级，范围为 −1000 到 1000。 |
+| `/switch [题号]` | 在轮次边界保存当前进度并切换推理题目。 |
+| `/pause`、`/resume [题号]` | 暂停当前题或选择要恢复的题目。 |
+| `/model [编号或 ID] [cpu 或 gpu]` | 选择模型。视觉型号可指定 projector 的运行设备。 |
+| `/env [环境名]` | 选择新题的运行环境。 |
+| `/effort` | 先选「正常推理」或「Compact 压缩」，再选关闭或思考强度。启用思考后可设置 token 预算。 |
+| `/context [窗口 软压缩线]` | 设置会话窗口和自动压缩线，例如 `/context 64K 48K`。 |
+| `/compact` | 请求在完整轮次结束后压缩上下文。 |
+| `/checkpoint` | 请求在轮次边界保存当前驻留题的进度。 |
+| `/offloadKV` | 暂停并尝试把驻留题的 KV 快照保存到内存。`/offloadKV config` 查看或设置内存余量和快照总上限。 |
+| `/tab [面板]` | 切换面板，例如 `/tab budget` 查看窗口、用量和两套思考设置。 |
+| `/tool [序号]`、`/read [路径]` | 展开一次工具输出，或读取当前题的文件。 |
+| `/cancel [命令 ID]` | 取消当前题的一个后台命令。 |
+| `/archive [消息 ID]` | 归档当前题的一条补充消息。 |
+| `/review`、`/feedback [候选 ID] [结果] [说明]` | 选择待确认答案，或给当前题的候选记录 `correct`、`incorrect`、`pending`。 |
+| `/skills [检索词]`、`/use-skill 名称` | 浏览或搜索已安装技能，或将指定技能的读取请求加入当前题。 |
+| `/discard` | 清空当前输入草稿。 |
+| `/help`、`/quit` | 查看快捷键和帮助，或保存并退出终端。 |
+
+`/effort high 2048` 设置正常推理，`/effort compact low 1024` 开启 Compact 思考，`/effort compact off` 关闭它。两套设置分别保存在当前会话中。正在生成时，修改在轮次边界生效。
+
+新建向导中，`/back` 返回上一步，`/browse [路径]` 在附件步骤打开选择器，`/cancel` 退出向导，`/view [题号]` 可暂时查看已有会话。

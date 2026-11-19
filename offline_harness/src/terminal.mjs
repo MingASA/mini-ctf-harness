@@ -17,7 +17,7 @@ export {safeText};
 const stringify=v=>safeText(typeof v==='string'?v:JSON.stringify(v,null,2));
 const HELP=`Ctrl+N 创建题目 · Ctrl+L 切换查看 · Ctrl+P 暂停当前题推理 · Ctrl+R 恢复 · Ctrl+C 中断生成并保留缓存
 /start 启动调度   /queue 题目队列   /review 确认答案   /view [题号]   /delete [题号]   /priority [数值]   /switch [题号]（保存进度并切题）
-/env [环境] 选择新题环境\n/model [编号或ID] 选择模型\n/compact 本轮结束后压缩 · /effort [强度] [思考tokens|-1] 选择思考设置\n/pause  /resume [题号]  /offloadKV 暂停并保存驻留题的 KV 到 RAM\n/offloadKV config [参数=MiB …] 查看或修改 RAM KV 余量及总上限\n/cancel 命令ID  /checkpoint  /feedback 候选ID correct|incorrect|pending 说明
+/env [环境] 选择新题环境\n/model [编号或ID] 选择模型\n/compact 本轮结束后压缩 · /effort [normal|compact] [强度] [思考tokens|-1] 选择思考设置\n/pause  /resume [题号]  /offloadKV 暂停并保存驻留题的 KV 到 RAM\n/offloadKV config [参数=MiB …] 查看或修改 RAM KV 余量及总上限\n/cancel 命令ID  /checkpoint  /feedback 候选ID correct|incorrect|pending 说明
 /context [窗口 软压缩线] 调整当前会话，例如 /context 64K 48K
 /tab [面板]  /tool 序号 查看工具输出  /read 文件路径  /archive 消息ID
 /skills [检索词] 查看技能元数据 · /use-skill NAME 将读取请求加入本题消息队列\n/new 创建题目（题意可多行粘贴） /discard 清空当前草稿  /quit 保存退出
@@ -248,18 +248,30 @@ export class CompetitionTerminal {
   this.notice=result.pending?'已保存请求，将在下一次轮次边界校验并应用':'已保存当前会话的窗口和软压缩线';
  }
  async chooseEffort(id,args){
-  if(args.length>2)throw Error('用法：/effort [强度] [思考tokens|-1]');
+  let scope='normal';
+  if(!args.length){
+   const options=[{value:'normal',label:'正常推理'},{value:'compact',label:'Compact 压缩'}];
+   for(const item of options){
+    const {current,pending}=this.contest.session(id).generationControls(item.value);
+    item.description=current.thinking?current.reasoningEffort:'关闭';
+    if(pending)item.description+=' · 待生效 '+(pending.thinking?pending.reasoningEffort:'关闭');
+   }
+   const choice=await this.select('选择要调整的思考设置',options,'normal');
+   if(!choice)return;
+   scope=choice.value;
+  }else if(['normal','compact'].includes(args[0]))[scope,...args]=args;
+  if(args.length>2)throw Error('用法：/effort [normal|compact] [off|low|medium|high|xhigh] [思考tokens|-1]');
+  const label=scope==='compact'?'Compact 压缩':'正常推理';
   let [level,budget]=args;
   if(!level){
-   const {current,pending}=this.contest.effort(id);
+   const {current,pending,limit}=this.contest.session(id).generationControls(scope);
    const selected=pending??current;
    const describe=settings=>settings.thinking?settings.reasoningEffort+' · '+budgetLabel(settings.reasoningTokens):'off';
-   const choice=await this.select('思考模式 · 当前 '+describe(current)+(pending?' · 待生效 '+describe(pending):''),
+   const choice=await this.select(label+'思考模式 · 当前 '+describe(current)+(pending?' · 待生效 '+describe(pending):''),
     effortOptions,selected.thinking?selected.reasoningEffort:'off');
    if(!choice)return;
    level=choice.value;
    if(level!=='off'){
-    const limit=this.contest.session(id).config.generationTokens;
     const preset=await this.select('思考预算 · '+level,effortBudgetOptions(selected.reasoningTokens,limit));
     if(!preset)return;
     if(preset.value==='custom'){
@@ -269,10 +281,10 @@ export class CompetitionTerminal {
     }else if(preset.value!=='keep')budget=preset.value;
    }
   }
-  const {settings,pending}=this.contest.effort(id,level,budget);
+  const {settings,pending}=this.contest.effort(id,level,budget,scope);
   const summary=settings.thinking?settings.reasoningEffort+' · '+budgetLabel(settings.reasoningTokens):'关闭';
   this.tab='output';this.detail=null;this.scroll.scrollToEnd();
-  this.notice='思考设置 '+summary+(pending?' · 下一次模型请求生效':' · 已保存');
+  this.notice=label+'思考 '+summary+(pending?' · 下一轮生效':' · 已保存');
  }
  async chooseModel(id){
   const models=await this.contest.models(id);

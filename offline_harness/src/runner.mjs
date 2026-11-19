@@ -56,7 +56,7 @@ export async function runTask(task,config,options={}) {
     if(!Number.isInteger(cfg.reasoningTokens)||(cfg.reasoningTokens!==-1&&cfg.reasoningTokens<1)||cfg.reasoningTokens>=cfg.generationTokens || cfg.generationTokens+cfg.promptTokens+64>cfg.contextTokens) throw Error('Invalid generation/context reserve');
     for(const key of ['reasoningEffort','compactReasoningEffort'])if(cfg[key]!==undefined&&!['low','medium','high','xhigh'].includes(cfg[key]))throw Error('Invalid '+key);
     if(cfg.compactThinking!==undefined&&typeof cfg.compactThinking!=='boolean')throw Error('Invalid compactThinking');
-    if(cfg.compactReasoningTokens!==undefined&&(!Number.isInteger(cfg.compactReasoningTokens)||cfg.compactReasoningTokens<1||cfg.compactReasoningTokens>=(cfg.compactTokens??cfg.generationTokens)))throw Error('Invalid compactReasoningTokens');
+    if(cfg.compactReasoningTokens!==undefined&&(!Number.isInteger(cfg.compactReasoningTokens)||(cfg.compactReasoningTokens!==-1&&cfg.compactReasoningTokens<1)||cfg.compactReasoningTokens>=(cfg.compactTokens??cfg.generationTokens)))throw Error('Invalid compactReasoningTokens');
     if(!['baseline','memory','memory-skills'].includes(cfg.mode)) throw Error('Unknown evaluation mode');
     const frozen=store.events.findLast(e=>e.type==='configuration');
     if(frozen && frozen.data.sha256!==hash(JSON.stringify(cfg))) throw Error('Run configuration changed; start a separate comparison run');

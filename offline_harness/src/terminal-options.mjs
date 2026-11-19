@@ -15,7 +15,7 @@ export const slashCommands=[
  ['cancel','取消当前题的后台命令'],
  ['compact','在本轮结束后压缩上下文'],
  ['context','设置当前会话的窗口和软压缩线'],
- ['effort','选择思考模式、强度和预算'],
+ ['effort','设置正常推理或 Compact 压缩的思考强度和预算'],
  ['model','查看并选择模型'],
  ['env','选择新题使用的运行环境'],
  ['checkpoint','在安全边界保存当前进度'],

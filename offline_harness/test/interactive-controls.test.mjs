@@ -102,6 +102,38 @@ test('effort changes are durable before history, wait for the next request durin
  }finally{gate.resolve();await p.close();fs.rmSync(root,{recursive:true,force:true});}
 });
 
+test('compact thinking is independent and changes at request boundaries for manual and automatic compression',async()=>{
+ const root=temp(),started=deferred(),release=deferred();
+ const p=await fixture(async(n,b,f,res)=>{
+  if(n===1){started.resolve();await release.promise;}
+  done(b,f,res,b.response_format?summary():'Ready');
+ });
+ try{
+  const cfg={...config(root,p.url),compactThinking:false,compactTokens:768};
+  const task={id:'compact-effort',objective:'Summarize the reading notes'};
+  let s=new InteractiveSession(task,cfg,opts);
+  assert.equal(s.generationControls('compact').current.thinking,false);
+  assert.throws(()=>s.requestEffort('high',768,'compact'),/total response limit/);
+  const work=s.runSlice();await started.promise;
+  s.requestEffort('low',128,'compact');s.requestEffort('high',384,'compact');s.requestCompact();
+  assert.equal(s.generationControls('compact').current.thinking,false);
+  release.resolve();await work;
+  const [normal,compact]=generations(p);
+  assert.deepEqual(normal.chat_template_kwargs,{enable_thinking:true,reasoning_effort:'medium'});
+  assert.deepEqual(compact.chat_template_kwargs,{enable_thinking:true,reasoning_effort:'high'});
+  assert.equal(compact.reasoning_budget_tokens,384);
+  s=new InteractiveSession(task,cfg,opts);
+  assert.deepEqual(s.generationControls('compact').current,{thinking:true,reasoningEffort:'high',reasoningTokens:384});
+  s.requestEffort('off',undefined,'compact');
+  s.store.append('message',{role:'assistant',content:[{type:'text',text:'sample '.repeat(9000)}],timestamp:Date.now()});
+  s.enqueue('Continue with a short summary');await s.runSlice();
+  const [automatic,next]=generations(p).slice(-2);
+  assert.ok(automatic.response_format);assert.equal(automatic.chat_template_kwargs.enable_thinking,false);
+  assert.deepEqual(next.chat_template_kwargs,normal.chat_template_kwargs);
+  assert.equal(next.reasoning_budget_tokens,normal.reasoning_budget_tokens);
+ }finally{release.resolve();await p.close();fs.rmSync(root,{recursive:true,force:true});}
+});
+
 for(const template of ['same','changed','unsupported'])test('actual rendered token identity handles '+template+' templates without resetting slots',async()=>{
  const root=temp();const p=await fixture(async(n,b,f,res)=>done(b,f,res),{template});
  try{
