@@ -15,7 +15,7 @@ const theme={borderColor:s=>'\x1b[36m'+s+'\x1b[0m',selectList:selectTheme};
 export {safeText};
 const stringify=v=>safeText(typeof v==='string'?v:JSON.stringify(v,null,2));
 const HELP=`Ctrl+N 创建题目 · Ctrl+L 切换查看 · Ctrl+P 暂停当前题推理 · Ctrl+R 恢复 · Ctrl+C 中断生成并保留缓存
-/start 启动调度   /queue 题目队列   /review 确认答案   /view [题号]   /priority [数值]   /switch [题号]（保存进度并切题）
+/start 启动调度   /queue 题目队列   /review 确认答案   /view [题号]   /delete [题号]   /priority [数值]   /switch [题号]（保存进度并切题）
 /env [环境] 选择新题环境\n/model [编号或ID] 选择模型\n/compact 本轮结束后压缩 · /effort [强度] [思考tokens|-1] 选择思考设置\n/pause  /resume [题号]  /offloadKV 暂停并保存驻留题的 KV 到 RAM\n/offloadKV config [参数=MiB …] 查看或修改 RAM KV 余量及总上限\n/cancel 命令ID  /checkpoint  /feedback 候选ID correct|incorrect|pending 说明
 /tab [面板]  /tool 序号 查看工具输出  /read 文件路径  /archive 消息ID
 /skills [检索词] 查看技能元数据 · /use-skill NAME 将读取请求加入本题消息队列\n/new 创建题目（题意可多行粘贴） /discard 清空当前草稿  /quit 保存退出
@@ -133,6 +133,17 @@ export class CompetitionTerminal {
    else if(cmd==='/queue'){this.tab='queue';this.detail=null;}
    else if(cmd==='/review')await this.review();
    else if(cmd==='/view'){if(args.length>1)throw Error('用法：/view [题号]');if(args[0])this.setView(args[0]);else await this.chooseTask();}
+   else if(cmd==='/delete'){
+    if(args.length>1)throw Error('用法：/delete [题号]');
+    const target=args[0]??await this.pickTask('选择要删除的会话');
+    if(target){
+     const resolved=this.contest.resolveTaskId(target),label=this.contest.taskLabel(resolved),title=this.contest.taskTitle(resolved);
+     await this.contest.delete(resolved);delete this.drafts[resolved];this.live.delete(resolved);
+     if(this.bound===resolved){this.bound=undefined;this.editor.setText('');}
+     if(this.selected===resolved){this.selected=this.contest.records.keys().next().value;this.bound=this.selected;this.editor.setText(this.drafts[this.selected]||'');}
+     this.tab='output';this.detail=null;this.notice='已删除 '+label+' · '+title;this.persist();
+    }
+   }
    else if(cmd==='/priority'){
     if(args.length>1)throw Error('用法：/priority [数值]');
     const task=this.requireTask(),current=this.contest.queue.item(task)?.priority??0;

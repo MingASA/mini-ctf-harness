@@ -84,6 +84,7 @@ Thinking 采样 `temperature=1.0, top_p=0.95, top_k=20`；Non-thinking 为 `0.7,
 Ctrl+N       新建题目，粘贴题意、选择附件、填写目标地址
 /queue       查看所有题目、后台任务、待人工确认的答案
 /view 02     直接查看第 02 题的输出
+/delete 02   删除指定会话、解题容器和工作目录；省略题号时弹出会话选择
 /resume 02   恢复第 02 题；/resume 可先选题
 /review      选择候选并记录平台通过或错误
 /model       选择模型；/model 编号或ID 直接切换
@@ -169,6 +170,22 @@ RAM 检查取 Windows 和 WSL 可用内存中较低的一项，并检查 tmpfs �
 `./mini-ctf --env local-web` 会启动对应 Compose 并预填目标地址。题目镜像需提前拉取或导入；正式解题时使用本地镜像。可添加 `imageArchives` 数组，由启动器导入离线镜像。
 
 Compose 描述的是独立运行的题目服务，例如一个 HTTP 应用和它的数据库。普通附件题由工具容器执行命令，不需要 Compose。给工具容器增加通用依赖时，在 `docker/Dockerfile` 中维护系统包，在 `docker/requirements.txt` 中固定 Python 包版本，然后在联网准备阶段构建新版镜像。运行中的离线容器继续使用创建时指定的镜像。
+
+工具镜像包含 cpio、7z、xz、zstd 等归档工具，以及 binwalk、foremost、exiftool、steghide、zsteg、YARA、ImageMagick、FFmpeg、PDF 和 Office 分析工具。取证工具包括 Volatility 3 和 Sleuth Kit。二进制分析和兼容工具包括 gdb-multiarch、radare2、Ghidra headless、jadx、QEMU user、MinGW、apktool 和 Wine 32/64。系统工具优先使用 Debian Bookworm 官方包，其余上游发布包固定版本和 SHA256。Wine 状态保存在题目工作目录的 `.wine` 中。
+
+解题容器默认内存上限为 2048 MiB，可在 `config.json` 的 `solver.memoryMiB` 中设置为 128–4096 MiB；复杂分析和多个并发题目会相应占用更多内存。容器以工作目录所属用户运行，保留只读根文件系统、能力丢弃和网络隔离。
+
+构建后可以在受限容器中检查基础工具和归档往返（将 `IMAGE` 替换为待检查的镜像 ID）：
+
+```sh
+smoke_work=$(mktemp -d)
+docker run --rm -i --pull=never --network none --read-only --cap-drop ALL \
+  --security-opt no-new-privileges --user "$(id -u):$(id -g)" --memory 2g --pids-limit 128 \
+  --tmpfs /tmp:rw,nosuid,nodev,size=128m --mount "type=bind,src=$smoke_work,dst=/work" \
+  IMAGE sh -s < docker/smoke-test.sh
+```
+
+测试结束后可删除 `smoke_work` 指向的临时目录；Wine 初始化文件保存在该目录中。
 
 ## 验证范围
 

@@ -10,7 +10,7 @@ export function validateSandbox(container, networks, config) {
   if(container.Id!==config.containerId || container.Image!==config.imageId || !container.State?.Running) throw Error('Sandbox identity or state changed');
   if(h.Privileged || h.PidMode==='host' || h.IpcMode==='host' || h.NetworkMode==='host' || h.CapAdd?.length || h.Devices?.length || h.DeviceRequests?.length) throw Error('Privileged sandbox denied');
   if(!h.CapDrop?.some(x=>x.toUpperCase()==='ALL') || !h.SecurityOpt?.some(x=>x.startsWith('no-new-privileges'))) throw Error('Missing sandbox privilege restrictions');
-  if(!h.Memory || h.Memory>1536*1024*1024 || !h.PidsLimit || h.PidsLimit>256) throw Error('Missing sandbox resource limits');
+  if(!h.Memory || h.Memory>4096*1024*1024 || !h.PidsLimit || h.PidsLimit>256) throw Error('Missing sandbox resource limits');
   if(!h.ReadonlyRootfs) throw Error('Sandbox root filesystem must be read-only');
   if(container.Mounts.length!==1 || container.Mounts[0].Destination!=='/work' || container.Mounts[0].Source!==config.workDir || container.Mounts[0].Type!=='bind') throw Error('Unexpected sandbox mount');
   validateNetworkPolicy(container,networks,config);

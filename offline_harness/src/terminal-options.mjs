@@ -6,6 +6,7 @@ export const slashCommands=[
  ['review','选择候选答案并记录判题结果'],
  ['new','创建题目并导入本地附件'],
  ['view','选择要查看的题目'],
+ ['delete','删除会话及其解题容器'],
  ['priority','设置当前题的队列优先级'],
  ['switch','保存进度并切换推理题目'],
  ['pause','暂停当前题的推理'],

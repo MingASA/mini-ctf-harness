@@ -301,3 +301,27 @@ test('new-task wizard keeps drafts and recovers from missing or invalid attachme
   assert.equal(ui.wizard,null);
  }finally{await ui?.close();fs.rmSync(root,{recursive:true,force:true});}
 });
+
+test('/delete supports a direct task number and an interactive session picker',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'pi-delete-ui-'));let c,ui;const deleted=[];
+ try{
+  const provision=async id=>{const workDir=path.join(root,'work',id);fs.mkdirSync(workDir,{recursive:true});return {containerId:id.padEnd(64,'0'),workDir};};
+  const deprovision=async(id,sandbox)=>{deleted.push([id,sandbox.containerId]);fs.rmSync(sandbox.workDir,{recursive:true});return {deleted:true};};
+  c=new Contest({contestDir:path.join(root,'contest'),model:{baseUrl:'http://127.0.0.1:9'}},{testMode:true,guard:()=>{throw Error('No inference');},provision,deprovision,sessionOptions:()=>({broker:{validate:async()=>{}},knowledge:{docs:[]}})});
+  await c.add({id:'alpha',title:'第一题',objective:'fixture'});await c.add({id:'beta',title:'第二题',objective:'fixture'});
+  const terminal=new Terminal();ui=new CompetitionTerminal(c,{terminal});ui.start();
+  await ui.submit('/delete 01');assert.equal(c.records.has('alpha'),false);assert.equal(ui.selected,'beta');assert.match(ui.notice,/已删除 01/);
+  const choosing=ui.submit('/delete');await delay();assert.match(ui.tui.getScreenLines().join('\n'),/选择要删除的会话/);terminal.input('\r');await choosing;
+  assert.equal(c.records.size,0);assert.equal(ui.selected,undefined);assert.deepEqual(deleted.map(x=>x[0]),['alpha','beta']);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(c.root,'tasks.json'))),[]);
+ }finally{await ui?.close();await c?.close();fs.rmSync(root,{recursive:true,force:true});}
+});
+test('failed sandbox cleanup keeps the session and its queue state',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'pi-delete-failure-'));let c;
+ try{
+  c=new Contest({contestDir:path.join(root,'contest'),model:{baseUrl:'http://127.0.0.1:9'}},{testMode:true,guard:()=>{},provision:async id=>{const workDir=path.join(root,'work',id);fs.mkdirSync(workDir,{recursive:true});return {containerId:'a'.repeat(64),workDir};},deprovision:async()=>{throw Error('synthetic cleanup failure');},sessionOptions:()=>({broker:{validate:async()=>{}},knowledge:{docs:[]}})});
+  await c.add({id:'alpha',objective:'fixture'});const before=structuredClone(c.queue.item('alpha'));
+  await assert.rejects(c.delete('alpha'),/synthetic cleanup failure/);
+  assert.equal(c.records.has('alpha'),true);assert.deepEqual(c.queue.item('alpha'),before);assert.ok(fs.existsSync(c.records.get('alpha').config.sandbox.workDir));
+ }finally{await c?.close();fs.rmSync(root,{recursive:true,force:true});}
+});

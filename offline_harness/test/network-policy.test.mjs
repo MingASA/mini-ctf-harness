@@ -126,6 +126,27 @@ assert rejected(lambda:g.plan_install(p3,snapshot(c)))
 print(json.dumps({'tamperCases':len(changes)+2,'secondSolver':True}))
 `,{policy:basePolicy()});assert.equal(result.tamperCases,10);assert(result.secondSolver);
 });
+test('synthetic removal deletes only the selected policy and drops shared hooks when empty',()=>{
+  const result=python(simulation+String.raw`
+def remove(chains,commands):
+    for command in commands:
+        op,name,*rest=command
+        if op=='-D': chains[name].remove(rest)
+        elif op=='-F': chains[name].clear()
+        elif op=='-X': del chains[name]
+        else: raise AssertionError('Unexpected removal '+op)
+c=base();p2={**p,'containerId':'d'*64,'sourceIp':'172.30.90.3'}
+install(c,g.plan_install(p,snapshot(c)));install(c,g.plan_install(p2,snapshot(c)))
+commands=g.plan_remove(p,snapshot(c));remove(c,commands)
+assert g.plan_remove(p,snapshot(c))==[]
+g.verify_saved_rules(p2,snapshot(c))
+assert g.chain_name(p) not in c and g.DISPATCH in c and g.HOST_INPUT in c
+remove(c,g.plan_remove(p2,snapshot(c)))
+assert g.DISPATCH not in c and g.HOST_INPUT not in c
+assert c['INPUT']==base()['INPUT'] and c['DOCKER-USER']==base()['DOCKER-USER']
+print(json.dumps({'firstCommands':len(commands),'clean':True}))
+`,{policy:basePolicy()});assert(result.clean);assert(result.firstCommands>=4);
+});
 test('topology verification rejects changed host IPs, DNS, bridge filtering and privileges',t=>{
   const f=fixture(t);
   const result=python(simulation+String.raw`

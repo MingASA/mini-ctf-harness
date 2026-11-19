@@ -16,8 +16,8 @@ def provision(docker, host, image, work_base, work_dir=None):
     if not work_dir:work.mkdir(parents=True,exist_ok=False)
     if not work.is_dir():raise ValueError('Work directory is not a directory')
     cid=call('run','-d','--name',ident,'--label','qwen.offline-harness=true','--network','none',
-        '--read-only','--cap-drop','ALL','--security-opt','no-new-privileges','--memory','128m','--memory-swap','128m',
-        '--cpus','0.5','--pids-limit','64','--tmpfs','/tmp:rw,nosuid,nodev,size=32m',
+        '--read-only','--cap-drop','ALL','--security-opt','no-new-privileges','--user',f'{os.getuid()}:{os.getgid()}','--memory','2048m','--memory-swap','2048m',
+        '--cpus','0.5','--pids-limit','128','--tmpfs','/tmp:rw,nosuid,nodev,size=128m',
         '--mount',f'type=bind,src={work},dst=/work','--workdir','/work',pinned,'sleep','infinity')
     return {'docker':docker,'dockerHost':host,'containerId':cid,'imageId':pinned,'workDir':str(work)}
 

@@ -13,7 +13,7 @@ export function defaultStartConfig(){
  return {contestDir:path.join(work,'sessions'),modelLease:path.join(work,'model-lease.json'),autoStart:true,environment:'offline',
   model:{mode:'memory-skills',model:'qwen3.8-27b-iq4xs',baseUrl:'http://127.0.0.1:8080',contextTokens:55296,promptTokens:40960,compactSoftTokens:40960,generationTokens:8192,reasoningTokens:-1,reasoningEffort:'medium',safetyTokens:0,compactThinking:true,compactReasoningEffort:'xhigh',compactReasoningTokens:4096,compactTokens:8192,maxTurns:10000,maxGeneratedTokens:10000000,maxSeconds:7200,nativeImages:false,kv:{enabled:false,slot:0,identity:''}},
   runtime:{root:path.join(work,'runtime'),execRoot:path.join(work,'dx'),docker:path.join(work,'bin/docker/docker'),dockerd:path.join(work,'bin/docker/dockerd'),solverImage:'mini-ctf-tools:1',solverArchive:path.join(assets,'solver.tar')},
-  provision:{workBase:path.join(work,'offline-harness/work')},solver:{memoryMiB:512,cpus:1,pids:128,tmpMiB:128},environments:{offline:{type:'offline'},lan:{type:'lan',targetUrl:''}},services:{},importLimits:{maxBytes:209715200,maxFiles:5000}};
+  provision:{workBase:path.join(work,'offline-harness/work')},solver:{memoryMiB:2048,cpus:1,pids:128,tmpMiB:128},environments:{offline:{type:'offline'},lan:{type:'lan',targetUrl:''}},services:{},importLimits:{maxBytes:209715200,maxFiles:5000}};
 }
 export function readStartConfig(file=DEFAULT_START_CONFIG,overrides={}){
  file=path.resolve(file);if(!fs.existsSync(file)){fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,JSON.stringify(defaultStartConfig(),null,2)+'\n',{flag:'wx',mode:0o600});}
@@ -50,6 +50,10 @@ export class Startup {
  async provision(id,{target='',environment=this.environment}={}){
   await this.dockerReady;const workDir=path.join(this.config.provision.workBase,id);fs.mkdirSync(workDir,{recursive:true});
   return this.root('provision',['--task',id,'--work-dir',workDir,'--environment',environment,'--target',target]);
+ }
+ async deprovision(id,sandbox){
+  await this.dockerReady;
+  return this.root('deprovision',['--task',id,'--work-dir',sandbox.workDir,'--container-id',sandbox.containerId]);
  }
  attach(contest){
   this.contest=contest;if(contest.catalog){const profile=contest.catalog.resolve(this.config.initialModel??contest.defaultModel.modelSelection??contest.defaultModel.model,contest.defaultModel);contest.pendingDefaultModel=contest.catalog.settings(profile,contest.defaultModel,{projectorDevice:this.config.initialProjectorDevice});}

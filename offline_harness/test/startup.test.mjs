@@ -20,6 +20,7 @@ test('UI boot gate allows input while Docker starts; tools become available befo
   const config=fixture(root),c=contest();const startup=new Startup(config,'fixture.json',{executeFn:async(cmd,args)=>{const action=args[args.indexOf('--config')-1];seen.push({action,args});if(action==='prepare')await gate;return {stdout:JSON.stringify(action==='provision'?{containerId:'new-solver'}:{ready:true})};}});startup.attach(c);
   const pending=startup.start(c);assert.equal(c.booting,true);assert.equal(c.modelLoaded,undefined);release();await pending;assert.equal(c.booting,false);assert.equal(c.modelLoaded,true);assert.equal(c.enabled,true);
   assert.deepEqual(seen.map(x=>x.action),['prepare','environment']);const solver=await startup.provision('fixture',{target:'http://192.168.2.3:8000',environment:'lan'});assert.equal(solver.containerId,'new-solver');assert.ok(seen.at(-1).args.includes('http://192.168.2.3:8000'));assert.ok(seen.at(-1).args.includes('lan'));
+  await startup.deprovision('fixture',{containerId:'a'.repeat(64),workDir:path.join(config.provision.workBase,'fixture')});assert.equal(seen.at(-1).action,'deprovision');assert.ok(seen.at(-1).args.includes('a'.repeat(64)));
  }finally{release();fs.rmSync(root,{recursive:true,force:true});}
 });
 test('failure stays visible, does not start generation, and initialization can be retried',async()=>{

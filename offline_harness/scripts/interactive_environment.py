@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Manage this installation's Docker daemon and task containers."""
-import argparse,fcntl,hashlib,ipaddress,json,os,pathlib,re,shlex,subprocess,uuid,time
+import argparse,fcntl,hashlib,ipaddress,json,os,pathlib,re,shlex,shutil,subprocess,uuid,time
 
 def call(argv,env=None,timeout=120):
     result=subprocess.run(list(map(str,argv)),text=True,capture_output=True,env=env,timeout=timeout)
@@ -78,9 +78,10 @@ class Environment:
             source=next((str(ip) for ip in list(ipaddress.ip_network(subnet).hosts())[1:] if str(ip) not in used),None)
             if not source:raise RuntimeError('LAN solver subnet has no free address')
         elif kind!='offline':raise ValueError('Unknown environment type')
-        limits=self.c.get('solver',{});memory=int(limits.get('memoryMiB',512));pids=int(limits.get('pids',128));tmp=int(limits.get('tmpMiB',128))
-        if not 128<=memory<=1536 or not 32<=pids<=256 or not 16<=tmp<=512:raise ValueError('Solver resource configuration is out of range')
-        args=['create','--pull=never','--name','ctf-front-'+task+'-'+uuid.uuid4().hex[:8],'--label','qwen.interactive=true','--network',network['Id'] if network else 'none','--read-only','--cap-drop','ALL','--security-opt','no-new-privileges','--memory',str(memory)+'m','--memory-swap',str(memory)+'m','--cpus',str(limits.get('cpus',1)),'--pids-limit',str(pids),'--tmpfs','/tmp:rw,nosuid,nodev,size='+str(tmp)+'m','--mount','type=bind,src='+str(work)+',dst=/work','--workdir','/work']
+        limits=self.c.get('solver',{});memory=int(limits.get('memoryMiB',2048));pids=int(limits.get('pids',128));tmp=int(limits.get('tmpMiB',128))
+        if not 128<=memory<=4096 or not 32<=pids<=256 or not 16<=tmp<=512:raise ValueError('Solver resource configuration is out of range')
+        os.chown(work,self.c['uid'],self.c['gid'])
+        args=['create','--pull=never','--name','ctf-front-'+task+'-'+uuid.uuid4().hex[:8],'--label','qwen.interactive=true','--network',network['Id'] if network else 'none','--read-only','--cap-drop','ALL','--security-opt','no-new-privileges','--user',str(self.c['uid'])+':'+str(self.c['gid']),'--memory',str(memory)+'m','--memory-swap',str(memory)+'m','--cpus',str(limits.get('cpus',1)),'--pids-limit',str(pids),'--tmpfs','/tmp:rw,nosuid,nodev,size='+str(tmp)+'m','--mount','type=bind,src='+str(work)+',dst=/work','--workdir','/work']
         if network:args.extend(['--dns','127.0.0.1'])
         if source:args.extend(['--ip',source,'--sysctl','net.ipv6.conf.all.disable_ipv6=1','--sysctl','net.ipv6.conf.default.disable_ipv6=1'])
         cid=self.docker(*args,self.r['solverImage'],'sleep','infinity');receipt={'docker':self.bin,'dockerHost':self.host,'containerId':cid,'imageId':self.r['solverImage'],'workDir':str(work)}
@@ -98,14 +99,41 @@ class Environment:
             helper=self.root/'policies'/(cid+'-verify');command=['sudo','-n','python3',str(guard),'verify',*args]
             if self.c.get('wslDistribution'):command=['/mnt/c/Windows/System32/wsl.exe','--distribution',self.c['wslDistribution'],'--user','root','--exec','nsenter','--mount=/proc/1/ns/mnt','--','python3',str(guard),'verify',*args]
             helper.write_text('#!/bin/sh\ncd '+shlex.quote(self.c.get('hostCwd','/'))+'\nexec '+' '.join(map(shlex.quote,command))+'\n');helper.chmod(0o755);receipt['egress']={'mode':'lan','policyFile':str(policy_file),'policySha256':digest,'verifyExecutable':str(helper)}
-        self.docker('start',cid);atomic(self.root/'sandboxes'/(task+'.json'),receipt);os.chown(work,self.c['uid'],self.c['gid']);return receipt
+        self.docker('start',cid);atomic(self.root/'sandboxes'/(task+'.json'),receipt);return receipt
+    def deprovision(self,task,work_dir,container_id):
+        if not re.fullmatch('[A-Za-z0-9_-]{1,100}',task):raise ValueError('Invalid task ID')
+        if not re.fullmatch('[0-9a-f]{64}',container_id or ''):raise ValueError('Full container identity required')
+        base=pathlib.Path(self.c['provision']['workBase']).resolve();work=pathlib.Path(work_dir).resolve(strict=True)
+        if '/offline-harness/work' not in str(base) or work!=base/task or not work.is_relative_to(base):raise ValueError('Invalid task work path')
+        receipt_file=self.root/'sandboxes'/(task+'.json')
+        if not receipt_file.is_file() or receipt_file.is_symlink():raise ValueError('Managed sandbox receipt is missing')
+        receipt=json.loads(receipt_file.read_text())
+        if receipt.get('containerId')!=container_id or pathlib.Path(receipt.get('workDir','')).resolve()!=work:raise ValueError('Sandbox receipt identity mismatch')
+        container=json.loads(self.docker('inspect',container_id))[0]
+        if container.get('Id')!=container_id or container.get('Image')!=receipt.get('imageId') or container.get('Config',{}).get('Labels',{}).get('qwen.interactive')!='true':raise ValueError('Container is not the recorded managed solver')
+        mounts=container.get('Mounts',[])
+        if len(mounts)!=1 or mounts[0].get('Type')!='bind' or pathlib.Path(mounts[0].get('Source','')).resolve()!=work or mounts[0].get('Destination')!='/work':raise ValueError('Solver bind mount identity mismatch')
+        if container.get('State',{}).get('Running'):self.docker('stop','--time','10',container_id)
+        egress=receipt.get('egress')
+        if egress:
+            policy=pathlib.Path(egress.get('policyFile',''))
+            helper=pathlib.Path(egress.get('verifyExecutable',''))
+            if policy.parent!=self.root/'policies' or helper.parent!=self.root/'policies':raise ValueError('LAN policy path is outside the managed directory')
+            guard=pathlib.Path(__file__).with_name('network_guard.py')
+            args=['--policy',str(policy),'--expect-sha256',egress['policySha256'],'--docker',self.bin,'--docker-host',self.host,'--iptables','/usr/sbin/iptables-legacy','--iptables-save','/usr/sbin/iptables-legacy-save']
+            call(['python3',guard,'remove','--remove',*args])
+        self.docker('rm',container_id)
+        if egress:
+            policy.unlink();helper.unlink(missing_ok=True)
+        receipt_file.unlink();shutil.rmtree(work)
+        return {'deleted':True,'task':task,'containerId':container_id,'workDir':str(work)}
 
 def main():
-    p=argparse.ArgumentParser();p.add_argument('action',choices=['daemon','prepare','environment','provision']);p.add_argument('--config',required=True);p.add_argument('--task');p.add_argument('--work-dir');p.add_argument('--environment',default='offline');p.add_argument('--target',default='');a=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('action',choices=['daemon','prepare','environment','provision','deprovision']);p.add_argument('--config',required=True);p.add_argument('--task');p.add_argument('--work-dir');p.add_argument('--container-id');p.add_argument('--environment',default='offline');p.add_argument('--target',default='');a=p.parse_args()
     if os.geteuid()!=0:raise SystemExit('Use the configured operator WSL root entry point')
     env=Environment(json.loads(pathlib.Path(a.config).read_text()));env.root.mkdir(parents=True,exist_ok=True)
     with (env.root/'operator.lock').open('a+') as lock:
-        fcntl.flock(lock,fcntl.LOCK_EX);result=env.prepare(daemon_only=a.action=='daemon') if a.action in ('daemon','prepare') else env.environment(a.environment) if a.action=='environment' else env.provision(a.task,a.work_dir,a.environment,a.target)
+        fcntl.flock(lock,fcntl.LOCK_EX);result=env.prepare(daemon_only=a.action=='daemon') if a.action in ('daemon','prepare') else env.environment(a.environment) if a.action=='environment' else env.deprovision(a.task,a.work_dir,a.container_id) if a.action=='deprovision' else env.provision(a.task,a.work_dir,a.environment,a.target)
     print(json.dumps(result))
 if __name__=='__main__':
     try:main()
