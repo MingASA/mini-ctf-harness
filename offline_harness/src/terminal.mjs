@@ -3,6 +3,7 @@ import path from 'node:path';
 import {TuiAltScreen,ProcessTerminal,Editor,Input,Text,VStack,HStack,ScrollView,SelectList,Container,matchesKey,CombinedAutocompleteProvider} from '@earendil-works/pi-tui';
 import {outputRoot} from './tool-output.mjs';
 import {sessionUsage,contextLine,usageLine,budgetText} from './session-usage.mjs';
+import {windowSettings} from './session-window.mjs';
 import {safeText,toolResultText,transcriptText} from './transcript-display.mjs';
 import {atomic} from './store.mjs';
 import {AttachmentInputError,resolveAttachmentPath} from './contest.mjs';
@@ -17,6 +18,7 @@ const stringify=v=>safeText(typeof v==='string'?v:JSON.stringify(v,null,2));
 const HELP=`Ctrl+N 创建题目 · Ctrl+L 切换查看 · Ctrl+P 暂停当前题推理 · Ctrl+R 恢复 · Ctrl+C 中断生成并保留缓存
 /start 启动调度   /queue 题目队列   /review 确认答案   /view [题号]   /delete [题号]   /priority [数值]   /switch [题号]（保存进度并切题）
 /env [环境] 选择新题环境\n/model [编号或ID] 选择模型\n/compact 本轮结束后压缩 · /effort [强度] [思考tokens|-1] 选择思考设置\n/pause  /resume [题号]  /offloadKV 暂停并保存驻留题的 KV 到 RAM\n/offloadKV config [参数=MiB …] 查看或修改 RAM KV 余量及总上限\n/cancel 命令ID  /checkpoint  /feedback 候选ID correct|incorrect|pending 说明
+/context [窗口 软压缩线] 调整当前会话，例如 /context 64K 48K
 /tab [面板]  /tool 序号 查看工具输出  /read 文件路径  /archive 消息ID
 /skills [检索词] 查看技能元数据 · /use-skill NAME 将读取请求加入本题消息队列\n/new 创建题目（题意可多行粘贴） /discard 清空当前草稿  /quit 保存退出
 直接输入补充消息；Enter 发送，Shift+Enter 换行；已送达表示服务已接受包含该消息的请求。`;
@@ -193,6 +195,7 @@ export class CompetitionTerminal {
      .catch(error=>{this.notice='模型切换未完成：'+error.message;this.render();});
    }
    else if(cmd==='/compact'){this.contest.compact(this.requireTask());this.notice='Compact 已排队，将在完整轮次边界执行。';}
+   else if(cmd==='/context')await this.chooseContext(this.requireTask(),args);
    else if(cmd==='/effort')await this.chooseEffort(this.requireTask(),args);
    else if(cmd==='/cancel'){
     if(args.length>1)throw Error('用法：/cancel [命令ID]');
@@ -225,6 +228,24 @@ export class CompetitionTerminal {
    const id=this.bound||this.requireTask();const item=this.contest.enqueue(id,text);this.notice=`已排队 → ${this.contest.taskLabel(id)} · ${item.id}`;
   }
   if(this.bound)delete this.drafts[this.bound];this.editor.setText('');this.bound=this.selected;this.editor.setText(this.drafts[this.bound]||'');this.persist();this.render();
+ }
+ async chooseContext(id,args){
+  const session=this.contest.session(id);
+  if(!args.length){
+   const usage=sessionUsage(session.store,session.config,session.sessionWindow);
+   const title=`会话窗口 ${usage.total} · 软线 ${usage.soft} · 后端容量 ${session.config.contextTokens}`;
+   const raw=await this.inputValue(title,'输入窗口和软线，例如 64K 48K',value=>{
+    const fields=value.split(/\s+/);
+    if(fields.length!==2)return '请输入窗口和软压缩线两个数值';
+    try{windowSettings(session.config,...fields);return null;}catch(error){return error.message;}
+   });
+   if(raw===undefined)return;
+   args=raw.split(/\s+/);
+  }
+  if(args.length!==2)throw Error('用法：/context [窗口 软压缩线]，例如 /context 64K 48K');
+  const result=session.requestWindow(...args);
+  this.tab='budget';this.detail=null;
+  this.notice=result.pending?'已保存请求，将在下一次轮次边界校验并应用':'已保存当前会话的窗口和软压缩线';
  }
  async chooseEffort(id,args){
   if(args.length>2)throw Error('用法：/effort [强度] [思考tokens|-1]');
@@ -432,7 +453,7 @@ export class CompetitionTerminal {
    else content=stringify({pending:s.pendingControl('compact')?.seq??null,lastResult:s.store.events.findLast(e=>e.type==='compact_resolved')?.data,summary:s.store.events.findLast(e=>e.type==='compact_commit')?.data.checkpoint?.summary??'尚无 Compact 摘要',partial:s.store.events.findLast(e=>e.type==='model_auxiliary_interrupted')?.data});
   }
   if(content!==null)this.content.setText(safeText(content).slice(-160000));
-  const usage=s?sessionUsage(s.store,s.config):null;
+  const usage=s?sessionUsage(s.store,s.config,s.sessionWindow):null;
   this.binding.setText(safeText(this.wizard?`创建 ${this.wizard.step+1}/4：${['题目标题','粘贴题意（支持多行）','附件：文件或目录路径 · /browse 选择 · - 跳过','内网目标 URL 或 - 跳过'][this.wizard.step]} · /back 上一步 · /cancel 取消`:`输入绑定 → ${c.taskLabel(this.bound||this.selected)||'无题目'} · 面板 ${this.tab}${usage?' · '+usageLine(usage)+'\n'+contextLine(usage):''}`));
   this.footer.setText(safeText((this.notice||c.notice||'Ctrl+C 中断生成 · Ctrl+R 恢复 · /compact 压缩 · /effort 调整思考 · /quit 退出')+'\n'+(c.notice&&this.notice?c.notice:'暂停推理保留命令运行；/cancel 命令ID 单独取消。')));
   this.tui.requestRender();

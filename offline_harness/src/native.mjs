@@ -106,10 +106,36 @@ export class NativeClient {
     }catch(error){if(signal?.aborted)throw error;result.error=error.message;}
     this.store.append('generation_prefix_check',{...result,from,to,from_sha:settingsHash(from),to_sha:settingsHash(to),history,model_reloaded:false,kv_erased:false});
   }
-  async compactNow(messages,signal){
+  async fitWindow(messages,settings,generationTokens,signal,isCurrent=()=>true){
+    const cm=this.context,ordinary=cm.ordinary(messages),system=getCurrentSystemMessage(messages);
+    const fits=async(checkpoint,restoredTokens)=>{
+      const baseline=this.config.mode==='baseline';
+      const candidate=baseline?messages:cm.assemble(system,ordinary,checkpoint);
+      const count=restoredTokens??await this.count(wire(candidate),signal);
+      if(!Number.isSafeInteger(count)||count<1)throw Error('Invalid native token count');
+      const available=settings.contextTokens-(this.config.safetyTokens??2048);
+      if(count+generationTokens>available||count>=settings.compactSoftTokens)return false;
+      if(baseline)return count<=this.config.promptTokens;
+      const output=this.config.compactTokens??4096;
+      const envelope=await this.count(cm.compactInput(system,ordinary,checkpoint).request,signal,{kind:'compact',maxTokens:output});
+      if(!Number.isSafeInteger(envelope)||envelope<1)throw Error('Invalid native compact token count');
+      return envelope+output+256<available;
+    };
+    if(await fits(cm.checkpoint()))return;
+    const noRoom='当前历史和输出预留无法放入新窗口，保留原设置';
+    if(!isCurrent())return;
+    if(this.config.mode==='baseline')throw Error(noRoom);
+    const compact=await this.compactNow(messages,signal,async(checkpoint,tokens)=>{
+      if(!await fits(checkpoint,tokens))throw Error(noRoom);
+      signal?.throwIfAborted();
+      if(!isCurrent())throw Error('窗口请求已被替换');
+    });
+    if(compact.status!=='committed')throw Error(noRoom);
+  }
+  async compactNow(messages,signal,validateCheckpoint){
     const ordinary=this.context.ordinary(messages);if(ordinary.length<2)return {status:'no_history'};
     const plan=this.context.compactInput(getCurrentSystemMessage(messages),ordinary,this.context.checkpoint());if(plan.cut<=plan.oldCut)return {status:'no_new_history'};
-    const checkpoint=await this.context.compact(getCurrentSystemMessage(messages),ordinary,(input,opts)=>this.count(input,signal,opts),(input,opts)=>this.complete(input,{...opts,signal}));
+    const checkpoint=await this.context.compact(getCurrentSystemMessage(messages),ordinary,(input,opts)=>this.count(input,signal,opts),(input,opts)=>this.complete(input,{...opts,signal}),validateCheckpoint);
     this.context.forceCompact=false;return {status:'committed',checkpoint};
   }
   async complete(input,{kind,maxTokens,signal}={}) {
@@ -176,7 +202,11 @@ export class NativeClient {
       }
       if(route==='/health' && data.status!=='ok') throw Error('Native model is not ready');
       if(route==='/slots' && (!Array.isArray(data) || data.some(x=>x.is_processing))) throw Error('Native model is already processing another request');
-      if(route==='/props' && data.default_generation_settings?.n_ctx!==this.config.contextTokens) throw Error('Native engine context does not match frozen run configuration');
+      if(route==='/slots'&&this.config.engineContextTokens){
+        const slot=data.find(s=>s.id===this.config.nativeSlot);
+        if(slot?.n_ctx!==undefined&&slot.n_ctx<this.config.engineContextTokens)throw Error('Native slot is smaller than the configured engine window');
+      }
+      if(route==='/props' && data.default_generation_settings?.n_ctx!==(this.config.engineContextTokens??this.config.contextTokens)) throw Error('Native engine context does not match frozen run configuration');
       this.store.append('native_preflight',{route,checked_at:Date.now(),
         context_tokens:route==='/props'?data.default_generation_settings.n_ctx:undefined,
         slots:route==='/slots'?data.map(s=>({id:s.id,is_processing:s.is_processing,n_ctx:s.n_ctx})):undefined});

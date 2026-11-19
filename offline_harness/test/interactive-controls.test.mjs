@@ -34,6 +34,46 @@ async function fixture(script,{template='changed'}={}){
 const done=(b,f,r,text='Ready')=>{f({content:text},'stop',{prompt_tokens:tokens(b),completion_tokens:10});r.end('data: [DONE]\n\n');};
 const generations=p=>p.requests.filter(r=>r.route==='/v1/chat/completions').map(r=>r.body);
 
+test('a per-session window changes at a turn boundary on the same backend and survives reopening',async()=>{
+ const root=temp(),ready=deferred(),gate=deferred();
+ const p=await fixture(async(n,b,f,res)=>{if(n===1){ready.resolve();await gate.promise;}done(b,f,res);});
+ try{
+  const cfg=config(root,p.url),task={id:'window',objective:'Record the text sample'};
+  let s=new InteractiveSession(task,cfg,opts);
+  assert.throws(()=>s.requestWindow('32K','12K'),/超过后端/);
+  assert.throws(()=>s.requestWindow('16K','16K'),/预留/);
+  assert.equal(s.requestWindow('16k','10K').pending,false);
+  const work=s.runSlice();await ready.promise;
+  s.requestWindow('20K','14K');s.requestWindow('24K','16K');
+  assert.equal(s.sessionWindow.contextTokens,16384);
+  s.enqueue('Read the next sample');gate.resolve();await work;
+  const budgets=s.store.events.filter(e=>e.type==='context_budget').map(e=>e.data);
+  assert.deepEqual(budgets.map(b=>[b.engine_context,b.session_context,b.soft_limit]),[[30000,16384,10240],[30000,24576,16384]]);
+  assert.equal(p.requests.filter(r=>r.route==='/props').length,1);
+  s=new InteractiveSession(task,cfg,opts);
+  assert.equal(s.config.contextTokens,30000);assert.equal(s.sessionWindow.contextTokens,24576);
+  s.selectModel({...cfg,contextTokens:27000},{});
+  assert.equal(new InteractiveSession(task,cfg,opts).sessionWindow,null);
+ }finally{gate.resolve();await p.close();fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('shrinking compacts using the prior window and rejects an unusable target without committing a new checkpoint',async()=>{
+ const root=temp(),p=await fixture(async(n,b,f,res)=>done(b,f,res,b.response_format?summary():'OK'));
+ try{
+  const cfg=config(root,p.url),s=new InteractiveSession({id:'shrink',objective:'Summarize a sample'},cfg,opts);
+  await s.runSlice();
+  s.store.append('message',{role:'assistant',content:[{type:'text',text:'sample '.repeat(6000)}],timestamp:Date.now()});
+  s.requestWindow('9K','4K');await s.runSlice({maintenanceOnly:true});
+  assert.equal(s.sessionWindow?.contextTokens,9216);
+  assert.equal(s.store.events.filter(e=>e.type==='compact_commit').length,1);
+  s.store.append('message',{role:'assistant',content:[{type:'text',text:'sample'}],timestamp:Date.now()});
+  s.requestWindow('8K','256');await s.runSlice({maintenanceOnly:true});
+  assert.equal(s.sessionWindow.contextTokens,9216);
+  assert.equal(s.store.events.filter(e=>e.type==='compact_commit').length,1);
+  assert.ok(s.store.events.some(e=>e.type==='window_failed'));
+ }finally{await p.close();fs.rmSync(root,{recursive:true,force:true});}
+});
+
 test('operator interrupt retains exact reasoning, text and raw tool drafts across restart; resume never replays drafts',async()=>{
  const root=temp(),ready=deferred();let commands=0;
  const p=await fixture(async(n,b,f,res)=>{if(n===1){f({reasoning_content:'先核对 A，再验证 B。',content:'已得到的部分结论',tool_calls:[{index:0,id:'draft',function:{name:'run_command',arguments:'{"command":"must not execute"'}}]});ready.resolve();await new Promise(r=>res.once('close',r));}else done(b,f,res);});

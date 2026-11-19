@@ -15,6 +15,7 @@ import {buildTools} from './tools.mjs';
 import {presentMessages,commandOutput,boundedText,recordCursor} from './tool-output.mjs';
 import {systemPrompt,validateTask} from './runner.mjs';
 import {groups} from './context.mjs';
+import {lastWindowEvent,windowSettings} from './session-window.mjs';
 import {recoverInterruptedTools} from './resume-tools.mjs';
 import {LocalModelRecovery} from './local-model.mjs';
 
@@ -32,6 +33,8 @@ export class InteractiveSession extends EventEmitter {
   if(!existing)this.store.append('interactive_task',{...frozen,sha256:hash(JSON.stringify(frozen))});
   this.compactProfile={compactReasoningEffort:this.config.compactReasoningEffort??this.config.reasoningEffort??'medium',compactReasoningTokens:this.config.compactReasoningTokens??4096};
   this.applyEffort();this.replayModel();
+  const applied=this.store.events.findLast(e=>e.type==='window_applied'||e.type==='model_changed');
+  this.sessionWindow=applied?.type==='window_applied'?applied.data.settings:null;
   this.broker=options.broker||new DockerBroker(this.config.sandbox,this.store);
   this.knowledge=options.knowledge||new Skills(this.config.skillsDir);
   this.remote=options.remote||{};this.status='idle';this.agent=null;this.pauseRequested=false;this.yieldRequested=false;
@@ -71,7 +74,35 @@ export class InteractiveSession extends EventEmitter {
  selectModel(settings,receipt){
   if(this.running)throw Error('Wait for the interrupted round to finish before switching models');
   this.store.append('model_changed',{from:{model:this.config.model,baseUrl:this.config.baseUrl},settings,receipt});Object.assign(this.config,settings);
+  this.sessionWindow=null;
   this.localModel=this.config.localRecovery?new LocalModelRecovery(this.config.localRecovery,this.store):null;this.emit('change');
+ }
+ windowRequest(){
+  const last=lastWindowEvent(this.store);
+  return last?.type==='window_requested'?last:null;
+ }
+ requestWindow(window,soft){
+  const settings=windowSettings(this.config,window,soft);
+  const unused=!this.running&&!this.store.events.some(e=>e.type==='message'||e.type==='model_request');
+  if(unused){this.store.append('window_applied',{settings});this.sessionWindow=settings;}
+  else this.store.append('window_requested',{settings});
+  this.emit('change');return {settings,pending:!unused};
+ }
+ async applyWindow(client,messages){
+  const request=this.windowRequest();
+  if(!request||this.pauseRequested)return;
+  const settings=request.data.settings;
+  try{
+   await client.fitWindow(messages,settings,this.config.generationTokens,this.requestSignal,()=>this.windowRequest()===request);
+   this.requestSignal?.throwIfAborted();
+  }catch(error){
+   if(this.requestSignal?.aborted)throw error;
+   if(this.windowRequest()===request)this.store.append('window_failed',{request_seq:request.seq,error:error.message});
+   this.emit('change');return;
+  }
+  if(this.windowRequest()!==request)return;
+  this.store.append('window_applied',{request_seq:request.seq,settings});
+  this.sessionWindow=settings;Object.assign(client.config,settings,{compactHardTokens:null});this.emit('change');
  }
  generationControls(){return {current:generationSettings(this.config),pending:this.pendingControl('effort')?.data.settings,compact:this.pendingControl('compact')?.seq??null};}
  pendingControl(kind){return this.store.events.findLast(e=>e.type===kind+'_requested'&&!this.store.events.some(x=>x.type===kind+'_resolved'&&x.data.request_seq===e.seq));}
@@ -191,7 +222,8 @@ export class InteractiveSession extends EventEmitter {
   taskClock(this.store,this.config,{start:true});
   const b=this.budget();if(!b.tokensRemaining||!b.turnsRemaining||b.millisecondsRemaining<=stopReserveMs(this.config))return {status:'budget_exhausted'};
   await this.broker.validate();this.operatorController.signal.throwIfAborted();this.applyEffort();
-  const cfg={...this.config,...this.compactProfile,nativeSlot:this.config.kv?.slot??this.config.nativeSlot??0};
+  const cfg={...this.config,...this.sessionWindow,engineContextTokens:this.config.contextTokens,...this.compactProfile,nativeSlot:this.config.kv?.slot??this.config.nativeSlot??0};
+  if(this.sessionWindow)cfg.compactHardTokens=null;
   const client=new NativeClient(cfg,this.store,{fetchFn:this.options.fetchFn||fetch,localRecovery:this.localModel,operatorSignal:this.operatorController.signal,requestSignal:this.requestSignal,onAuxiliary:event=>this.emit('auxiliary',event),onAccepted:e=>this.inbox.accepted(e),guard:({activeRequestId}={})=>{
    this.guard();if(this.pauseRequested)throw Error('Inference paused');
    const budget=this.budget(activeRequestId);if(!budget.turnsRemaining||!budget.tokensRemaining||budget.millisecondsRemaining<=stopReserveMs(this.config))throw Error('Run budget exhausted');
@@ -206,6 +238,7 @@ export class InteractiveSession extends EventEmitter {
   this.solveSegment=beginSolve(this.store,this.config);if(this.solveSegment&&!this.solveHeartbeat)this.solveHeartbeat=setInterval(()=>checkpointSolve(this.store,this.config,this.solveSegment),1000);if(this.solveHeartbeat)this.solveHeartbeat.unref();
   this.solveTimer=setTimeout(()=>{this.budgetTimedOut=true;this.pauseRequested=true;this.budgetController.abort();this.agent?.abort();},Math.max(0,this.budget().millisecondsRemaining-stopReserveMs(this.config)));
   await this.compactRequested(client,messages,this.requestSignal);
+  await this.applyWindow(client,messages);
   if(maintenanceOnly){const result={status:'awaiting_input',dependencies:this.dependencies(),budget:this.budget()};this.status=result.status;return result;}
   if(messages.at(-1)?.harnessOperatorInterrupted){const lastEvent=this.store.events.findLast(e=>e.type==='message'&&e.data.harnessOperatorInterrupted);this.enqueue('Continue from the saved interrupted response. Its tool drafts were not executed. Inspect existing tool receipts before issuing a fresh call.',{id:'interrupt-'+lastEvent.seq,kind:'observation'});messages=this.inbox.mount(messages);}
   const last=messages.at(-1);
@@ -214,13 +247,19 @@ export class InteractiveSession extends EventEmitter {
   const model={id:cfg.model,name:cfg.model,api:'openai-completions',provider:'local-qwen',baseUrl:cfg.baseUrl,reasoning:true,input:cfg.nativeImages?['text','image']:['text'],contextWindow:cfg.contextTokens,maxTokens:cfg.generationTokens,cost:{input:0,output:0,cacheRead:0,cacheWrite:0}};
   let outcome='ready';
   const agent=new Agent({initialState:{systemPrompt:this.systemPrompt(),model,tools:this.tools(),messages,thinkingLevel:cfg.reasoningEffort??'medium'},identity:{attribution:null},toolExecution:'sequential',streamFn:client.stream,
-   prepareRequest:async({context})=>{this.applyEffort();Object.assign(cfg,generationSettings(this.config));return {context:{...context,messages:this.inbox.mount(context.messages)}};},
+   prepareRequest:async({context})=>{
+    this.applyEffort();Object.assign(cfg,generationSettings(this.config));
+    const mounted=this.inbox.mount(context.messages);await this.applyWindow(client,mounted);
+    model.contextWindow=cfg.contextTokens;
+    return {context:{...context,messages:mounted}};
+   },
    beforeToolCall:()=>this.pauseRequested?{block:true,terminate:true,reason:'Operator paused inference; tool was not executed'}:this.store.pending().length?{block:true,terminate:true,reason:'Earlier tool outcome is uncertain'}:undefined,
    finishTurn:async({message,context})=>{
     if(this.pauseRequested){outcome=this.candidates().some(x=>x.feedback?.status==='correct')?'correct':this.budgetTimedOut?'budget_exhausted':'paused';return {action:'end'};}
     if(['error','aborted'].includes(message.stopReason)||this.store.pending().length){outcome='needs_review';return {action:'end'};}
     this.applyEffort();
     await this.compactRequested(client,context.messages,this.requestSignal);
+    await this.applyWindow(client,context.messages);
     if(this.pauseRequested){outcome=this.budgetTimedOut?'budget_exhausted':'paused';return {action:'end'};}
     const remaining=this.budget();if(!remaining.tokensRemaining||!remaining.turnsRemaining){outcome='budget_exhausted';return {action:'end'};}
     if(this.yieldRequested){outcome='ready';return {action:'end'};}

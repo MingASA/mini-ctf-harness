@@ -44,6 +44,16 @@ test('slash completion describes effort inline and Enter opens a picker with a r
   const priority=ui.submit('/priority');await delay();assert.match(screen(),/调整队列优先级/);
   terminal.input('1');terminal.input('5');terminal.input('\r');await priority;
   assert.equal(c.queue.item('fixture').priority,15);
+  session.running=false;
+  const window=ui.submit('/context');await delay();
+  assert.match(screen(),/后端容量/);
+  for(const key of '32K 16K')terminal.input(key);
+  terminal.input('\r');await window;
+  assert.equal(session.sessionWindow.contextTokens,32768);
+  await ui.submit('/context 48K 32K');ui.renderNow();
+  assert.match(ui.content.text,/软压缩线 32,768 tokens · 上下文总长 49,152 tokens/);
+  const cancelWindow=ui.submit('/context');await delay();terminal.input('\x1b');await cancelWindow;
+  assert.equal(session.sessionWindow.contextTokens,49152);
  }finally{if(session)session.running=false;await ui?.close();await c?.close();fs.rmSync(root,{recursive:true,force:true});}
 });
 
