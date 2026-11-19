@@ -47,11 +47,11 @@ def rebuild_solver(config,config_file,env):
     run([docker,'build','--network=host','--pull','--tag','mini-ctf-tools:1',ROOT/'docker'],env=docker_env)
     config['runtime']['solverImage']=json.loads(subprocess.check_output([docker,'image','inspect','mini-ctf-tools:1'],env=docker_env,text=True))[0]['Id']
 
-def apply(old_head):
+def apply(old_head,btw=False,cuda_toolkit=None):
     state_file=ROOT/'.install.json'
     if not state_file.exists():raise RuntimeError('Run ./mini-ctf install before updating')
     state=json.loads(state_file.read_text());data=pathlib.Path(state['data_dir']).resolve();config_file=pathlib.Path(state['config']).resolve()
-    config=json.loads(config_file.read_text());head=output(['git','rev-parse','HEAD'])
+    original=config_file.read_bytes();config=json.loads(original);head=output(['git','rev-parse','HEAD'])
     paths=[] if old_head==head else output(['git','diff','--name-only',old_head,head]).splitlines()
     actions=changed_actions(paths)
     workspace=pathlib.Path(state['workspace']);env=dict(os.environ,TMPDIR=str(workspace/'tmp'),npm_config_cache=str(workspace/'cache/npm'))
@@ -60,21 +60,33 @@ def apply(old_head):
     sync_model_profiles(data,config)
     if actions['dependencies'] or not (ROOT/'offline_harness/node_modules').exists():node_dependencies(state,env)
     if actions['solver_image']:rebuild_solver(config,config_file,env)
+    backend_paths={'installer/btw_backend.py','installer/cuda-toolkit.json','installer/assets.json',
+        'offline_harness/patches/llama-b12144-kv-cells.patch','offline_harness/patches/llama-b12144-btw.patch',
+        'offline_harness/scripts/build-kv-backend.sh'}
+    if btw or ((config.get('modelRuntime',{}).get('btw') or {}).get('enabled') and backend_paths.intersection(paths)):
+        from btw_backend import enable_btw_backend
+        enable_btw_backend(data,config,workspace,cuda_toolkit)
+        actions['btw_backend']=True
+    if config_file.read_bytes()!=original:raise RuntimeError('Configuration changed during update; retry to keep the newer settings')
     if json.dumps(config,sort_keys=True)!=before:write_json(config_file,config)
     print(json.dumps({'from':old_head,'to':head,'changed':paths,'actions':actions},indent=2))
     print('Update ready. Restart only the frontend with ./mini-ctf; resident model processes are not stopped.')
 
-def pull():
+def pull(btw=False,cuda_toolkit=None):
     if output(['git','status','--porcelain','--untracked-files=no']):raise RuntimeError('Tracked source changes are present; commit or stash them before updating')
     old_head=output(['git','rev-parse','HEAD']);upstream=output(['git','rev-parse','--abbrev-ref','--symbolic-full-name','@{u}'])
     remote=upstream.split('/',1)[0]
     run(['git','fetch','--prune',remote],cwd=ROOT)
     run(['git','merge','--ff-only',upstream],cwd=ROOT)
-    os.execv(sys.executable,[sys.executable,str(ROOT/'installer/update.py'),'--apply',old_head])
+    extra=(['--btw'] if btw else [])+(['--cuda-toolkit',cuda_toolkit] if cuda_toolkit else [])
+    os.execv(sys.executable,[sys.executable,str(ROOT/'installer/update.py'),'--apply',old_head,*extra])
 
 def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--apply',metavar='OLD_HEAD');args=parser.parse_args()
-    apply(args.apply) if args.apply else pull()
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--apply',metavar='OLD_HEAD')
+    parser.add_argument('--btw',action='store_true',help='Build and enable the protected /btw CUDA backend')
+    parser.add_argument('--cuda-toolkit',help='Reuse a CUDA Toolkit 12.8+ directory')
+    args=parser.parse_args()
+    apply(args.apply,args.btw,args.cuda_toolkit) if args.apply else pull(args.btw,args.cuda_toolkit)
 
 if __name__=='__main__':
     try:main()

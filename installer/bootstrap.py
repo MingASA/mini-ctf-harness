@@ -118,17 +118,20 @@ def configured_models(model_path, projector_path, qwen35_model_path, qwen35_proj
 
 def install(args):
     if platform.machine() not in ('x86_64','AMD64'):raise ValueError('The pinned installation profile requires x86-64')
-    data=pathlib.Path(args.data_dir).expanduser().resolve();wsl=bool(os.environ.get('WSL_DISTRO_NAME'));host='windows' if wsl else 'linux';assets=MANIFEST['assets']
+    data=pathlib.Path(args.data_dir).expanduser().resolve();wsl=bool(os.environ.get('WSL_DISTRO_NAME'));host='windows' if wsl and not args.btw else 'linux';assets=MANIFEST['assets']
     install_assets=['node','docker','compose','buildx',host+'-engine',host+'-cuda','qwen3.8-27b-iq4xs','qwen3.8-27b-projector','qwen3.5-9b-ctf-web-q8','qwen3.5-9b-projector']
     plan={'data_dir':str(data),'profile':args.model,'platform':host,'assets':[assets[k] for k in install_assets],'steps':['prepare Linux storage','install Node and Docker binaries','npm ci','build solver image','verify models, projectors and engine','write config']}
-    if wsl:plan['assets'].append(assets['windows-vcredist'])
+    if args.btw:
+        plan['steps'].insert(-1,'prepare CUDA Toolkit, build pinned /btw backend and enable it in the default config')
+        plan['btw_backend']={'revision':MANIFEST['engine_commit'],'platform':'linux','cuda_toolkit':args.cuda_toolkit or 'auto-detect or install pinned Toolkit'}
+    if host=='windows':plan['assets'].append(assets['windows-vcredist'])
     if args.plan:print(json.dumps(plan,indent=2));return
     data.mkdir(parents=True,exist_ok=True)
     if wsl:
         windows_data=subprocess.check_output(['wslpath','-w',str(data)],text=True).strip()
         if not re.match(r'^[A-Za-z]:\\',windows_data):raise ValueError('On WSL, --data-dir must be on a Windows data drive')
     missing=[name for name in ['findmnt','mkfs.ext4','iptables-legacy','ip','systemctl'] if not shutil.which(name)]
-    if not wsl:missing.extend(name for name in ['gomp','numa','curl'] if not ctypes.util.find_library(name))
+    if host=='linux':missing.extend(name for name in ['gomp','numa','curl'] if not ctypes.util.find_library(name))
     if missing:
         print('Installing required Ubuntu system packages: '+', '.join(missing),flush=True)
         cache=data/'os-cache';cache.mkdir(exist_ok=True)
@@ -196,7 +199,7 @@ def install(args):
             raise ValueError('Qwen3.5 9B vision projector checksum mismatch')
     else:
         qwen35_projector=fetch_asset(qwen35_projector_asset,data/'models')
-    if wsl and any(not pathlib.Path('/mnt/c/Windows/System32',name).exists() for name in ['msvcp140.dll','vcruntime140.dll','vcruntime140_1.dll']):
+    if host=='windows' and any(not pathlib.Path('/mnt/c/Windows/System32',name).exists() for name in ['msvcp140.dll','vcruntime140.dll','vcruntime140_1.dll']):
         redist=fetch_asset(assets['windows-vcredist'],cache);helper=cache/'install-vcredist.ps1';shutil.copyfile(ROOT/'installer/install-vcredist.ps1',helper)
         windows=lambda p:subprocess.check_output(['wslpath','-w',str(p)],text=True).strip()
         run(['/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',windows(helper),'-Path',windows(redist)],cwd=data,env=interop_env(env))
@@ -204,17 +207,24 @@ def install(args):
     if not engine:
         runtime=data/'engines'/MANIFEST['engine_tag']/host
         for key in [host+'-engine',host+'-cuda']:unpack(fetch_asset(assets[key],cache),runtime)
-        engine=next(runtime.rglob('llama-server.exe' if wsl else 'llama-server'))
-    config['modelRuntime']={'exe':str(engine),'runDir':str(data/'model-runtime'),'hostCwd':str(data),'platform':host,'libraryDirs':sorted({str(p.parent) for p in engine.parent.parent.rglob('*.so*')}) if not wsl else []}
+        engine=next(runtime.rglob('llama-server.exe' if host=='windows' else 'llama-server'))
+    config['modelRuntime']={'exe':str(engine),'runDir':str(data/'model-runtime'),'hostCwd':str(data),'platform':host,'libraryDirs':sorted({str(p.parent) for p in engine.parent.parent.rglob('*.so*')}) if host=='linux' else []}
     config['models']=configured_models(model,projector,qwen35_model,qwen35_projector,prior.get('models',[]))
     if wsl and any(not re.match(r'^/mnt/[a-z]/',str(asset),re.IGNORECASE) for asset in (engine,model,projector,qwen35_model,qwen35_projector)):
         raise ValueError('Windows models, projectors and engine must be on Windows-mounted drives')
+    if args.btw or (prior.get('modelRuntime',{}).get('btw') or {}).get('enabled'):
+        from btw_backend import enable_btw_backend
+        config['modelRuntime']={**config['modelRuntime'],**prior.get('modelRuntime',{}),'btw':prior.get('modelRuntime',{}).get('btw') or {}}
+        enable_btw_backend(data,config,work,args.cuda_toolkit)
     write_json(file,config)
     write_json(ROOT/'.install.json',{'data_dir':str(data),'workspace':str(work),'node':node,'config':str(file)})
     print('Installed. Start with: ./mini-ctf\nConfiguration: '+str(file))
 
 def parser():
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--data-dir',default=os.environ.get('MINI_CTF_DATA',str(ROOT/'.mini-ctf')));p.add_argument('--model',default='qwen3.8-27b-iq4xs',choices=['qwen3.8-27b-iq4xs']);p.add_argument('--plan',action='store_true');p.add_argument('--workspace-gib',type=int,default=24);p.add_argument('--port',type=int,default=8080);p.add_argument('--model-file');p.add_argument('--projector-file',help='Reuse a local copy of the pinned Qwen3.8 vision projector');p.add_argument('--qwen35-model-file',help='Reuse a local copy of the pinned Qwen3.5 9B CTF model');p.add_argument('--qwen35-projector-file',help='Reuse a local copy of the pinned Qwen3.5 9B vision projector');p.add_argument('--runtime-exe');p.add_argument('--docker');p.add_argument('--dockerd');p.add_argument('--docker-host');p.add_argument('--solver-image');return p
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--data-dir',default=os.environ.get('MINI_CTF_DATA',str(ROOT/'.mini-ctf')));p.add_argument('--model',default='qwen3.8-27b-iq4xs',choices=['qwen3.8-27b-iq4xs']);p.add_argument('--plan',action='store_true');p.add_argument('--workspace-gib',type=int,default=24);p.add_argument('--port',type=int,default=8080);p.add_argument('--model-file');p.add_argument('--projector-file',help='Reuse a local copy of the pinned Qwen3.8 vision projector');p.add_argument('--qwen35-model-file',help='Reuse a local copy of the pinned Qwen3.5 9B CTF model');p.add_argument('--qwen35-projector-file',help='Reuse a local copy of the pinned Qwen3.5 9B vision projector');p.add_argument('--runtime-exe');p.add_argument('--docker');p.add_argument('--dockerd');p.add_argument('--docker-host');p.add_argument('--solver-image')
+    p.add_argument('--btw',action='store_true',help='Build and enable the protected /btw CUDA backend')
+    p.add_argument('--cuda-toolkit',help='Reuse a CUDA Toolkit 12.8+ directory; otherwise detect or install it')
+    return p
 
 if __name__=='__main__':
     try:install(parser().parse_args())
