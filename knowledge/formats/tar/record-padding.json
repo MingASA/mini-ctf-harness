@@ -1,0 +1,21 @@
+{
+  "title": "tar 成员负载按 512 字节记录对齐",
+  "summary": "普通 ustar 头占 512 字节，文件数据之后的填充把下一头部推到整条 512 字节记录边界。",
+  "applies": "POSIX ustar 与 pax 归档",
+  "aliases": [
+    "ustar",
+    "tar padding",
+    "512字节",
+    "块对齐"
+  ],
+  "detail": "普通文件大小为 513 时，数据区占两条记录；内容只有 513 字节。",
+  "boundary": "填充字节不计入文件大小，pax 扩展头自身也会占用归档记录。",
+  "sources": {
+    "reference": "https://pubs.opengroup.org/onlinepubs/9699919799/utilities/pax.html",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "从连续归档流定位第二个文件时，避免把填充区当作文件头。",
+  "tags": [
+    "misc"
+  ]
+}

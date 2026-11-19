@@ -55,7 +55,7 @@ export function loadCatalog(dir = root) {
   }
   const df = Object.create(null);
   const chunks = cards.map(c => {
-    const metadata = [c.title, ...c.aliases, c.summary, c.applies, c.detail, c.boundary].join(' ');
+    const metadata = [c.scope.replaceAll('/', ' '), c.title, ...c.aliases, c.summary, c.applies, c.detail, c.boundary, c.relevance].join(' ');
     const tokens = [...tokenize(metadata), ...versionTerms(metadata)];
     const tf = frequencies(tokens);
     for (const term of Object.keys(tf)) df[term] = (df[term] || 0) + 1;
@@ -69,7 +69,7 @@ export function loadCatalog(dir = root) {
   function search(query, scope, limit, tag) {
     if (tag !== undefined && (typeof tag !== 'string' || !slug.test(tag))) throw Error('Invalid topic tag');
     if (!validString(query, 512)) throw Error('Expected a nonempty query of at most 512 characters');
-    const q = fold(query);
+    const q = fold(query).replace(/\bjs\b/g, 'javascript').replace(/\bgz\b/g, 'gzip').replace(/\b(php|python)(?=\d)/g, '$1 ');
     const symbols = new Set(literals(q));
     const words = tokenize(q);
     const topic = words.filter(t => !scopeWords.has(t) && !/^\d+$/.test(t));

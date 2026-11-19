@@ -97,7 +97,11 @@ Thinking 采样 `temperature=1.0, top_p=0.95, top_k=20`；Non-thinking 为 `0.7,
 ./mini-ctf knowledge ask --model MODEL_ID 'PNG 的块长度包含 CRC 吗？'
 ```
 
-每个 `knowledge/<分类>/<技术对象>/*.json` 文件描述一个可验证的判断。文件名和分类组成稳定 ID。新增卡片时，在 `summary` 给出结论，在 `applies`、`detail` 和 `boundary` 说明版本、前提、反例；`sources.reference` 链到定义该行为的规范或手册，`sources.context` 与 `relevance` 说明它与题目的关系。为新知识添加真实的查询问法和期望命中 ID，并用 `node --test offline_harness/test/knowledge.test.mjs` 验证。
+如果本地模型服务只支持普通对话，用 `knowledge ask --text-only --model MODEL_ID "问题"`。查阅器先在本地检索，把最多三条摘要和问题发给本机模型。直接运行 `node offline_harness/src/knowledge/cli.mjs search "问题"` 也可离线检索，Windows、WSL 和 Linux 均使用这个入口，无需安装 npm 包。
+
+当前有 101 张卡，覆盖 29 个技术对象。包括 12 张 PHP 卡、x86-64 寄存器与指令语义、ELF 与 Wasm、模运算、密码数据表示、抓包时间与分帧、图像与音频、压缩包、PDF 和 SQLite。明确函数名、指令名、文件格式或错误字段通常比单独输入题型更容易命中；详情的正文、适用边界和例子都在本地，来源网址用于溯源。
+
+每个 `knowledge/<分类>/<技术对象>/*.json` 文件描述一个可验证的判断。文件名和分类组成稳定 ID。新增卡片时，在 `summary` 给出结论，在 `applies`、`detail` 和 `boundary` 说明版本、前提、反例；`sources.reference` 链到定义该行为的规范或手册，`sources.context` 与 `relevance` 说明它与题目的关系。为新知识添加真实的查询问法和期望命中 ID，并用 `node --test offline_harness/test/knowledge.test.mjs` 验证。PHP 示例另可在已加载 JSON 扩展的 64 位 PHP 7.4 或 8.x 环境下执行 `php -d zend.assertions=1 -d assert.exception=0 -d assert.warning=0 offline_harness/test/fixtures/knowledge-php.php`。
 
 ## 交互
 

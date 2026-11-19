@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {createServer} from 'node:http';
 import {once} from 'node:events';
+import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {loadCatalog} from '../src/knowledge/catalog.mjs';
 import {knowledgeTool, askReference} from '../src/knowledge/reader.mjs';
@@ -42,19 +43,44 @@ test('symbol and descriptive queries rank known cards; negatives abstain', t => 
 });
 
 test('browse is paginated; details require a single registered id', () => {
-  const page = lookup({op: 'browse', limit: 1});
-  assert.deepEqual(page, {entries: [{scope: 'formats', count: 3}], nextOffset: 1});
-  assert.deepEqual(lookup({op: 'browse', limit: 1, offset: page.nextOffset}).entries, [{scope: 'languages', count: 3}]);
-  const rows = lookup({op: 'browse', scope: 'languages/php'}).entries;
-  assert.equal(rows.length, 3);
+  const list = scope => {
+    const entries = [];
+    let offset = 0;
+    do {
+      const page = lookup({op: 'browse', scope, offset, limit: 1});
+      assert.equal(page.entries.length, 1);
+      entries.push(...page.entries);
+      assert.ok(page.nextOffset === null || page.nextOffset === offset + 1);
+      offset = page.nextOffset;
+    } while (offset !== null);
+    return entries;
+  };
+  const walk = scope => list(scope).flatMap(entry => {
+    if (entry.id) return [entry];
+    const children = walk(entry.scope);
+    assert.equal(entry.count, children.length, entry.scope);
+    return children;
+  });
+  const rows = walk('');
+  const queries = JSON.parse(readFileSync(new URL('./fixtures/knowledge-queries.json', import.meta.url)));
+  assert.deepEqual(rows.map(r => r.id).sort(), Object.keys(queries).sort());
   for (const {id} of rows) {
     const card = lookup({op: 'get', id});
     assert.ok(card.detail && card.boundary && card.sources.reference && card.sources.context);
     assert.ok(!JSON.stringify(knowledgeTool).includes(id));
+    const hits = lookup({op: 'search', query: queries[id]}).results;
+    assert.ok(hits.some(r => r.id === id), queries[id]);
   }
   for (const args of [{op: 'get', id: '../README.md'}, {op: 'get', id: '*'}, {op: 'get', id: rows.map(r => r.id)},
     {op: 'browse', scope: 'unknown'}, {op: 'browse', offset: -1}, {op: 'search', query: 'a', limit: 6},
     {op: 'get', id: rows[0].id, includeAll: true}]) assert.throws(() => lookup(args));
+});
+
+test('additional paraphrases retrieve the intended reference in the first three', () => {
+  const queries = JSON.parse(readFileSync(new URL('./fixtures/knowledge-paraphrases.json', import.meta.url)));
+  for (const [id, query] of Object.entries(queries)) {
+    assert.ok(lookup({op: 'search', query}).results.some(card => card.id === id), query);
+  }
 });
 
 test('repository launcher resolves the catalog outside the working directory', () => {
@@ -94,4 +120,25 @@ test('loopback model protocol exposes only the lookup tool, and expands one card
   assert.ok(JSON.parse(detail.content).sources.reference);
   t.diagnostic(JSON.stringify({toolSchemaBytes: Buffer.byteLength(JSON.stringify(knowledgeTool)),
     searchResultBytes: Buffer.byteLength(summary.content), cardBytes: Buffer.byteLength(detail.content)}));
+});
+
+test('text-only servers receive bounded summaries with no tool schema', async t => {
+  let body;
+  const server = createServer(async (req, res) => {
+    let raw = '';
+    for await (const part of req) raw += part;
+    body = JSON.parse(raw);
+    res.end(JSON.stringify({choices: [{message: {role: 'assistant', content: '本地回答'}}]}));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => server.close());
+  const options = {model: 'text-only-fixture', baseUrl: 'http://127.0.0.1:' + server.address().port + '/v1', lookup, textOnly: true};
+  assert.equal(await askReference({...options, question: 'QUIC'}), '知识库没有匹配项。');
+  assert.equal(body, undefined);
+  assert.equal(await askReference({...options, question: '两个 gz 顺次放在一起，解压工具只给第一段'}), '本地回答');
+  assert.ok(!('tools' in body));
+  const {references} = JSON.parse(body.messages[1].content);
+  assert.ok(references.length <= 3 && references.some(r => r.id === 'formats/gzip/members'));
+  for (const card of references) assert.deepEqual(Object.keys(card).sort(), ['applies','id','summary','title']);
 });

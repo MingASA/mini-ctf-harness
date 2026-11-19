@@ -1,0 +1,21 @@
+{
+  "title": "GIF 后一帧可能只更新局部矩形",
+  "summary": "图像描述符给出该帧相对于逻辑屏幕的原点和尺寸，合成时还需考虑前一帧的 disposal method。",
+  "applies": "GIF89a 图像数据与图形控制扩展",
+  "aliases": [
+    "disposal method",
+    "GIF frame",
+    "恢复背景",
+    "局部帧"
+  ],
+  "detail": "处置方式 2 把相应区域恢复为背景色，3 恢复到显示该图形前的状态。",
+  "boundary": "透明索引表示该像素不修改已有画布；不能简单用透明黑覆盖之前的颜色。",
+  "sources": {
+    "reference": "https://www.w3.org/Graphics/GIF/spec-gif89a.txt",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "解释只读单帧得到残缺图案、播放时却显示完整文字的情况。",
+  "tags": [
+    "misc"
+  ]
+}

@@ -4,12 +4,12 @@ import {askReference} from './reader.mjs';
 
 try {
   const {positionals: [op = 'browse', ...args], values} = parseArgs({allowPositionals: true,
-    options: {tag: {type: 'string'}, scope: {type: 'string'}, limit: {type: 'string'}, offset: {type: 'string'}, model: {type: 'string'}}});
+    options: {'text-only': {type: 'boolean'}, tag: {type: 'string'}, scope: {type: 'string'}, limit: {type: 'string'}, offset: {type: 'string'}, model: {type: 'string'}}});
   const lookup = loadCatalog();
   if (op === 'ask') {
-    if (!values.model || Object.keys(values).length !== 1 || args.length !== 1)
-      throw Error('Usage: knowledge ask --model MODEL "question"');
-    console.log(await askReference({model: values.model, question: args[0], lookup,
+    if (!values.model || Object.keys(values).some(k => k !== 'model' && k !== 'text-only') || args.length !== 1)
+      throw Error('Usage: knowledge ask --model MODEL [--text-only] "question"');
+    console.log(await askReference({model: values.model, question: args[0], lookup, textOnly: values['text-only'],
       baseUrl: process.env.MINI_CTF_KNOWLEDGE_MODEL_URL || 'http://127.0.0.1:8080/v1'}));
   } else {
     const request = {op, ...values};

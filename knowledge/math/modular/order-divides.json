@@ -1,0 +1,21 @@
+{
+  "title": "乘法阶决定幂序列的周期",
+  "summary": "当 gcd(a,m)=1 时，a 的乘法阶是使 a^k≡1 (mod m) 的最小正整数 k。",
+  "applies": "整数模运算；模数大于 1",
+  "aliases": [
+    "n_order",
+    "multiplicative order",
+    "乘法阶",
+    "幂周期"
+  ],
+  "detail": "模 7 时 2 的阶为 3，因此指数相差 3 的两项有同一余数。",
+  "boundary": "不能仅从两个相等余数就断言它们的指数差是最小周期；更小的周期也可能整除该差。",
+  "sources": {
+    "reference": "https://docs.sympy.org/latest/modules/ntheory.html#sympy.ntheory.residue_ntheory.n_order",
+    "context": "https://cryptohack.org/courses/modular/"
+  },
+  "relevance": "解释重复的模幂观测为何不足以唯一确定原始指数。",
+  "tags": [
+    "crypto"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "title": "DNS 压缩指针的偏移原点",
+  "summary": "名称中的两个高位为 11 时，两字节项的低 14 位给出从 DNS 消息首字节算起的偏移。",
+  "applies": "离线 DNS 报文字节解析",
+  "aliases": [
+    "DNS compression",
+    "name pointer",
+    "压缩指针",
+    "域名偏移"
+  ],
+  "detail": "序列可以由普通标签开头、一个指针结尾。指针替代剩余后缀，在当前位置消耗两字节。",
+  "boundary": "TCP 传输附带的两字节消息长度不属于 DNS 消息本体，不能算入偏移。",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc1035.html#section-4.1.4",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "手工复核抓包中的重复域名时，避免从当前记录起算偏移。",
+  "tags": [
+    "misc"
+  ]
+}

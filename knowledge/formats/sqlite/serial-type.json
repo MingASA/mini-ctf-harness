@@ -1,0 +1,21 @@
+{
+  "title": "SQLite 记录中的 0 与 1 可由类型码直接表示",
+  "summary": "序列类型 8 和 9 分别表示整数常量 0 和 1，各占零个有效载荷字节。",
+  "applies": "SQLite 3 主数据库与 WAL 文件",
+  "aliases": [
+    "serial type",
+    "record header",
+    "zero byte",
+    "零字节整数"
+  ],
+  "detail": "值由记录头的类型码确定。后续列的数据紧接在前一个实际占用空间的值后。",
+  "boundary": "序列类型 0 也消耗零字节，但表示 NULL。8 与 9 适用于数据库 schema format 4。",
+  "sources": {
+    "reference": "https://www.sqlite.org/fileformat.html#record_format",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "核对一条记录各列偏移时，避免为空间占用为零的常量预留字节。",
+  "tags": [
+    "misc"
+  ]
+}

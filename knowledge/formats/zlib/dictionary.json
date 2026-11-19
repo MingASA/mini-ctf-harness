@@ -1,0 +1,21 @@
+{
+  "title": "zlib FDICT 与预置字典标识",
+  "summary": "FLG 的 FDICT 位置位时，头后跟四字节 DICTID，解码需要与标识匹配的预置字典。",
+  "applies": "zlib 包装的 DEFLATE 数据",
+  "aliases": [
+    "FDICT",
+    "DICTID",
+    "preset dictionary",
+    "需要字典"
+  ],
+  "detail": "DICTID 是字典字节的 Adler-32 校验值。仅跳过这四字节无法恢复缺少的字典。",
+  "boundary": "普通未设 FDICT 的 zlib 流没有 DICTID 字段。",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc1950.html#section-2",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "区分“需要字典”的解码错误与压缩数据截断。",
+  "tags": [
+    "misc"
+  ]
+}

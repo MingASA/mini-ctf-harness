@@ -1,0 +1,20 @@
+{
+  "title": "索引色的像素值是调色板序号",
+  "summary": "颜色类型 3 的样本索引到 PLTE，每个表项是三个 8 位 RGB 分量。",
+  "applies": "PNG 规范；独立 PNG 图像",
+  "aliases": [
+    "PLTE",
+    "indexed color",
+    "调色板索引"
+  ],
+  "detail": "低位深图像会在单个字节中打包多个索引，先解包再查颜色。",
+  "boundary": "表项颜色不必唯一。相同的显示色不能唯一反推出原始索引。",
+  "sources": {
+    "reference": "https://www.w3.org/TR/png-3/#11PLTE",
+    "context": "https://ctf-wiki.org/misc/picture/png/"
+  },
+  "relevance": "分析两张外观相同的图时，能够区分索引数据变化与调色板变化。",
+  "tags": [
+    "misc"
+  ]
+}

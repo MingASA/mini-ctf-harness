@@ -1,0 +1,24 @@
+{
+  "title": "TCP 上传输的 DNS 以两字节长度分帧",
+  "summary": "每条 DNS 消息前的两字节网络序长度给出后续消息字节数，自身不计入。",
+  "applies": "离线 DNS 报文字节解析",
+  "aliases": [
+    "DNS over TCP",
+    "length prefix",
+    "两字节前缀",
+    "分帧",
+    "TCP stream framing",
+    "多条消息",
+    "消息分界"
+  ],
+  "detail": "一段 TCP 载荷可能只含半条 DNS 消息，也可能含多条，应在有序字节流上按该前缀划分。",
+  "boundary": "UDP DNS 报文本身没有这个 TCP 长度字段。",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc1035.html#section-4.2.2",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "解释直接按抓包行拆分 DNS 记录时出现的截断或连包。",
+  "tags": [
+    "misc"
+  ]
+}

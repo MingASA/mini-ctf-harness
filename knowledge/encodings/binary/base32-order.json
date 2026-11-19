@@ -1,0 +1,22 @@
+{
+  "title": "Base32 使用 5 位分组和特定字母顺序",
+  "summary": "标准 Base32 的值 0 至 25 是 A 至 Z，26 至 31 是 2 至 7。",
+  "applies": "二进制编码；文件与数值转储",
+  "aliases": [
+    "base32hex",
+    "extended hex",
+    "五位分组",
+    "字母表顺序"
+  ],
+  "detail": "Base32hex 按 0 至 9、A 至 V 排列，两种字母表中有重叠字符但其数值可能不同。",
+  "boundary": "只因字符都出现在两个字母表中，不能据此判断解码结果一致。",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc4648.html#section-7",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "字符集看似正常但输出字节错误时，明确使用哪种 Base32 变体。",
+  "tags": [
+    "reverse",
+    "misc"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "title": "Number 的连续安全整数范围",
+  "summary": "2^53−1 是最大安全整数，2^53 和 2^53+1 按 Number 表示时可相等。",
+  "applies": "ECMAScript；Number、BigInt 与字符串",
+  "aliases": [
+    "MAX_SAFE_INTEGER",
+    "BigInt",
+    "浮点精度",
+    "大整数"
+  ],
+  "detail": "需要保留十进制大整数原文时，可从字符串直接构造 BigInt；先转换成 Number 会丢失信息。",
+  "boundary": "超过安全范围仍有部分整数可精确表示，问题在于已不能区分所有相邻整数。",
+  "sources": {
+    "reference": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number/MAX_SAFE_INTEGER",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "比对脚本日志中的长 ID 时，能区分数据碰撞和显示舍入。",
+  "tags": [
+    "reverse",
+    "web"
+  ]
+}

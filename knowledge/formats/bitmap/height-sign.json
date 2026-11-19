@@ -1,0 +1,21 @@
+{
+  "title": "BMP 的有符号高度决定未压缩 RGB 的行方向",
+  "summary": "对 BITMAPINFOHEADER 的未压缩 RGB，正高度通常为自底向上，负高度为自顶向下。",
+  "applies": "Windows BMP；BITMAPINFOHEADER 与未压缩 RGB",
+  "aliases": [
+    "biHeight",
+    "top-down",
+    "bottom-up",
+    "上下翻转"
+  ],
+  "detail": "以二维坐标表示图像时，同样数量的行可能要按相反顺序映射。",
+  "boundary": "某些 YUV 和压缩格式对高度另有约定；旧的其他 DIB 头也不一定有相同的有符号字段。",
+  "sources": {
+    "reference": "https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-bitmapinfoheader",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "图区内容完全正确却垂直颠倒时，能区分行序问题和像素值错误。",
+  "tags": [
+    "misc"
+  ]
+}

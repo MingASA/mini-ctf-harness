@@ -1,0 +1,21 @@
+{
+  "title": "pcap 的链路类型决定包起点是什么头",
+  "summary": "传统 pcap 全局头记录 LinkType，包数据未必从以太网帧头开始。",
+  "applies": "传统 libpcap 格式；单接口捕获",
+  "aliases": [
+    "LINKTYPE",
+    "DLT",
+    "Linux cooked",
+    "帧头偏移"
+  ],
+  "detail": "Linux cooked capture 或 raw IP 的包布局与 Ethernet 不同，固定跳过 14 字节可能错过 IP 头。",
+  "boundary": "以太网帧内部也可能包含 VLAN 标签；即使链路类型是 Ethernet，也要解释实际头部。",
+  "sources": {
+    "reference": "https://man7.org/linux/man-pages/man5/pcap-savefile.5.html",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "同一个 IP 包在不同采集接口上的文件字节偏移可能不同。",
+  "tags": [
+    "misc"
+  ]
+}
