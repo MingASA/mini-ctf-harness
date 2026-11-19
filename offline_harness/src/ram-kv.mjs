@@ -23,6 +23,7 @@ export function ramKvLimits(policy={}, {defaults=true}={}) {
 // Full-attention Q8_0 rows and an allowance for live recurrent state plus two checkpoints.
 const profiles={
  'qwen3.8-27b-iq4xs':{bytesPerToken:34816,stateMiB:512,measuredStateMiB:450,weightBytes:14252845984,prefillTokensPerSecond:520,cpuImageSeconds:18},
+ 'qwen3.8-27b-q4kxl':{bytesPerToken:34816,stateMiB:512,measuredStateMiB:451,weightBytes:17659407264,prefillTokensPerSecond:457,cpuImageSeconds:18},
  'qwen3.5-9b-ctf-web-q8':{bytesPerToken:17408,stateMiB:192,measuredStateMiB:151,weightBytes:9786060032,prefillTokensPerSecond:1150,cpuImageSeconds:18},
 };
 
@@ -35,10 +36,11 @@ export function ramKvLocation(runtimeRoot) {
  return directory;
 }
 
-export function ramKvProfile(id,kvType,weightBytes,contextTokens) {
+export function ramKvProfile(id,kvType,weightBytes,contextTokens,mtpTokens=0) {
  const spec=profiles[id.replace(/-vision$/,'')];
- if(!spec||kvType!=='q8_0'||weightBytes!==spec.weightBytes||contextTokens>55296)return null;
- return spec;
+ if(!spec||kvType!=='q8_0'||weightBytes!==spec.weightBytes||!Number.isInteger(contextTokens)||contextTokens<1||contextTokens>131072)return null;
+ // The default MTP draft uses F16 K/V, independently of the target's Q8 cache.
+ return {...spec,bytesPerToken:spec.bytesPerToken+(mtpTokens>0?4096:0)};
 }
 
 export function admitRamKv({directory,stage,availableMiB,vision,phase,bytes,

@@ -28,10 +28,11 @@ def main(config):
     with (run/'stdout.log').open('wb') as out,(run/'stderr.log').open('wb') as err:
         p=subprocess.Popen([c['exe'],*c['args']],stdin=subprocess.DEVNULL,stdout=out,stderr=err,start_new_session=True,env=env)
     current=identity(p.pid);atomic(owner,{**c,**current,'run':str(run)})
+    health_client=urllib.request.build_opener(urllib.request.ProxyHandler({}))
     for _ in range(1200):
         if p.poll() is not None:raise RuntimeError('Model exited; see '+str(run/'stderr.log'))
         try:
-            with urllib.request.urlopen(c['baseUrl']+'/health',timeout=1) as r:
+            with health_client.open(c['baseUrl']+'/health',timeout=1) as r:
                 if json.load(r).get('status')=='ok':return
         except Exception:pass
         time.sleep(.5)

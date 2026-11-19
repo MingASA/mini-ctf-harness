@@ -1,5 +1,16 @@
 import {lastWindowEvent} from './session-window.mjs';
 
+export function backendSlotText(slots){
+ if(!Array.isArray(slots)||slots.some(s=>!s||!Number.isInteger(s.id)||typeof s.is_processing!=='boolean'))throw Error('无效的 slot 状态');
+ const retained=s=>Number.isSafeInteger(s.n_prompt_tokens)&&s.n_prompt_tokens>0;
+ const busy=slots.filter(s=>s.is_processing).length;
+ return [
+  `后端共 ${slots.length} 个 slot · 处理请求（含预填充）${busy} · 记录有提示 tokens 的 slot ${slots.filter(retained).length}`,
+  ...slots.map(s=>`slot ${s.id} · ${s.is_processing?'处理中':'空闲'} · 提示 tokens ${Number.isSafeInteger(s.n_prompt_tokens)?s.n_prompt_tokens.toLocaleString('en-US'):'未报告'}`),
+  'KV cell（空闲 / 共享 / 独占）：此版本的 /slots 未提供',
+ ].join('\n');
+}
+
 export function sessionUsage(store,config,sessionWindow){
  const requests=store.events.filter(e=>e.type==='model_request'),usages=new Map(store.events.filter(e=>e.type==='model_usage').map(e=>[e.data.requestId,e.data.completion_tokens]));
  const known=requests.filter(e=>Number.isInteger(usages.get(e.data.requestId)));

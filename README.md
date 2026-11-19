@@ -105,6 +105,17 @@ Ctrl+C       停止生成，保留内容、后台命令及驻留模型；输入�
 
 `/context 64K 48K` 将当前会话窗口设为 65,536 tokens，自动压缩线设为 49,152 tokens。窗口上限取自后端启动配置。已有对话在下一个轮次边界按实际 token 数校验，必要时先在原窗口压缩。输入 `/tab budget` 可以查看当前值、待应用值或失败原因。设置随会话保存，切换模型后使用所选模型的预算。
 
+后端资源状态常驻在终端顶部，每两秒刷新。带观测补丁的后端通过 `/kv-cache` 在模型执行线程上读取实际 cell，分别显示正在生成、预填充和仍有 KV 的 slot 数，以及主模型和 MTP 的注意力池占用、空闲、共享、独占 cell。有效 KV 载荷按实际 cell 和各层张量行大小计算，循环状态单独显示。接口同时提供每个序列的归属、张量大小和后端缓冲区分配量。原版后端显示 `/slots` 提供的请求状态和提示 token 数，并标注 cell 统计可用性。
+
+Linux CUDA 用户可用以下命令构建固定 b12144 的观测后端。需要 Git、CMake、Ninja、C++ 编译器和 CUDA Toolkit，脚本可接受第三个参数指定 Toolkit 目录。
+
+```sh
+git clone --depth 1 --branch b12144 https://github.com/ggml-org/llama.cpp.git /path/to/llama.cpp
+sh offline_harness/scripts/build-kv-backend.sh /path/to/llama.cpp /path/to/build
+```
+
+在本机 `config.json` 的 `modelRuntime` 中，将 `exe` 指向生成的 `bin/llama-server`，`platform` 设为 `linux`，并使用独立的 `runDir` 保存该后端的进程回执。动态库目录可通过 `libraryDirs` 指定。源码补丁位于 `offline_harness/patches/`。直接验证真实序列复制和释放的 C++ 程序位于 `offline_harness/test/backend/kv-cells.cpp`，编译时链接补丁后的 libllama 和 libggml-base，并传入本地 Qwen3.5 9B GGUF 路径运行。
+
 工具接口保持简短：
 
 ```json
@@ -124,7 +135,7 @@ submit_flag({"candidate":"flag{...}"})
 
 启用后，`/offloadKV` 暂停驻留题并把 KV 快照放到本机 `/dev/shm`。成功后用 `/resume 题号` 选择要跑的题。恢复原题时，后端用快照匹配文本和图片前缀，并处理未命中的后缀。快照在成功回读后释放，重启系统或关闭 WSL 后也会随 tmpfs 消失。原对话仍可恢复。
 
-在 `config.json` 的 `modelRuntime` 下添加 `"ramKv": {}`，再启动托管引擎。支持内置 27B 和 9B、54K 以内的 Q8 KV。Windows 引擎在数据盘临时序列化，每次操作结束后删除中转文件。默认中转位置是引擎运行目录下的 `slot-staging`，可通过 `ramKv.stagingRoot` 指定其他 Windows 数据盘位置。原生 Linux 直接写 tmpfs。
+在 `config.json` 的 `modelRuntime` 下添加 `"ramKv": {}`，再启动托管引擎。支持内置 27B IQ4_XS、27B Q4_K_XL 和 9B，以及 128K 以内的 Q8 KV；启用 MTP 时同时保存和恢复 draft 状态，内存预算计入其默认 F16 K/V 缓存。Windows 引擎在数据盘临时序列化，每次操作结束后删除中转文件。默认中转位置是引擎运行目录下的 `slot-staging`，可通过 `ramKv.stagingRoot` 指定其他 Windows 数据盘位置。原生 Linux 直接写 tmpfs。
 
 RAM 检查取 Windows 和 WSL 可用内存中较低的一项，并检查 tmpfs 的实际空间。默认保留系统内存 `reserveMiB: 2048`，CPU projector 额外保留 `cpuProjectorReserveMiB: 1280`，另留 512 MiB 给序列化。`maxCacheMiB` 限制该安装中所有快照的总量。实际可缓存量随 Windows、WSL 和 tmpfs 当时的余量变化。WSL 的内存上限可在 WSL Settings 中调整。 [Microsoft WSL 配置](https://learn.microsoft.com/en-us/windows/wsl/wsl-config)
 

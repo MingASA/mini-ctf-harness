@@ -2,8 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {TuiAltScreen,ProcessTerminal,Editor,Input,Text,VStack,HStack,ScrollView,SelectList,Container,matchesKey,CombinedAutocompleteProvider} from '@earendil-works/pi-tui';
 import {outputRoot} from './tool-output.mjs';
-import {sessionUsage,contextLine,usageLine,budgetText} from './session-usage.mjs';
+import {sessionUsage,contextLine,usageLine,budgetText,backendSlotText} from './session-usage.mjs';
 import {windowSettings} from './session-window.mjs';
+import {backendUsageText} from './backend-usage.mjs';
 import {safeText,toolResultText,transcriptText} from './transcript-display.mjs';
 import {atomic} from './store.mjs';
 import {AttachmentInputError,resolveAttachmentPath} from './contest.mjs';
@@ -28,12 +29,14 @@ export class CompetitionTerminal {
   this.file=path.join(contest.root,'ui-state.json');const saved=fs.existsSync(this.file)?JSON.parse(fs.readFileSync(this.file)):{};
   this.selected=contest.records.has(saved.selected)?saved.selected:contest.records.keys().next().value;this.drafts=saved.drafts||{};this.wizard=saved.wizard||null;this.bound=this.selected;this.tab='output';this.live=new Map();this.notice='';this.detail=null;
   this.header=new Text('',1,0);this.sidebar=new Text('',1,0);this.content=new Text('',1,0);this.footer=new Text('',1,0);this.binding=new Text('',1,0);
+  this.slotBar=new Text('',1,0);
   this.editor=new Editor(this.tui,theme);this.editor.setAutocompleteProvider(new CombinedAutocompleteProvider(slashCommands,contest.root));
   this.editor.onChange=()=>{if(!this.bound&&!this.wizard)this.bound=this.selected;this.persistDraft();this.render();};
   this.editor.onSubmit=text=>{if(this.submitting)return;this.submitting=true;this.editor.disableSubmit=true;this.submit(text).catch(e=>{this.notice=e.message;this.render();}).finally(()=>{this.submitting=false;this.editor.disableSubmit=false;});};
   this.scroll=new ScrollView(this.content,{follow:'end',primary:true,scrollbar:'auto'});
   this.tui.setLayoutRoot(new VStack([
    {component:this.header,basis:2,shrink:0},
+   {component:this.slotBar,basis:'auto',minSize:1,maxSize:9},
    {component:new HStack([{component:new ScrollView(this.sidebar,{follow:'none'}),basis:30,minSize:16,maxSize:40},{component:this.scroll,grow:1,minSize:10}],{gap:1}),grow:1,minSize:3},
    {component:this.binding,basis:2,shrink:0},{component:this.editor,basis:'auto',maxSize:9,minSize:3,shrink:0},{component:this.footer,basis:2,shrink:0}
   ]));
@@ -450,6 +453,9 @@ export class CompetitionTerminal {
  renderNow(){
   const c=this.contest,s=this.selected?c.sessions.get(this.selected):null;
   this.header.setText(safeText(`CTF 比赛终端 · ${c.source?.commit?.slice(0,8)??'未知版本'}${c.source?.dirty?'*':''} · ${c.booting?'准备中':c.enabled?'调度开启':'调度停止'} · 模型 ${s?.config.model??c.defaultModel?.model??'未选择'} · 环境 ${c.environmentName??'默认'}\n推理 ${c.taskLabel(c.active)||'空闲'} · 查看 ${c.taskLabel(this.selected)||'无'} · 恢复 ${c.queue.state.readyResume.length} | 新题 ${c.queue.state.readyFresh.length} | 工具等待 ${Object.keys(c.queue.state.waiting).length} | 待确认 ${c.queueRows().reduce((n,r)=>n+r.reviews.length,0)} · /queue`));
+  const origin=this.slotOrigin();
+  this.slotBar.setText(safeText(!origin?'后端 slot：未配置模型服务':
+   this.slotStatus?.origin===origin?this.slotStatus.text:'等待后端 slot 状态'));
   this.sidebar.setText([...c.records.values()].map(r=>`${r.task.id===this.selected?'▶':' '} ${c.taskTitle(r.task.id)}\n${c.taskLabel(r.task.id)}\n${c.status(r.task.id)} · 优先级 ${c.queue.item(r.task.id)?.priority??0}`).map(safeText).join('\n\n')||'Ctrl+N 创建第一题');
   let content=this.detail;
   if(content===null){
@@ -470,6 +476,32 @@ export class CompetitionTerminal {
   this.footer.setText(safeText((this.notice||c.notice||'Ctrl+C 中断生成 · Ctrl+R 恢复 · /compact 压缩 · /effort 调整思考 · /quit 退出')+'\n'+(c.notice&&this.notice?c.notice:'暂停推理保留命令运行；/cancel 命令ID 单独取消。')));
   this.tui.requestRender();
  }
- start(){this.tui.start();this.render();}
- async close(){if(this.closed)return;this.closed=true;this.persistDraft();this.notice='正在保存并停止推理…';this.render();try{await this.contest.close();}finally{this.contest.off('auxiliary',this.auxiliaryEvent);this.contest.off('change',this.changed);this.contest.off('agent',this.agentEvent);clearTimeout(this.renderTimer);this.tui.stop();this.onClose();}}
+ slotOrigin(){
+  const {active,resident,sessions,defaultModel}=this.contest;
+  return sessions.get(active??resident)?.config.baseUrl??defaultModel?.baseUrl;
+ }
+ async refreshSlotStatus(){
+  if(this.closed||this.slotRequest)return;
+  const origin=this.slotOrigin();
+  if(!origin)return;
+  const controller=new AbortController();this.slotRequest=controller;
+  let status;
+  try{
+   try {
+    const snapshot=await this.contest.catalog.json(origin,'/kv-cache',{signal:controller.signal,timeout:1500});
+    status=backendUsageText(snapshot);
+   }catch(error){
+    controller.signal.throwIfAborted();
+    const slots=await this.contest.catalog.json(origin,'/slots',{signal:controller.signal,timeout:1500});
+    status=backendSlotText(slots);
+   }
+  }catch(error){status='后端 slot 状态不可用：'+error.message;}
+  finally{this.slotRequest=null;}
+  if(this.closed||this.slotOrigin()!==origin||
+     (this.slotStatus?.origin===origin&&this.slotStatus.text===status))return;
+  this.slotStatus={origin,text:status};
+  this.render();
+ }
+ start(){this.tui.start();this.render();this.refreshSlotStatus();this.slotTimer=setInterval(()=>this.refreshSlotStatus(),2000);this.slotTimer.unref();}
+ async close(){if(this.closed)return;this.closed=true;clearInterval(this.slotTimer);this.slotRequest?.abort();this.persistDraft();this.notice='正在保存并停止推理…';this.render();try{await this.contest.close();}finally{this.contest.off('auxiliary',this.auxiliaryEvent);this.contest.off('change',this.changed);this.contest.off('agent',this.agentEvent);clearTimeout(this.renderTimer);this.tui.stop();this.onClose();}}
 }

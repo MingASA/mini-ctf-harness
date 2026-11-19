@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import path from 'node:path';
-import {execFile,spawn} from 'node:child_process';
+import {execFile,execFileSync,spawn} from 'node:child_process';
 import {promisify} from 'node:util';
 import {setTimeout as delay} from 'node:timers/promises';
 import {hash} from './store.mjs';
@@ -94,7 +94,7 @@ export class ModelCatalog {
  }
  ramKv(profile,settings){
   const policy=this.config.modelRuntime?.ramKv;
-  const spec=policy&&profile?.modelPath&&ramKvProfile(profile.id,profile.kvType??'q8_0',fs.statSync(profile.modelPath).size,settings.contextTokens);
+  const spec=policy&&profile?.modelPath&&ramKvProfile(profile.id,profile.kvType??'q8_0',fs.statSync(profile.modelPath).size,settings.contextTokens,profile.mtpTokens);
   if(!spec)return null;
   const linux=this.config.modelRuntime.platform==='linux';
   const tuning={roundTripMiBps:60,admissionSeconds:linux?1:6.5,...spec,...policy,...policy.profiles?.[profile.id.replace(/-vision$/,'')],...policy.profiles?.[profile.id]};
@@ -111,7 +111,6 @@ export class ModelCatalog {
   if(!linux){
    stage=path.join(path.resolve(policy.stagingRoot??this.runtimeRoot()),'slot-staging');
    hostDirectory=windowsPath(stage);
-   if(/^c:/i.test(hostDirectory))throw Error('Choose a Windows data drive for RAM KV staging');
    fs.mkdirSync(stage,{recursive:true,mode:0o700});
    if(!fs.lstatSync(stage).isDirectory()||fs.realpathSync(stage)!==stage)throw Error('Invalid KV staging directory');
   }

@@ -14,6 +14,43 @@ class Terminal {
 const delay=()=>new Promise(r=>setTimeout(r,60));
 const down='\x1b[B';
 
+test('backend slot status stays above the selected panel and follows the active model service',async t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'pi-slot-status-'));
+ const origins=[];
+ const defaultOrigin='http://127.0.0.1:9',activeOrigin='http://127.0.0.1:10';
+ const contest=new Contest({contestDir:root,model:{baseUrl:defaultOrigin}},{
+  testMode:true,
+  modelFetch:async url=>{
+   origins.push(url);
+   if(url.endsWith('/kv-cache'))return new Response('',{status:404});
+   return Response.json([{id:0,is_processing:url.startsWith(activeOrigin),n_prompt_tokens:640}]);
+  },
+  provision:async id=>({containerId:id,workDir:path.join(root,'work',id)}),
+  sessionOptions:()=>({broker:{validate:async()=>{}},knowledge:{docs:[]}}),
+ });
+ const ui=new CompetitionTerminal(contest,{terminal:new Terminal()});
+ t.after(async()=>{await ui.close();fs.rmSync(root,{recursive:true,force:true});});
+ ui.start();
+ await delay();
+ assert.deepEqual(origins,[defaultOrigin+'/kv-cache',defaultOrigin+'/slots']);
+ assert.match(ui.tui.getScreenLines().join('\n'),/slot 0 · 空闲 · 提示 tokens 640/);
+ await contest.add({id:'selected',objective:'Show this conversation'});
+ await contest.add({id:'active',objective:'Report state from this model service'});
+ contest.session('active').config.baseUrl=activeOrigin;
+ contest.active='active';
+ ui.setView('selected');
+ await ui.refreshSlotStatus();
+ assert.equal(origins.at(-1),activeOrigin+'/slots');
+ for(const panel of ['output','queue','budget']){
+  await ui.submit('/tab '+panel);
+  ui.renderNow();
+  await delay();
+  const lines=ui.tui.getScreenLines();
+  assert.match(lines.slice(2,6).join('\n'),/slot 0 · 处理中 · 提示 tokens 640/);
+  assert.doesNotMatch(ui.content.text,/后端共 .* 个 slot/);
+ }
+});
+
 test('slash completion describes effort inline and Enter opens a picker with a retryable custom budget',async()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'pi-effort-picker-'));let c,ui,session;
  try{

@@ -237,6 +237,15 @@ test('offload pauses the resident task, keeps its transcript and restores its RA
 test('RAM admission distinguishes projector workspace, transfer cost and unsupported KV geometry',t=>{
  const directory=temp();t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
  const spec=ramKvProfile('qwen3.8-27b-iq4xs', 'q8_0',14252845984,55296);
+ const large=ramKvProfile('qwen3.8-27b-q4kxl','q8_0',17659407264,131072,1);
+ assert.equal(large.bytesPerToken,34816+4096);
+ const small=ramKvProfile('qwen3.5-9b-ctf-web-q8-vision','q8_0',9786060032,131072,2);
+ assert.equal(small.bytesPerToken,17408+4096);
+ assert.ok(estimateRamKv(large,22421)>1344356992);
+ assert.ok(estimateRamKv(small,23451)>610926164);
+ assert.equal(ramKvProfile('qwen3.8-27b-q4kxl','q8_0',17659407264,131073,1),null);
+ assert.equal(ramKvProfile('qwen3.8-27b-q4kxl','q8_0',17659407263,131072,1),null);
+ assert.equal(ramKvProfile('qwen3.8-27b-iq4xs','q8_0',14252845984,-1),null);
  assert.equal(ramKvProfile('qwen3.8-27b-iq4xs','q4_0',14252845984,55296),null);
  const bytes=estimateRamKv(spec,55296);
  const timings={roundTripMiBps:70,prefillTokensPerSecond:400,sharedTokens:2048};
