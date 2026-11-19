@@ -225,3 +225,79 @@ test('resume and view accept short task numbers and open output from any panel',
   assert.ok(!ui.sidebar.text.includes('task-old-'));
  }finally{await ui?.close();await c?.close();fs.rmSync(root,{recursive:true,force:true});}
 });
+
+test('new-task wizard keeps drafts and recovers from missing or invalid attachment directories',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'pi-wizard-retry-'));
+ const attachments=path.join(root,'attachments with spaces');
+ const missing=path.join(root,'missing');
+ fs.mkdirSync(attachments);
+ fs.mkdirSync(path.join(attachments,'nested','empty'),{recursive:true});
+ fs.writeFileSync(path.join(attachments,'nested','sample.txt'),'sample');
+ let c,ui,provisioned=0;
+ const config={contestDir:path.join(root,'contest'),importLimits:{maxFiles:1}};
+ const options={testMode:true,guard:()=>{throw Error('No inference');},provision:async id=>{
+  provisioned++;
+  const workDir=path.join(root,'work-'+id);
+  fs.mkdirSync(workDir);
+  return {containerId:id,workDir};
+ },sessionOptions:()=>({broker:{validate:async()=>{}},knowledge:{docs:[]}})};
+ try{
+  c=new Contest(config,options);
+  ui=new CompetitionTerminal(c,{terminal:new Terminal()});
+  ui.beginNew();
+  await ui.submit('测试题');
+  await ui.submit('第一行\n第二行');
+  await assert.rejects(ui.submit(missing),/附件路径不可用/);
+  assert.equal(ui.wizard.step,2);
+  assert.equal(ui.editor.getExpandedText(),missing);
+  assert.equal(provisioned,0);
+  await ui.submit('/back');
+  assert.equal(ui.editor.getExpandedText(),'第一行\n第二行');
+  await ui.submit(ui.editor.getExpandedText());
+  await ui.submit('"'+attachments+'"');
+  assert.equal(ui.wizard.step,3);
+  await ui.submit('back');
+  assert.equal(ui.editor.getExpandedText(),'"'+attachments+'"');
+  await ui.submit(ui.editor.getExpandedText());
+  await assert.rejects(ui.submit('create'),/\/back 返回修改附件/);
+  // An old saved draft may already be on step 4 with a broken path.
+  ui.wizard.values.attachmentDir=missing;
+  ui.persist();
+  await ui.close();
+  c=new Contest(config,options);
+  ui=new CompetitionTerminal(c,{terminal:new Terminal()});
+  await assert.rejects(ui.submit('-'),/附件路径不可用/);
+  assert.equal(ui.wizard.step,2);
+  assert.equal(ui.wizard.values.title,'测试题');
+  assert.equal(ui.wizard.values.objective,'第一行\n第二行');
+  assert.equal(provisioned,0);
+  await ui.submit(attachments);
+  fs.writeFileSync(path.join(attachments,'extra.txt'),'extra');
+  await assert.rejects(ui.submit('-'),/Attachment import limit exceeded/);
+  assert.equal(ui.wizard.step,2);
+  assert.equal(provisioned,0);
+  fs.unlinkSync(path.join(attachments,'extra.txt'));
+  await ui.submit(attachments);
+  await ui.submit('-');
+  assert.equal(ui.wizard,null);
+  assert.equal(provisioned,1);
+  assert.deepEqual(c.records.get(ui.selected).task.input_files,['/work/attachments/nested/sample.txt']);
+  const imported=c.records.get(ui.selected).config.sandbox.workDir;
+  assert.ok(fs.statSync(path.join(imported,'attachments','nested','empty')).isDirectory());
+  const singleFile=path.join(attachments,'nested','a file.txt');
+  fs.writeFileSync(singleFile,'one attachment');
+  await ui.submit('/new');
+  await ui.submit('单文件');
+  await ui.submit('只导入选中的文件');
+  await ui.submit('"'+singleFile+'"');
+  assert.equal(ui.wizard.step,3);
+  await ui.submit('-');
+  const single=c.records.get(ui.selected);
+  assert.deepEqual(single.task.input_files,['/work/attachments/a file.txt']);
+  assert.deepEqual(fs.readdirSync(path.join(single.config.sandbox.workDir,'attachments')),['a file.txt']);
+  assert.equal(fs.readFileSync(path.join(single.config.sandbox.workDir,'attachments','a file.txt'),'utf8'),'one attachment');
+  await ui.submit('/new');
+  await ui.submit('/cancel');
+  assert.equal(ui.wizard,null);
+ }finally{await ui?.close();fs.rmSync(root,{recursive:true,force:true});}
+});

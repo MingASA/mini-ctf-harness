@@ -2,7 +2,7 @@ import {DATA_ROOT} from './paths.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import {EventEmitter} from 'node:events';
-import {execFile} from 'node:child_process';
+import {execFile,execFileSync} from 'node:child_process';
 import {promisify} from 'node:util';
 import {atomic,hash} from './store.mjs';
 import {sourceIdentity} from './source-identity.mjs';
@@ -20,22 +20,57 @@ import {validateServiceUrl} from './service-endpoint.mjs';
 const exec=promisify(execFile);
 const live=pid=>Number.isInteger(pid)&&fs.existsSync(`/proc/${pid}/stat`)&&fs.readFileSync(`/proc/${pid}/stat`,'utf8').split(') ').at(-1)[0]!=='Z';
 
-export function copyAttachments(source,destination,{maxBytes=200*1024*1024,maxFiles=5000}={}){
- const files=[];let bytes=0;
- if(!source)return files;
- const root=fs.realpathSync(source);if(!fs.statSync(root).isDirectory())throw Error('Attachment source must be a directory');
- const visit=(dir,rel='')=>{for(const ent of fs.readdirSync(dir,{withFileTypes:true})){
-  if(ent.name==='.offline-jobs'||ent.isSymbolicLink())throw Error('Attachment symlinks and reserved job directories are not supported');
-  const name=path.join(rel,ent.name),src=path.join(dir,ent.name),st=fs.lstatSync(src);
-  if(ent.isDirectory())visit(src,name);
-  else if(ent.isFile()){
-   if((bytes+=st.size)>maxBytes||files.length>=maxFiles)throw Error('Attachment import limit exceeded');
-   files.push({name,src,sha256:hash(fs.readFileSync(src)),bytes:st.size});
-  }else throw Error('Attachment directory contains a special file');
- }};
- visit(root);
+export class AttachmentInputError extends Error {}
+
+export function resolveAttachmentPath(source){
+ const input=source.trim().replace(/^(['"])(.*)\1$/,'$2');
+ try{
+  const local=process.env.WSL_DISTRO_NAME&&/^[a-z]:[\\/]/i.test(input)
+   ?execFileSync('wslpath',['-a','-u',input],{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:3000}).trimEnd()
+   :input;
+  const resolved=fs.realpathSync(local);
+  const info=fs.statSync(resolved);
+  if(!info.isDirectory()&&!info.isFile())throw new Error('附件路径必须指向普通文件或目录');
+  return {resolved,info};
+ }catch(error){
+  const detail=error.code==='ENOENT'?'找不到文件或目录':error.message;
+  throw new AttachmentInputError('附件路径不可用：'+input+'（'+detail+'）',{cause:error});
+ }
+}
+
+function scanAttachments(source,{maxBytes=200*1024*1024,maxFiles=5000}={}){
+ const files=[],directories=[];
+ if(!source)return {files,directories};
+ const {resolved,info}=resolveAttachmentPath(source);
+ let bytes=0;
+ const addFile=(src,name,size)=>{
+  if((bytes+=size)>maxBytes||files.length>=maxFiles)throw Error('Attachment import limit exceeded');
+  files.push({name,src,sha256:hash(fs.readFileSync(src)),bytes:size});
+ };
+ const visit=(dir,rel='')=>{
+  directories.push(rel);
+  for(const ent of fs.readdirSync(dir,{withFileTypes:true})){
+   if(ent.name==='.offline-jobs'||ent.isSymbolicLink())throw Error('Attachment symlinks and reserved job directories are not supported');
+   const name=path.join(rel,ent.name),src=path.join(dir,ent.name),st=fs.lstatSync(src);
+   if(st.isDirectory())visit(src,name);
+   else if(st.isFile())addFile(src,name,st.size);
+   else throw Error('Attachment directory contains a special file');
+  }
+ };
+ try{
+  if(info.isDirectory())visit(resolved);
+  else addFile(resolved,path.basename(resolved),info.size);
+ }catch(error){throw new AttachmentInputError('附件检查失败：'+error.message,{cause:error});}
+ return {files,directories};
+}
+
+function writeAttachments({files,directories},destination){
+ for(const dir of directories)fs.mkdirSync(path.join(destination,'attachments',dir),{recursive:true});
  for(const file of files){const dest=path.join(destination,'attachments',file.name);fs.mkdirSync(path.dirname(dest),{recursive:true});fs.copyFileSync(file.src,dest,fs.constants.COPYFILE_EXCL);if(hash(fs.readFileSync(dest))!==file.sha256)throw Error('Attachment changed during import');}
  return files.map(({src,...file})=>({...file,path:'/work/attachments/'+file.name}));
+}
+export function copyAttachments(source,destination,limits){
+ return writeAttachments(scanAttachments(source,limits),destination);
 }
 export class Contest extends EventEmitter {
  constructor(config,options={}){
@@ -86,6 +121,7 @@ export class Contest extends EventEmitter {
  queueRows(){return [...this.records.values()].map(r=>{const s=this.session(r.task.id);return {id:r.task.id,title:this.taskTitle(r.task.id),status:this.status(r.task.id),model:s.config.model,jobs:s.dependencies().length,reviews:s.candidates().filter(x=>!x.feedback||x.feedback.status==='pending')};});}
  status(id){id=this.resolveTaskId(id);const item=this.queue.item(id);if(this.active===id)return 'running';if(this.queue.state.readyResume.some(x=>x.taskId===id))return 'ready_resume';if(this.queue.state.readyFresh.some(x=>x.taskId===id))return 'ready_fresh';return item?.status||'idle';}
  async add({id,title,objective,attachmentDir='',target='',sandbox}){
+  const files=scanAttachments(attachmentDir,this.config.importLimits);
   id=id??this.numbers.allocate();
   if(!/^[a-zA-Z0-9_-]{1,100}$/.test(id)||['__proto__','constructor','prototype'].includes(id)||this.records.has(id))throw Error('Task ID invalid or already exists');
   if(typeof objective!=='string'||!objective.trim()||objective.length>90000)throw Error('Paste a task statement of 1..90000 characters');
@@ -100,12 +136,12 @@ export class Contest extends EventEmitter {
    const base=path.resolve(p.workBase);if(!base.includes('/offline-harness/work')||base.includes('/benchmarks/'))throw Error('Invalid competition work base');
    work=path.join(base,id);fs.mkdirSync(work,{recursive:true});if(fs.readdirSync(work).length)throw Error('New task work directory is not empty');
    // Import before starting the new solver. No target services are deployed.
-   const attachments=copyAttachments(attachmentDir,work,this.config.importLimits);
+   const attachments=writeAttachments(files,work);
    const out=path.join(runDir,'sandbox.json');
    await exec('python3',[new URL('../scripts/provision_sandbox.py',import.meta.url).pathname,'--docker',p.docker||'docker','--host',p.dockerHost||'unix:///var/run/docker.sock','--image',p.image,'--work-base',base,'--work-dir',work,'--out',out],{timeout:60000,maxBuffer:1024*1024});
    sandbox=JSON.parse(fs.readFileSync(out));return this.register({id,title,objective,target,attachmentDir,attachments,sandbox,runDir});
   }
-  const attachments=copyAttachments(attachmentDir,work,this.config.importLimits);
+  const attachments=writeAttachments(files,work);
   return this.register({id,title,objective,target,attachmentDir,attachments,sandbox,runDir});
  }
  register({id,title,objective,target,attachmentDir,attachments,sandbox,runDir}){

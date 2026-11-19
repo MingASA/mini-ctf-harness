@@ -5,8 +5,10 @@ import {outputRoot} from './tool-output.mjs';
 import {sessionUsage,contextLine,usageLine,budgetText} from './session-usage.mjs';
 import {safeText,toolResultText,transcriptText} from './transcript-display.mjs';
 import {atomic} from './store.mjs';
+import {AttachmentInputError,resolveAttachmentPath} from './contest.mjs';
 import {projectorPlacement} from './model-catalog.mjs';
 import {slashCommands,effortOptions,effortBudgetOptions,budgetLabel,panelOptions,verdictOptions} from './terminal-options.mjs';
+const wizardFields=['title','objective','attachmentDir','target'];
 const plain=s=>s;
 const selectTheme={selectedPrefix:plain,selectedText:s=>'\x1b[36m'+s+'\x1b[0m',description:plain,scrollInfo:plain,noMatch:plain};
 const theme={borderColor:s=>'\x1b[36m'+s+'\x1b[0m',selectList:selectTheme};
@@ -87,11 +89,26 @@ export class CompetitionTerminal {
   };
   input.onEscape=()=>{close();resolve(undefined);};
  });}
- async directory(start){let dir=path.resolve(start||process.cwd());while(true){
-  const entries=fs.readdirSync(dir,{withFileTypes:true}).filter(e=>e.isDirectory()&&!e.isSymbolicLink()).sort((a,b)=>a.name.localeCompare(b.name));
-  const selected=await this.select('附件目录 '+dir,[{value:'.',label:'选择当前目录'},{value:'..',label:'上一级'},...entries.map(e=>({value:e.name,label:safeText(e.name)+'/'}))]);
-  if(!selected)return null;if(selected.value==='.')return dir;dir=path.resolve(dir,selected.value);
- }}
+ async browseAttachment(start){
+  const {resolved,info}=resolveAttachmentPath(start||process.cwd());
+  if(info.isFile())return resolved;
+  let dir=resolved;
+  while(true){
+   const entries=fs.readdirSync(dir,{withFileTypes:true})
+    .filter(e=>e.isDirectory()||e.isFile())
+    .sort((a,b)=>Number(b.isDirectory())-Number(a.isDirectory())||a.name.localeCompare(b.name));
+   const selected=await this.select('选择附件 · '+dir,[
+    {value:'.',label:'导入当前目录'},
+    {value:'..',label:'上一级'},
+    ...entries.map(e=>({value:e.name,label:safeText(e.name)+(e.isDirectory()?'/':'')})),
+   ]);
+   if(!selected)return null;
+   if(selected.value==='.')return dir;
+   const next=resolveAttachmentPath(path.join(dir,selected.value));
+   if(next.info.isFile())return next.resolved;
+   dir=next.resolved;
+  }
+ }
  async submit(text){
   if(text.trim()==='/quit'){await this.close();return;}
   if(this.wizard){await this.wizardSubmit(text);return;}
@@ -324,15 +341,63 @@ export class CompetitionTerminal {
   const verdict=await this.select('平台判题结果 · '+item.candidate.candidate,[{value:'correct',label:'通过'},{value:'incorrect',label:'错误'}]);
   if(!verdict)return;this.contest.feedback(item.taskId,item.candidate.review_id,verdict.value);this.setView(item.taskId);this.notice='已记录 '+this.contest.taskLabel(item.taskId)+' 的判题结果。';
  }
+ setWizardStep(step){
+  const w=this.wizard;
+  w.step=step;
+  w.draft=w.values[wizardFields[step]]??(step===3?(this.contest.newTaskTarget??''):'');
+  this.editor.setText(w.draft);
+  this.persist();
+  this.render();
+ }
+ cancelWizard(){
+  this.wizard=null;
+  this.editor.setText(this.drafts[this.bound]||'');
+  this.persist();
+  this.render();
+ }
  async wizardSubmit(text){
-  if(text==='/back'){this.wizard=null;this.editor.setText(this.drafts[this.bound]||'');this.persist();this.render();return;}
-  const w=this.wizard,keys=['title','objective','attachmentDir','target'];let value=text.trim();
-  if(w.step===2&&value.startsWith('/browse')){value=await this.directory(value.slice(7).trim());if(value===null)return;}
-  if(w.step<2&&!value)throw Error('此项不能为空');if(w.step>=2&&value==='-')value='';
-  w.values[keys[w.step]]=value;
-  if(w.step===3){this.notice='正在创建独立题目与附件快照…';this.render();const record=await this.contest.add(w.values);this.wizard=null;this.selected=record.task.id;this.bound=this.selected;this.tab='output';this.detail=null;this.notice='题目已创建，进入首次启动队列。/start 启动调度';}
-  else w.step++;
-  this.editor.setText(this.wizard?.step===3?(this.contest.newTaskTarget??''):'');this.persist();this.render();
+  const w=this.wizard;
+  const command=text.trim();
+  if(command==='/cancel'){this.cancelWizard();return;}
+  if(command==='/back'||(w.step>=2&&command==='back')){
+   this.notice='';
+   if(w.step===0)this.cancelWizard();else this.setWizardStep(w.step-1);
+   return;
+  }
+  const view=/^\/view(?:\s+(\S+))?$/.exec(command);
+  if(view||(w.step===3&&command==='view')){
+   this.setWizardStep(w.step);
+   if(view?.[1])this.setView(view[1]);else await this.chooseTask();
+   return;
+  }
+  if(w.step===3&&/^\/?create$/i.test(command)){
+   this.setWizardStep(3);
+   throw Error('请输入目标 URL，或输入 - 跳过。/back 返回修改附件。');
+  }
+  let value=command;
+  try{
+   if(w.step===2&&/^\/browse(?:\s|$)/.test(value)){
+    value=await this.browseAttachment(value.slice(7).trim());
+    if(value===null){this.setWizardStep(2);return;}
+   }
+   if(w.step<2&&!value)throw Error('此项不能为空');
+   if(w.step===1&&value.length>90000)throw Error('题意不能超过 90000 个字符');
+   if(w.step>=2&&value==='-')value='';
+   if(w.step===2&&value)resolveAttachmentPath(value);
+   w.values[wizardFields[w.step]]=value;
+   if(w.step<3){this.notice='';this.setWizardStep(w.step+1);return;}
+   this.notice='正在创建独立题目与附件快照…';this.render();
+   const record=await this.contest.add(w.values);
+   this.wizard=null;this.selected=record.task.id;this.bound=this.selected;this.tab='output';this.detail=null;
+   this.notice='题目已创建，进入首次启动队列。/start 启动调度';
+   this.editor.setText('');this.persist();this.render();
+  }catch(error){
+   if(w.step===3&&error instanceof AttachmentInputError)this.setWizardStep(2);
+   else{
+    w.draft=command;this.editor.setText(w.draft);this.persist();
+   }
+   throw error;
+  }
  }
  render(){
   if(this.renderTimer||this.closed)return;
@@ -357,7 +422,7 @@ export class CompetitionTerminal {
   }
   if(content!==null)this.content.setText(safeText(content).slice(-160000));
   const usage=s?sessionUsage(s.store,s.config):null;
-  this.binding.setText(safeText(this.wizard?`创建 ${this.wizard.step+1}/4：${['题目标题','粘贴题意（支持多行）','附件目录：路径 /browse 或 - 跳过','内网目标 URL 或 - 跳过'][this.wizard.step]} · /back 取消`:`输入绑定 → ${c.taskLabel(this.bound||this.selected)||'无题目'} · 面板 ${this.tab}${usage?' · '+usageLine(usage)+'\n'+contextLine(usage):''}`));
+  this.binding.setText(safeText(this.wizard?`创建 ${this.wizard.step+1}/4：${['题目标题','粘贴题意（支持多行）','附件：文件或目录路径 · /browse 选择 · - 跳过','内网目标 URL 或 - 跳过'][this.wizard.step]} · /back 上一步 · /cancel 取消`:`输入绑定 → ${c.taskLabel(this.bound||this.selected)||'无题目'} · 面板 ${this.tab}${usage?' · '+usageLine(usage)+'\n'+contextLine(usage):''}`));
   this.footer.setText(safeText((this.notice||c.notice||'Ctrl+C 中断生成 · Ctrl+R 恢复 · /compact 压缩 · /effort 调整思考 · /quit 退出')+'\n'+(c.notice&&this.notice?c.notice:'暂停推理保留命令运行；/cancel 命令ID 单独取消。')));
   this.tui.requestRender();
  }
