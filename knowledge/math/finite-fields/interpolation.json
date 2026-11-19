@@ -1,0 +1,22 @@
+{
+  "title": "次数小于 k 的多项式由 k 个不同横坐标的正确值唯一决定",
+  "summary": "在同一域中，拉格朗日插值的分母是横坐标差，横坐标两两不同才能逆。",
+  "applies": "有限域多项式与带错取样",
+  "detail": "在素数域中恢复 f(0) 可直接将插值基函数在 0 处求值，不必先转成实数。",
+  "boundary": "重复横坐标不增加一个独立约束；若点可能损坏，任取 k 点不能保证得到原多项式。",
+  "aliases": [
+    "Lagrange",
+    "Shamir",
+    "分片",
+    "插值",
+    "常数项"
+  ],
+  "relevance": "由多项式分片解释要恢复的秘密究竟是哪个值。",
+  "sources": {
+    "reference": "https://web.mit.edu/6.857/OldStuff/Fall03/ref/Shamir-HowToShareASecret.pdf",
+    "context": "https://cryptohack.org/courses/modular/"
+  },
+  "tags": [
+    "crypto"
+  ]
+}

@@ -6,7 +6,10 @@
     "concatenated gzip",
     "unused_data",
     "multi member",
-    "多成员"
+    "多成员",
+    "只解出第一段",
+    "顺次连接",
+    "拼接成员"
   ],
   "detail": "两个独立 gzip 成员顺序连接，完整解码结果应是两段明文顺序连接。",
   "boundary": "某些只处理单流的 API 会把后续成员作为未消费数据返回。",

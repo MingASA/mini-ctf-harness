@@ -41,7 +41,7 @@ function readCards(dir, parts = []) {
 }
 
 const operations = {
-  browse: ['scope', 'offset', 'limit'],
+  browse: ['scope', 'offset', 'limit', 'tag'],
   search: ['scope', 'query', 'limit', 'tag'],
   get: ['id']
 };
@@ -67,7 +67,6 @@ export function loadCatalog(dir = root) {
   const scopeWords = new Set([...scopes].flatMap(s => s.split('/')));
 
   function search(query, scope, limit, tag) {
-    if (tag !== undefined && (typeof tag !== 'string' || !slug.test(tag))) throw Error('Invalid topic tag');
     if (!validString(query, 512)) throw Error('Expected a nonempty query of at most 512 characters');
     const q = fold(query).replace(/\bjs\b/g, 'javascript').replace(/\bgz\b/g, 'gzip').replace(/\b(php|python)(?=\d)/g, '$1 ');
     const symbols = new Set(literals(q));
@@ -101,15 +100,18 @@ export function loadCatalog(dir = root) {
       const {id, title, summary, applies, detail, boundary, relevance, sources} = c;
       return {id, title, summary, applies, detail, boundary, relevance, sources};
     }
+    const {tag} = args;
+    if (tag !== undefined && (typeof tag !== 'string' || !slug.test(tag))) throw Error('Invalid topic tag');
     const {scope = '', limit = args.op === 'search' ? 3 : 5, offset = 0} = args;
     if (!scopes.has(scope)) throw Error('Unknown knowledge scope');
     if (!Number.isInteger(limit) || limit < 1 || limit > 5) throw Error('limit must be 1..5');
     if (args.op === 'search') return search(args.query, scope, limit, args.tag);
     if (!Number.isSafeInteger(offset) || offset < 0) throw Error('Invalid browse offset');
+    const visible = tag ? cards.filter(c => c.tags?.includes(tag)) : cards;
     const parent = id => id.split('/').slice(0, -1).join('/');
     const entries = [...scopes].filter(s => s && parent(s) === scope).sort()
-      .map(s => ({scope: s, count: cards.filter(c => inScope(c, s)).length}));
-    entries.push(...cards.filter(c => c.scope === scope).map(({id, title}) => ({id, title})));
+      .map(s => ({scope: s, count: visible.filter(c => inScope(c, s)).length})).filter(entry => entry.count > 0);
+    entries.push(...visible.filter(c => c.scope === scope).map(({id, title}) => ({id, title})));
     return {entries: entries.slice(offset, offset + limit), nextOffset: offset + limit < entries.length ? offset + limit : null};
   };
 }

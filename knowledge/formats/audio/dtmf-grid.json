@@ -1,0 +1,22 @@
+{
+  "title": "DTMF 的一个键同时对应一个低组和一个高组频率",
+  "summary": "标准行频为 697、770、852、941 Hz，列频为 1209、1336、1477、1633 Hz。按行排列键分别为 123A、456B、789C、*0#D。",
+  "applies": "DTMF 电话双音；频率单位 Hz",
+  "detail": "例如一段信号中同时出现 770 与 1336 Hz，对应第二行第二列，即 5。",
+  "boundary": "按键之间的静音不代表数字 0。用单一最强频率不能在同一行或列内唯一定位按键。",
+  "aliases": [
+    "DTMF",
+    "dual tone",
+    "电话按键",
+    "双音频",
+    "拨号音"
+  ],
+  "relevance": "由 WAV 频谱中的成对峰值解释按键序列，而非将各峰各读成一个数字。",
+  "sources": {
+    "reference": "https://www.ti.com/lit/an/spra082/spra082.pdf",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "misc"
+  ]
+}

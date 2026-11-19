@@ -1,0 +1,22 @@
+{
+  "title": "SEC 1 素数域压缩点前缀选择纵坐标奇偶",
+  "summary": "短 Weierstrass 素数曲线的标准压缩点用 02 或 03 加定宽 x，前缀分别选取偶数或奇数的 y 代表。",
+  "applies": "素数域上的非奇异短 Weierstrass 曲线；特征大于 3",
+  "detail": "同一 x 可能对应两条平方根。恢复并选择 y 后仍须满足曲线方程。",
+  "boundary": "前缀 04 表示另一种未压缩编码；Edwards 点格式不采用这一前缀约定。",
+  "aliases": [
+    "SEC1",
+    "compressed point",
+    "02 03",
+    "压缩点",
+    "奇偶位"
+  ],
+  "relevance": "解释两个公钥编码只有前缀不同、恢复点却不同的原因。",
+  "sources": {
+    "reference": "https://www.secg.org/sec1-v2.pdf",
+    "context": "https://cryptohack.org/courses/elliptic/"
+  },
+  "tags": [
+    "crypto"
+  ]
+}

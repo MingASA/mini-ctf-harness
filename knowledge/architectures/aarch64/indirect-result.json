@@ -1,0 +1,22 @@
+{
+  "title": "AAPCS64 为间接返回值地址保留 X8",
+  "summary": "需要经内存返回的聚合结果可由调用者提供存储，地址通过 X8 传递。",
+  "applies": "AArch64；AAPCS64 的通用调用与寄存器表示",
+  "detail": "入口快照中 X8 可表示结果缓冲区。普通用户参数仍从相应参数寄存器开始分类。",
+  "boundary": "小结构体或同质浮点聚合体可能直接通过寄存器返回，不适用该规则。",
+  "aliases": [
+    "X8",
+    "indirect result",
+    "sret",
+    "结构体返回"
+  ],
+  "relevance": "恢复函数原型时避免凭空多加一个源代码显式参数。",
+  "sources": {
+    "reference": "https://github.com/ARM-software/abi-aa/blob/main/aapcs64/aapcs64.rst",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "reverse",
+    "pwn"
+  ]
+}

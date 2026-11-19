@@ -97,9 +97,19 @@ Thinking 采样 `temperature=1.0, top_p=0.95, top_k=20`；Non-thinking 为 `0.7,
 ./mini-ctf knowledge ask --model MODEL_ID 'PNG 的块长度包含 CRC 吗？'
 ```
 
-如果本地模型服务只支持普通对话，用 `knowledge ask --text-only --model MODEL_ID "问题"`。查阅器先在本地检索，把最多三条摘要和问题发给本机模型。直接运行 `node offline_harness/src/knowledge/cli.mjs search "问题"` 也可离线检索，Windows、WSL 和 Linux 均使用这个入口，无需安装 npm 包。
+如果本地模型服务只支持普通对话，用 `knowledge ask --text-only --model MODEL_ID "问题"`。查阅器先在本地选取排名第一的卡片，发给模型的是简短结论、适用范围和最多一句与提问有关的正文。终端先显示带卡片 ID 的检索原文，再显示模型回答，两者可以直接核对。直接运行 `node offline_harness/src/knowledge/cli.mjs search "问题"` 也可离线检索，Windows、WSL 和 Linux 均使用这个入口，无需安装 npm 包。
 
-当前有 101 张卡，覆盖 29 个技术对象。包括 12 张 PHP 卡、x86-64 寄存器与指令语义、ELF 与 Wasm、模运算、密码数据表示、抓包时间与分帧、图像与音频、压缩包、PDF 和 SQLite。明确函数名、指令名、文件格式或错误字段通常比单独输入题型更容易命中；详情的正文、适用边界和例子都在本地，来源网址用于溯源。
+知识库有 157 张卡、44 个技术对象。同一张卡可服务多种题型，ID 只保留一份。知道现象或符号时直接搜索；想看某一题型有哪些材料时，使用 `./mini-ctf knowledge browse --tag pwn`，再按返回目录传 `--scope`。Windows 可用 `node offline_harness/src/knowledge/cli.mjs browse --tag pwn`。
+
+| 题型标签 | 卡数（含交叉标签） | 可以查的具体问题 |
+|---|---:|---|
+| web | 35 | HTTP 跳转与部分响应、Cookie 范围、Flask 会话与重复参数、SQLite 类型和 NULL、PHP 版本差异 |
+| reverse | 60 | x86-64 与 AArch64 语义、SysV 和 Windows 调用约定、PE、ELF、DEX、JVM、Wasm 与定宽运算 |
+| pwn | 20 | C 对象边界与生命周期、结构体布局、栈帧展开、调试符号、故障地址和转储判读 |
+| crypto | 25 | 模运算、椭圆曲线群律与压缩点、有限域、带错分片、整数格与 LLL、密码数据表示 |
+| misc | 89 | ext4、Windows minidump、图像元数据、电话双音、压缩归档、PDF、SQLite 和抓包 |
+
+检索测试包含每卡一个问法、20 个额外改写，以及对应十道离线附件的十个知识问题（每个题型两个）。测试检查按题型浏览与跨题型检索返回的卡片。单题最终答案与模型答题正确率需另外评估。
 
 每个 `knowledge/<分类>/<技术对象>/*.json` 文件描述一个可验证的判断。文件名和分类组成稳定 ID。新增卡片时，在 `summary` 给出结论，在 `applies`、`detail` 和 `boundary` 说明版本、前提、反例；`sources.reference` 链到定义该行为的规范或手册，`sources.context` 与 `relevance` 说明它与题目的关系。为新知识添加真实的查询问法和期望命中 ID，并用 `node --test offline_harness/test/knowledge.test.mjs` 验证。PHP 示例另可在已加载 JSON 扩展的 64 位 PHP 7.4 或 8.x 环境下执行 `php -d zend.assertions=1 -d assert.exception=0 -d assert.warning=0 offline_harness/test/fixtures/knowledge-php.php`。
 

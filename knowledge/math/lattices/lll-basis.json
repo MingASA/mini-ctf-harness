@@ -1,0 +1,21 @@
+{
+  "title": "LLL 输出规约基，首向量不保证全局最短",
+  "summary": "LLL 给出满足规约条件的一组格基。结果可能依实现和参数而变，多组规约基可以生成同一格。",
+  "applies": "整数格；行向量作为基的约定",
+  "detail": "检查一个候选短向量时，还应核对其整系数组合关系、范数及原问题条件。",
+  "boundary": "看到较短的首行不能单凭 LLL 的名称断言已精确解出最短向量问题。",
+  "aliases": [
+    "LLL",
+    "reduced basis",
+    "短向量",
+    "SVP"
+  ],
+  "relevance": "避免把规约程序返回的第一行直接当作题目唯一答案。",
+  "sources": {
+    "reference": "https://doc.sagemath.org/html/en/reference/matrices/sage/matrix/matrix_integer_dense.html#sage.matrix.matrix_integer_dense.Matrix_integer_dense.LLL",
+    "context": "https://cryptohack.org/challenges/maths/"
+  },
+  "tags": [
+    "crypto"
+  ]
+}

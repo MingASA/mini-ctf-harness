@@ -33,7 +33,7 @@ test('symbol and descriptive queries rank known cards; negatives abstain', t => 
     }
   }
   t.diagnostic(JSON.stringify({queries: count, recallAt3: recall/count, mrrAt3: mrr/count}));
-  for (const query of ['QUIC', 'PHP fibers', 'PNG zTXt', '']) {
+  for (const query of ['QUIC', 'PHP fibers', 'PNG acTL', '']) {
     if (query === '') assert.throws(() => lookup({op: 'search', query}));
     else assert.deepEqual(lookup({op: 'search', query}), {results: []}, query);
   }
@@ -83,6 +83,40 @@ test('additional paraphrases retrieve the intended reference in the first three'
   }
 });
 
+test('contest topic queries and browse filters work across all five categories', () => {
+  const topics = JSON.parse(readFileSync(new URL('./fixtures/knowledge-contest-topics.json', import.meta.url)));
+  const walk = (scope, tag) => {
+    let offset = 0;
+    const result = [];
+    do {
+      const page = lookup({op: 'browse', tag, scope, offset});
+      for (const entry of page.entries) {
+        if (entry.id) result.push(entry.id);
+        else {
+          const nested = walk(entry.scope, tag);
+          assert.ok(nested.length > 0);
+          assert.equal(nested.length, entry.count);
+          result.push(...nested);
+        }
+      }
+      offset = page.nextOffset;
+    } while (offset !== null);
+    return result;
+  };
+  for (const tag of ['web', 'reverse', 'pwn', 'crypto', 'misc']) {
+    const ids = walk('', tag);
+    const subset = topics.filter(([category]) => category === tag);
+    assert.equal(subset.length, 2);
+    for (const [, query, id] of subset) {
+      assert.ok(ids.includes(id));
+      for (const params of [{op: 'search', query}, {op: 'search', query, tag}]) {
+        assert.ok(lookup(params).results.some(hit => hit.id === id), query);
+      }
+    }
+    if (tag === 'pwn') assert.ok(!ids.includes('formats/audio/dtmf-grid'));
+  }
+});
+
 test('repository launcher resolves the catalog outside the working directory', () => {
   const cmd = fileURLToPath(new URL('../../mini-ctf', import.meta.url));
   const result = spawnSync(cmd, ['knowledge', 'search', 'CRC32', '--limit', '1'], {cwd: '/', encoding: 'utf8'});
@@ -122,7 +156,7 @@ test('loopback model protocol exposes only the lookup tool, and expands one card
     searchResultBytes: Buffer.byteLength(summary.content), cardBytes: Buffer.byteLength(detail.content)}));
 });
 
-test('text-only servers receive bounded summaries with no tool schema', async t => {
+test('text-only servers receive one bounded excerpt and return its verifiable card ID', async t => {
   let body;
   const server = createServer(async (req, res) => {
     let raw = '';
@@ -136,9 +170,13 @@ test('text-only servers receive bounded summaries with no tool schema', async t 
   const options = {model: 'text-only-fixture', baseUrl: 'http://127.0.0.1:' + server.address().port + '/v1', lookup, textOnly: true};
   assert.equal(await askReference({...options, question: 'QUIC'}), '知识库没有匹配项。');
   assert.equal(body, undefined);
-  assert.equal(await askReference({...options, question: '两个 gz 顺次放在一起，解压工具只给第一段'}), '本地回答');
+  const answer = await askReference({...options, question: '两个 gz 顺次放在一起，解压工具只给第一段'});
+  assert.match(answer, /^检索原文 \[formats\/gzip\/members\]/);
+  assert.match(answer, /模型回答 本地回答$/);
   assert.ok(!('tools' in body));
-  const {references} = JSON.parse(body.messages[1].content);
-  assert.ok(references.length <= 3 && references.some(r => r.id === 'formats/gzip/members'));
-  for (const card of references) assert.deepEqual(Object.keys(card).sort(), ['applies','id','summary','title']);
+  const prompt = body.messages[1].content;
+  const card = lookup({op: 'get', id: 'formats/gzip/members'});
+  assert.ok(prompt.includes(card.summary) && prompt.includes(card.id));
+  assert.ok(!prompt.includes(card.sources.reference));
+  assert.ok(!prompt.includes('formats/gzip/trailer'));
 });

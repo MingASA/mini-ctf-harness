@@ -1,0 +1,22 @@
+{
+  "title": "PE 的 Optional Header Magic 决定 PE32 或 PE32+ 布局",
+  "summary": "Magic 0x10b 对应 PE32，0x20b 对应 PE32+。PE32+ 省去 BaseOfData 并扩大部分字段。",
+  "applies": "PE32/PE32+；Windows 映像文件",
+  "detail": "不能只把 PE32 的所有四字节数统一扩成八字节。应先读 Magic，再按对应结构解释 ImageBase 和数据目录。",
+  "boundary": "Machine 字段描述架构，不能代替对 Optional Header 自身及其长度的检查。",
+  "aliases": [
+    "PE32+",
+    "ImageBase",
+    "0x20b",
+    "BaseOfData"
+  ],
+  "relevance": "定位映像基址或目录表时避免因误选结构整体错位。",
+  "sources": {
+    "reference": "https://learn.microsoft.com/en-us/windows/win32/debug/pe-format",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "reverse",
+    "misc"
+  ]
+}

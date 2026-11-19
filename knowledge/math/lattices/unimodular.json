@@ -1,0 +1,21 @@
+{
+  "title": "整数格的等价格基变换要求整系数并且行列式为 ±1",
+  "summary": "以行为基时，左乘整可逆矩阵 U 且 det U=±1，可保持生成的整数格。",
+  "applies": "整数格；行向量作为基的约定",
+  "detail": "把一行加上另一行的整数倍得到同一个格。将某一行乘 2 通常只得到原格的子格。",
+  "boundary": "两个基张成相同实向量空间，不能推出生成相同的整数格。",
+  "aliases": [
+    "unimodular",
+    "幺模变换",
+    "整数格基",
+    "行列式"
+  ],
+  "relevance": "验证格基规约输出是否只是换了一组基，而不是改了候选点集合。",
+  "sources": {
+    "reference": "https://doc.sagemath.org/html/en/reference/matrices/sage/matrix/matrix_integer_dense.html",
+    "context": "https://cryptohack.org/challenges/maths/"
+  },
+  "tags": [
+    "crypto"
+  ]
+}
