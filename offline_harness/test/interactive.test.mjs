@@ -117,3 +117,45 @@ test('contest restart reconciles a committed dependency result into the resume q
   c=new Contest(cfg,options);assert.equal(c.status('resume'),'ready_resume');assert.equal(c.session('resume').inbox.items().length,1);assert.equal(c.session('resume').dependencies().length,0);
  }finally{await c?.close();fs.rmSync(root,{recursive:true,force:true});}
 });
+
+test('main session retrieves local knowledge progressively and retains results on reopen',async()=>{
+ const root=temp();
+ const calls=[
+  {op:'browse',tag:'misc',limit:1},
+  {op:'search',query:'IDAT',limit:1},
+  {op:'get',id:'formats/png/idat-stream'}
+ ];
+ const p=await server(async(n,b,f,res)=>{
+  if(n<=calls.length){
+   f({tool_calls:[{index:0,id:'knowledge-'+n,function:{name:'knowledge',arguments:JSON.stringify(calls[n-1])}}]},'tool_calls',
+    {prompt_tokens:tokens(b),completion_tokens:10});
+   res.end('data: [DONE]\n\n');
+  }else done(b,f,res,'Reference checked.');
+ });
+ try{
+  const task={id:'knowledge-main',objective:'Check PNG IDAT structure'};
+  const s=new InteractiveSession(task,config(root,p.url),{broker,knowledge,guard:()=>{}});
+  assert.equal((await s.runSlice()).status,'awaiting_input');
+  const requests=p.requests.filter(r=>r.route==='/v1/chat/completions');
+  assert.equal(requests.length,4);
+  assert.ok(requests[0].body.tools.some(t=>t.function.name==='knowledge'));
+  assert.ok(!JSON.stringify(requests[0].body).includes('formats/png/idat-stream'));
+  const results=s.messages().filter(m=>m.role==='toolResult'&&m.toolName==='knowledge')
+   .map(m=>JSON.parse(m.content[0].text));
+  assert.equal(results.length,3);
+  assert.equal(results[0].entries.length,1);
+  assert.deepEqual(Object.keys(results[1].results[0]).sort(),['applies','id','summary','title']);
+  assert.equal(results[2].id,'formats/png/idat-stream');
+  assert.ok(results[2].detail&&results[2].boundary&&results[2].sources.reference);
+  assert.ok(s.store.search('IDAT').length>0);
+  const tool=s.tools().find(t=>t.name==='knowledge');
+  const before=s.store.events.filter(e=>e.type==='tool_done').length;
+  const lastCall=s.store.events.findLast(e=>e.type==='tool_start'&&e.data.name==='knowledge').data.callId;
+  await tool.execute(lastCall,calls[2]);
+  assert.equal(s.store.events.filter(e=>e.type==='tool_done').length,before);
+  const reopened=new InteractiveSession(task,config(root,p.url),{broker,knowledge,guard:()=>{}});
+  assert.equal(reopened.messages().filter(m=>m.toolName==='knowledge').length,3);
+  const invalid=await tool.execute('invalid-knowledge',{op:'get',id:'../README.md'});
+  assert.ok(JSON.parse(invalid.content[0].text).error);
+ }finally{await p.close();fs.rmSync(root,{recursive:true,force:true});}
+});

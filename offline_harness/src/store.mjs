@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 
 export const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 export const json = value => JSON.stringify(value);
-export const observationSources = new Set(['tool:read','tool:wait_job','tool:run_command','tool:submit_flag','tool:view_image','tool:rag','tool:vision']);
+export const observationSources = new Set(['tool:read','tool:wait_job','tool:run_command','tool:submit_flag','tool:view_image','tool:rag','tool:vision','tool:knowledge']);
 export function atomic(file, value) {
   const tmp = file + '.' + crypto.randomUUID() + '.tmp';
   fs.writeFileSync(tmp, json(value) + '\n', {mode: 0o600});

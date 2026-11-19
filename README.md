@@ -78,28 +78,15 @@ de632c79cb58be69c4685967e114a329fd819ba6fb9e87c1c79843dc7a2e73bd
 
 Thinking 采样 `temperature=1.0, top_p=0.95, top_k=20`；Non-thinking 为 `0.7, 0.80, 20`。内置 15 个原始 SKILL.md 与 32 个 References；Pi 直接发现 `.agents/skills/`，按需使用通用 `read` 读取。
 
-## 离线知识查阅
+## 主会话离线知识库
 
-在仓库根目录可以直接查随仓库分发的知识卡。需要 Node.js，已安装 harness 时使用它登记的 Node。首次查询从本地卡片建立内存索引。
+运行 `./mini-ctf` 后，比赛会话中的模型自动获得 `knowledge` 工具。工具提供 `search`、`browse` 和 `get`，查询和结果直接留在当前任务对话及日志里。后台运行入口 `./mini-ctf run` 也使用相同工具。
 
-```sh
-./mini-ctf knowledge search 'PHP 7.2 字符串断言'
-./mini-ctf knowledge browse --scope languages/php
-./mini-ctf knowledge get languages/php/assert-string
-./mini-ctf knowledge search '块长度' --tag misc --limit 1
-```
+例如模型需要核对 PNG 的 IDAT 行为时，可以先调用 `{"op":"search","query":"IDAT"}` 得到前三条摘要，再按返回 ID 调用 `{"op":"get","id":"formats/png/idat-stream"}` 读取这一张卡的正文、条件和来源。每次最多返回五条摘要或目录项；`get` 只接受一个已登记 ID。浏览目录支持 `scope`、题型 `tag` 和分页 `offset`。
 
-`search` 默认返回 3 条摘要，最多 5 条；`browse` 按层列出分类计数或卡片标题，下一页使用返回的 `nextOffset` 作为 `--offset`；`get` 展开一个 ID 的条件、边界和出处。卡片按定义性质的语言或格式归档，题型标签可选。
+启动提示词包含固定的工具使用说明，具体卡片通过工具结果按需进入上下文。知识文件随仓库分发，首次查询在本进程建立索引；断网时可用。更新卡片后重启前端以加载新的内容。检索结果沿用工具日志与恢复机制，重新打开任务时可继续使用此前已读的结果。
 
-已启动支持工具调用的本地模型时，可在独立的只读问答中查阅同一知识库。将下方模型名替换为服务实际加载的 ID。默认连接 `http://127.0.0.1:8080/v1`，其他本机端口可通过 `MINI_CTF_KNOWLEDGE_MODEL_URL` 指定。模型启动时只看到工具定义，每次请求时收到本次所选的摘要或单卡正文。这一入口与交互终端的任务工具分开运行。
-
-```sh
-./mini-ctf knowledge ask --model MODEL_ID 'PNG 的块长度包含 CRC 吗？'
-```
-
-如果本地模型服务只支持普通对话，用 `knowledge ask --text-only --model MODEL_ID "问题"`。查阅器先在本地选取排名第一的卡片，发给模型的是简短结论、适用范围和最多一句与提问有关的正文。终端先显示带卡片 ID 的检索原文，再显示模型回答，两者可以直接核对。直接运行 `node offline_harness/src/knowledge/cli.mjs search "问题"` 也可离线检索，Windows、WSL 和 Linux 均使用这个入口，无需安装 npm 包。
-
-知识库有 157 张卡、44 个技术对象。同一张卡可服务多种题型，ID 只保留一份。知道现象或符号时直接搜索；想看某一题型有哪些材料时，使用 `./mini-ctf knowledge browse --tag pwn`，再按返回目录传 `--scope`。Windows 可用 `node offline_harness/src/knowledge/cli.mjs browse --tag pwn`。
+知识库有 157 张卡、44 个技术对象。同一张卡可服务多种题型，ID 只保留一份。
 
 | 题型标签 | 卡数（含交叉标签） | 可以查的具体问题 |
 |---|---:|---|
@@ -109,7 +96,9 @@ Thinking 采样 `temperature=1.0, top_p=0.95, top_k=20`；Non-thinking 为 `0.7,
 | crypto | 25 | 模运算、椭圆曲线群律与压缩点、有限域、带错分片、整数格与 LLL、密码数据表示 |
 | misc | 89 | ext4、Windows minidump、图像元数据、电话双音、压缩归档、PDF、SQLite 和抓包 |
 
-检索测试包含每卡一个问法、20 个额外改写，以及对应十道离线附件的十个知识问题（每个题型两个）。测试检查按题型浏览与跨题型检索返回的卡片。单题最终答案与模型答题正确率需另外评估。
+人工核对内容时也可直接运行 `./mini-ctf knowledge search "问题"`、`./mini-ctf knowledge browse --tag pwn` 或 `./mini-ctf knowledge get ID`。独立查阅器仍支持 `ask --model MODEL_ID` 和普通对话模式 `ask --text-only --model MODEL_ID`，服务地址通过 `MINI_CTF_KNOWLEDGE_MODEL_URL` 指定。
+
+检索测试包含每卡一个问法、20 个额外改写，以及对应十道离线附件的十个知识问题（每个题型两个）。这些测试检查知识命中，单题最终答案与模型答题正确率需另外评估。
 
 每个 `knowledge/<分类>/<技术对象>/*.json` 文件描述一个可验证的判断。文件名和分类组成稳定 ID。新增卡片时，在 `summary` 给出结论，在 `applies`、`detail` 和 `boundary` 说明版本、前提、反例；`sources.reference` 链到定义该行为的规范或手册，`sources.context` 与 `relevance` 说明它与题目的关系。为新知识添加真实的查询问法和期望命中 ID，并用 `node --test offline_harness/test/knowledge.test.mjs` 验证。PHP 示例另可在已加载 JSON 扩展的 64 位 PHP 7.4 或 8.x 环境下执行 `php -d zend.assertions=1 -d assert.exception=0 -d assert.warning=0 offline_harness/test/fixtures/knowledge-php.php`。
 

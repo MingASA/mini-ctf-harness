@@ -103,7 +103,7 @@ export function loadCatalog(dir = root) {
     const {tag} = args;
     if (tag !== undefined && (typeof tag !== 'string' || !slug.test(tag))) throw Error('Invalid topic tag');
     const {scope = '', limit = args.op === 'search' ? 3 : 5, offset = 0} = args;
-    if (!scopes.has(scope)) throw Error('Unknown knowledge scope');
+    if (!scopes.has(scope)) throw Error('Unknown knowledge scope. Retry without scope to search all cards, or use browse to discover valid scopes. Use tag for web/reverse/pwn/crypto/misc.');
     if (!Number.isInteger(limit) || limit < 1 || limit > 5) throw Error('limit must be 1..5');
     if (args.op === 'search') return search(args.query, scope, limit, args.tag);
     if (!Number.isSafeInteger(offset) || offset < 0) throw Error('Invalid browse offset');

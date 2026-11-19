@@ -1,3 +1,4 @@
+import {KNOWLEDGE_PROMPT} from './knowledge/tool.mjs';
 import {DATA_ROOT} from './paths.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -18,7 +19,7 @@ import {recoverInterruptedTools} from './resume-tools.mjs';
 export const SYSTEM=SOLVING_SYSTEM_PROMPT;
 export function systemPrompt(mode,knowledge){
  const catalog=mode==='memory-skills'?skillsPrompt(knowledge):'';
- return SYSTEM.replace('{{SKILL_CATALOG}}',catalog);
+ return SYSTEM.replace('{{SKILL_CATALOG}}',catalog)+'\n'+KNOWLEDGE_PROMPT;
 }
 
 export function validateTask(task) {

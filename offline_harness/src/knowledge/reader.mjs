@@ -1,24 +1,8 @@
 import {tokenize} from '../rag/text.mjs';
 import {validateServiceUrl} from '../service-endpoint.mjs';
 
-export const knowledgeTool = {
-  type: 'function',
-  function: {
-    name: 'knowledge',
-    description: 'Search local reference summaries. Browse a scope to discover topics; get one ID for details and sources.',
-    parameters: {
-      type: 'object', properties: {
-        op: {type: 'string', enum: ['browse', 'search', 'get']},
-        query: {type: 'string', description: 'Required for search.'},
-        scope: {type: 'string', description: 'Optional catalog scope for browse/search.'},
-        tag: {type: 'string', description: 'Optional filter for browse/search: web, reverse, pwn, crypto, misc.'},
-        id: {type: 'string', description: 'Required for get. Use a returned ID.'},
-        offset: {type: 'integer', minimum: 0, description: 'Browse page offset.'},
-        limit: {type: 'integer', minimum: 1, maximum: 5}
-      }, required: ['op'], additionalProperties: false
-    }
-  }
-};
+import {knowledgeTool} from './tool.mjs';
+export {knowledgeTool} from './tool.mjs';
 
 // A reference-only conversation. It shares neither tools nor state with task sessions.
 export async function askReference({baseUrl, model, question, lookup, textOnly = false}) {
