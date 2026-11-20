@@ -11,15 +11,24 @@ These imports are leads, not mandatory features; static, stripped, inlined, or n
 
 A string's `strings -t x` offset is a file offset. Convert it using the relevant segment before treating it as an address. On a stripped binary, locate code references with a disassembler/decompiler, then use dynamic observations to confirm the path.
 
-## Ghidra when available
+## Functions and cross-references with radare2 / Rizin
+
+```bash
+r2 -q -e scr.color=0 -c 'aaa; afl; pdf @ sym.main' ./program > main.asm
+rizin -q -c 'aaa; afl; pdf @ sym.main' ./program > main-rizin.asm
+```
+Use the actual symbol or address from `afl`; stripped programs may not have `sym.main`. Use `axt @ ADDRESS` for references to an observed function or string address. Keep the analyzed session/project when exploring several references. A missing decompiler plugin in r2 does not block Ghidra C export.
+
+## Ghidra C export
 Import with the correct processor and compiler convention, run analysis once, and inspect cross-references to the selected anchor. Focus on that function and its direct data dependencies. Check signed comparisons, variable widths, loop updates, and indirect calls against the disassembly; decompiled C is a reconstruction.
 
-For a headless installation:
+The solver includes an export command that handles the headless project and script:
 ```bash
-"$GHIDRA_HOME/support/analyzeHeadless" "$PROJECT_DIR" triage \
-  -import "$BINARY" -analysisTimeoutPerFile 60
+ctf-decompile ./program main.c main
+# Several functions in one analysis, or use observed addresses for stripped code:
+# ctf-decompile ./program selected.c main check_input
 ```
-Create PROJECT_DIR first and use a fresh project name or the appropriate existing-project options. Headless analysis creates/updates a project; it does not automatically export C pseudocode. Use an installed, documented Ghidra export script when available and confirm its output path rather than assuming a wrapper exists.
+Read `main.c` and inspect `main.c.ghidra.log` on failure. Omitting function selectors exports all functions. Prefer selected functions when they answer the question. A failed export does not replace an existing output, so check the command status before treating a file as a new result. For manual project workflows, `analyzeHeadless` is also on PATH and `GHIDRA_HOME=/opt/ghidra`; a plain headless import alone does not export C.
 
 ## Choose the next operation
 For a short deterministic checker, recover the forward function and data. For ambiguous runtime state, observe one call or branch under GDB. For a reachable overwrite, record its object, extent, and input restrictions before building a payload. This prevents decompiling unrelated startup code from becoming the main task.

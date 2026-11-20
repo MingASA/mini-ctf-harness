@@ -88,7 +88,7 @@ de632c79cb58be69c4685967e114a329fd819ba6fb9e87c1c79843dc7a2e73bd
 
 默认是 16 GB 显存配置：55,296 上下文、Q8 KV、单槽、无 MTP；普通生成 medium、总输出 8K；40K 软 Compact，Compact 默认关闭思考，单次总输出上限为 8K。硬件不同可修改数据目录的 `config.json` 中 `contextTokens`、`compactSoftTokens`、`gpuLayers`、`kvType` 等参数。两套权重和 projector 约 26 GB；连同引擎、下载缓存、工具镜像和可增长的 ext4 工作区，建议数据盘至少预留 55 GB。
 
-Thinking 采样 `temperature=1.0, top_p=0.95, top_k=20`；Non-thinking 为 `0.7, 0.80, 20`。内置 15 个原始 SKILL.md 与 32 个 References；Pi 直接发现 `.agents/skills/`，按需使用通用 `read` 读取。
+Thinking 采样 `temperature=1.0, top_p=0.95, top_k=20`；Non-thinking 为 `0.7, 0.80, 20`。内置 15 个 SKILL.md 与 33 个 References；Pi 直接发现 `.agents/skills/`，按需使用通用 `read` 读取。
 
 ## 主会话离线知识库
 
@@ -249,6 +249,10 @@ Compose 描述的是独立运行的题目服务，例如一个 HTTP 应用和它
 工具镜像包含 cpio、7z、xz、zstd 等归档工具，以及 binwalk、foremost、exiftool、steghide、zsteg、YARA、ImageMagick、FFmpeg、PDF 和 Office 分析工具。取证工具包括 Volatility 3 和 Sleuth Kit。二进制分析和兼容工具包括 gdb-multiarch、radare2、Ghidra headless、jadx、QEMU user、MinGW、apktool 和 Wine 32/64。系统工具优先使用 Debian Bookworm 官方包，其余上游发布包固定版本和 SHA256。Wine 状态保存在题目工作目录的 `.wine` 中。
 
 解题容器资源由 `config.json` 的 `solver.memoryMiB`、`solver.cpus`、`solver.pids` 和 `solver.tmpMiB` 配置，分别控制内存、CPU 配额、进程数和 `/tmp` 大小。配置直接交给 Docker，创建及执行前检查不会附加固定数值上限；配额按需使用，不预留对应内存或独占 CPU。独立离线入口 `provision_sandbox.py` 也支持 `--memory-mib`、`--cpus`、`--pids`、`--tmp-mib`。容器仍使用只读根文件系统、能力丢弃和网络隔离，offloadKV 单独配置。
+
+扩展工具包括 Rizin、Pwndbg、ropper、angr、LIEF、SageMath、John、Hashcat 和 Scapy。默认 `python3` 可直接导入 NumPy、SciPy、Matplotlib、Scapy、LIEF 及原有 pwntools；`angr-python` 使用独立环境，`sage`／`sage -python` 使用 SageMath 环境，避免依赖冲突。Hashcat 使用容器内 CPU OpenCL，不占用推理 GPU；Scapy 的 PCAP 分析无需额外网络权限。`pwndbg` 为独立命令，普通 `gdb` 保留。
+
+模型提示和技能提供工具选择指引；完整调用示例可在容器中执行 `cat /opt/ctf-tools/README.md` 查看。`ctf-decompile ./program main.c main` 会调用 Ghidra 并导出指定函数的 C 伪代码；支持多个函数名或地址，日志保存在 `main.c.ghidra.log`。Python 扩展依赖固定版本和 SHA256，Rizin/Pwndbg 使用固定上游发行包。镜像更新不会自动替换已有题目容器，旧题需要在停止模型和后台作业后迁移并保留工作文件。
 
 Windows 模型启动按引擎实际加载结果判断是否成功，不再要求预留固定数量的空闲 RAM 或显存。RAG 队列的 `concurrency`、`maxJobs`、`timeoutMs` 按所配置数值执行，没有额外的固定最大值。
 

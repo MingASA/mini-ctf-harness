@@ -28,12 +28,18 @@ RUN aria2c --max-connection-per-server=8 --split=8 --min-split-size=8M --file-al
     https://github.com/NationalSecurityAgency/ghidra/releases/download/Ghidra_12.2_build/ghidra_12.2_PUBLIC_20261016.zip \
     && echo '2c2cd776db3c1f6a097ba418922378ac3649cadd5e844a6f5f088ae628a7be67  /tmp/ghidra.zip' | sha256sum -c - \
     && unzip -q /tmp/ghidra.zip -d /opt && mv /opt/ghidra_12.2_PUBLIC /opt/ghidra && rm /tmp/ghidra.zip
+FROM core AS extended-assets
+ADD --checksum=sha256:9102249a9f0b6319c5334a2e5cf8d9cc3f2035e1d3def027c41f6a90f647e8cf https://github.com/rizinorg/rizin/releases/download/v0.9.1/rizin-v0.9.1-static-x86_64.tar.xz /tmp/rizin.tar.xz
+ADD --checksum=sha256:17049a23ba8cbcf4780c4bc9b4aeb519f2801ceabe7304b55d3d622acca03b8c https://github.com/pwndbg/pwndbg/releases/download/2026.10.28/pwndbg_2026.10.28_x86_64-portable.tar.xz /tmp/pwndbg.tar.xz
+RUN mkdir -p /opt/rizin /opt/pwndbg \
+    && tar -xJf /tmp/rizin.tar.xz -C /opt/rizin \
+    && tar -xJf /tmp/pwndbg.tar.xz -C /opt
 FROM core AS solver
 RUN dpkg --add-architecture i386 && apt-get update && apt-get install -y --no-install-recommends \
     apktool ffmpeg gcc-mingw-w64-i686 gcc-mingw-w64-x86-64 wine wine64 wine32:i386 \
     && rm -rf /var/lib/apt/lists/*
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gdb-multiarch qemu-user ruby sleuthkit \
+    ffuf gdb-multiarch qemu-user ruby sleuthkit sqlmap \
     && rm -rf /var/lib/apt/lists/*
 RUN set -eux; cd /tmp; \
     for spec in 'iostruct-0.7.0:e93f2ffea3b79a0e1045f0e0bd3f202368d89c53b692878e693cf50603bae49c' \
@@ -46,6 +52,8 @@ RUN set -eux; cd /tmp; \
       gem install --local --ignore-dependencies --no-document "$name.gem"; \
       rm "$name.gem"; \
     done
+RUN python -m venv /opt/semgrep && /opt/semgrep/bin/pip install --no-cache-dir semgrep==1.120.0 \
+    && ln -s /opt/semgrep/bin/semgrep /usr/local/bin/semgrep
 COPY requirements-extras.txt /tmp/requirements-extras.txt
 RUN pip install --no-cache-dir --no-deps --no-build-isolation --require-hashes -r /tmp/requirements-extras.txt && rm /tmp/requirements-extras.txt
 COPY --from=jdk-assets /opt/jdk /opt/jdk
@@ -59,3 +67,35 @@ COPY jadx-wrapper.sh /usr/local/bin/jadx
 RUN chmod 0755 /usr/local/bin/analyzeHeadless /usr/local/bin/jadx && ldconfig
 WORKDIR /work
 CMD ["sleep", "infinity"]
+
+# Keep new layers after the existing toolchain so upgrading reuses its build cache.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    sagemath john hashcat pocl-opencl-icd clinfo libpcap0.8 \
+    && rm -rf /var/lib/apt/lists/*
+COPY requirements-tooling.txt /tmp/requirements-tooling.txt
+RUN pip install --no-cache-dir --require-hashes -r /tmp/requirements-tooling.txt \
+    && rm /tmp/requirements-tooling.txt
+COPY requirements-angr.txt /tmp/requirements-angr.txt
+RUN python3 -m venv /opt/angr \
+    && /opt/angr/bin/pip install --no-cache-dir --require-hashes -r /tmp/requirements-angr.txt \
+    && /opt/angr/bin/python -c 'import angr, claripy; print(angr.__version__)' \
+    && rm /tmp/requirements-angr.txt
+COPY --from=extended-assets /opt/rizin /opt/rizin
+COPY --from=extended-assets /opt/pwndbg /opt/pwndbg
+COPY sage-wrapper.sh /usr/local/bin/sage
+COPY pwndbg-wrapper.sh /usr/local/bin/pwndbg
+COPY angr-python-wrapper.sh /usr/local/bin/angr-python
+COPY ctf-decompile.py /usr/local/bin/ctf-decompile
+COPY ghidra/ExportFunctions.java /opt/ctf-ghidra/ExportFunctions.java
+COPY tool-guide.md /opt/ctf-tools/README.md
+COPY smoke-extended.sh /opt/ctf-tools/smoke-extended.sh
+COPY with-user.py /opt/ctf-tools/with-user
+RUN apt-get update && apt-get install -y --no-install-recommends libnss-wrapper \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -s /opt/ctf-tools/with-user /usr/local/bin/hashcat \
+    && ln -s /opt/ctf-tools/with-user /usr/local/bin/john \
+    && chmod 0755 /opt/ctf-tools/with-user
+RUN for tool in /opt/rizin/bin/*; do ln -s "$tool" "/usr/local/bin/$(basename "$tool")"; done \
+    && chmod 0755 /usr/local/bin/sage /usr/local/bin/pwndbg /usr/local/bin/angr-python /usr/local/bin/ctf-decompile
+# Solvers use the operator's numeric UID, which need not have an /etc/passwd entry.
+ENV GHIDRA_HOME=/opt/ghidra MPLBACKEND=Agg TERM=xterm-256color USER=solver LOGNAME=solver

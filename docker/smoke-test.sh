@@ -2,10 +2,10 @@
 # Run inside the solver image with writable /tmp, including under the sandbox.
 set -eu
 
-for tool in 7z aapt analyzeHeadless apktool base64 bash binwalk bzip2 checksec cpio curl dig exiftool ffmpeg ffprobe file fls \
+for tool in 7z aapt analyzeHeadless apktool base64 bash binwalk bzip2 checksec cpio curl dig exiftool ffmpeg ffprobe ffuf file fls \
     foremost g++ gcc gdb gdb-multiarch git gzip hashid hexdump identify ip jadx jq ltrace make \
     nasm nc ncat netcat nmap nm nslookup objdump openssl patchelf pdfdetach \
-    oleid olevba pdfinfo pdftotext pip pip3 pngcheck python python3 qemu-x86_64 qpdf r2 readelf rg smali socat \
+    oleid olevba pdfinfo pdftotext pip pip3 pngcheck python python3 qemu-x86_64 qpdf r2 readelf rg ROPgadget semgrep smali socat sqlmap \
     sqlite3 ss steghide strace strings tar tcpdump tshark unrar unzip wget xxd \
     vol wine wine64 i686-w64-mingw32-gcc x86_64-w64-mingw32-gcc xz yara zip zstd zsteg; do
     command -v "$tool" >/dev/null || { echo "Missing tool: $tool" >&2; exit 1; }
@@ -20,6 +20,10 @@ exiftool -ver
 gdb --version | head -n 1
 nmap --version | head -n 1
 openssl version
+ffuf -V
+sqlmap --version
+semgrep --version
+ROPgadget --version
 
 test_dir=$(mktemp -d /tmp/ctf-smoke.XXXXXX)
 trap 'rm -rf "$test_dir"' EXIT HUP INT TERM
@@ -122,4 +126,5 @@ for compressor in bzip2 xz zstd; do
     "$compressor" -dc sample.compressed > decoded
     cmp original decoded
 done
+sh /opt/ctf-tools/smoke-extended.sh
 echo 'Solver image smoke test passed.'

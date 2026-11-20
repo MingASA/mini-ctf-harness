@@ -1,7 +1,7 @@
 ---
 name: ctf-network-recon
-description: Discover reachable ports and identify services with Nmap, then verify the endpoint with a protocol
-  client. Use for a supplied host with unknown services, an unrecognized listening port, or a failed connection.
+description: Discover reachable ports with Nmap, inspect packet captures with Scapy/tshark, then verify a service with a protocol
+  client. Use for a supplied host with unknown services, a PCAP, an unrecognized listening port, or a failed connection.
   For paths or virtual hosts on an already working HTTP service, use ctf-web-discovery.
 ---
 
@@ -19,6 +19,7 @@ nmap -sT -n -sV --version-light --reason -p "$PORTS" \
 ```
 
 ## Choose a reference
+- Packet files, binary layers, payload extraction and Scapy: [packet-analysis.md](references/packet-analysis.md).
 - Port selection, scan completion, or `open|filtered` results: [ports-and-coverage.md](references/ports-and-coverage.md).
 - An open port speaks an unexpected protocol, TLS fails, or container networking differs: [service-confirmation.md](references/service-confirmation.md).
 
