@@ -7,6 +7,7 @@ import http from 'node:http';
 import {spawnSync} from 'node:child_process';
 import {loadCatalog} from '../src/knowledge/catalog.mjs';
 import {askReference} from '../src/knowledge/reader.mjs';
+import {acquireReader} from '../src/knowledge/reader-lease.mjs';
 import {assertExperimentIdle} from '../src/native.mjs';
 
 const lookup=loadCatalog();
@@ -74,6 +75,15 @@ test('standalone reader refuses active experiments, held leases, and resident co
  config(root);fs.writeFileSync(lease,JSON.stringify({pid:process.pid,contestDir:root}));
  await assert.rejects(askReference(options),/lease held/);assert.equal(JSON.parse(fs.readFileSync(lease)).pid,process.pid);
  assert.equal(calls,0);
+});
+
+test('reader protects the configured server without imposing a fixed dedicated-server port restriction',t=>{
+ const root=temp(t),{configFile,lease}=config(root,'http://127.0.0.1:8081');
+ const owner=acquireReader({base:new URL('http://127.0.0.1:8080/v1'),configFile});owner.release();
+ assert.equal(fs.existsSync(lease),false);
+ fs.writeFileSync(configFile,JSON.stringify({modelLease:lease}));
+ assert.throws(()=>acquireReader({base:new URL('http://127.0.0.1:8080/v1'),configFile}),/competition server/);
+ assert.equal(fs.existsSync(lease),false);
 });
 
 test('reader supports more than eight turns and three tools, and releases the lease on completion',async t=>{
