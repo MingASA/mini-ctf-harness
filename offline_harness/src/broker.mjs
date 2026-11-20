@@ -66,27 +66,22 @@ def job_root(jid,work):
  return pathlib.Path(work)/'.offline-jobs'/jid
 `;
 const WORKER = CONTROL+String.raw`
-import subprocess,resource,threading,base64
+import subprocess,threading,base64
 root=pathlib.Path(sys.argv[1]);command=base64.b64decode(sys.argv[2],validate=True).decode('utf-8');seconds=int(sys.argv[3]);work=sys.argv[4]
-# Legitimate task files may exceed the independent8MiB-per-stream log allowance.
-resource.setrlimit(resource.RLIMIT_FSIZE,(1024*1024*1024,1024*1024*1024))
-log_limit=8*1024*1024;log_seen={'stdout':0,'stderr':0};readers=[]
+readers=[]
 def capture(pipe,output,name):
- kept=0
  try:
   while True:
    data=pipe.read(65536)
    if not data:break
-   log_seen[name]+=len(data)
-   accepted=data[:max(0,log_limit-kept)]
-   if accepted:output.write(accepted);output.flush();kept+=len(accepted)
+   output.write(data);output.flush()
  finally:pipe.close()
 def finished_record(value):
  for reader in readers:reader.join(timeout=1)
  for name in ['stdout','stderr']:
-  value[name+'_capture_limit_bytes']=log_limit
-  value[name+'_discarded_bytes']=max(0,log_seen[name]-log_limit)
-  value[name+'_capture_truncated']=log_seen[name]>log_limit
+  value[name+'_capture_limit_bytes']=None
+  value[name+'_discarded_bytes']=0
+  value[name+'_capture_truncated']=False
  return value
 supervisor=identity(os.getpid());started=time.time();child=None;stop_reason=None;stop_at=None
 with (root/'stdout').open('wb') as out,(root/'stderr').open('wb') as err:
@@ -235,14 +230,13 @@ if not p.startswith('/work/'):raise ValueError('File must be inside /work')
 fd=os.open(p,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
 try:
  info=os.fstat(fd)
- if not stat.S_ISREG(info.st_mode) or info.st_size>8*1024*1024:raise ValueError('Read requires a regular file within 8 MiB')
+ if not stat.S_ISREG(info.st_mode):raise ValueError('Read requires a regular file')
  if not os.path.realpath('/proc/self/fd/'+str(fd)).startswith('/work/'):raise ValueError('File escaped /work')
- with os.fdopen(fd,'rb',closefd=False) as stream:raw=stream.read(8*1024*1024+1)
- if len(raw)>8*1024*1024:raise ValueError('File exceeds 8 MiB')
+ with os.fdopen(fd,'rb',closefd=False) as stream:raw=stream.read()
  print(base64.b64encode(raw).decode())
 finally:os.close(fd)
 `;
-    return Buffer.from((await this.docker(['exec',this.config.containerId,'python3','-c',script,filename])).trim(),'base64');
+    return Buffer.from((await this.docker(['exec',this.config.containerId,'python3','-c',script,filename],{maxBuffer:Infinity})).trim(),'base64');
   }
   async validate() {
     const c=JSON.parse(await this.docker(['inspect',this.config.containerId]))[0];
@@ -359,15 +353,16 @@ finally:os.close(fd)
     const code=String.raw`
 import pathlib,sys,json,base64,hashlib
 from PIL import Image
+Image.MAX_IMAGE_PIXELS=None
 p=pathlib.Path('/work')/sys.argv[1];p=p.resolve(strict=True)
-assert p.is_relative_to('/work') and p.is_file() and p.stat().st_size<=8*1024*1024
+assert p.is_relative_to('/work') and p.is_file()
 with Image.open(p) as im:
- assert im.format in ('PNG','JPEG') and im.width*im.height<=16*1024*1024
+ assert im.format in ('PNG','JPEG')
  fmt=im.format;im.verify()
 data=p.read_bytes()
 print(json.dumps({'path':str(p),'mimeType':'image/png' if fmt=='PNG' else 'image/jpeg','sha256':hashlib.sha256(data).hexdigest(),'data':base64.b64encode(data).decode()}))
 `;
-    const image=JSON.parse(await this.docker(['exec',this.config.containerId,'python3','-c',code,filename]));
+    const image=JSON.parse(await this.docker(['exec',this.config.containerId,'python3','-c',code,filename],{maxBuffer:Infinity}));
     if(hash(Buffer.from(image.data,'base64'))!==image.sha256) throw Error('Task image identity changed');
     return image;
   }

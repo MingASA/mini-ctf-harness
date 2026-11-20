@@ -24,7 +24,7 @@ function pinnedFile(root, relative, limit) {
     return bytes;
   } finally {fs.closeSync(fd);}
 }
-export function readCorpus(manifestPath,{maxFileBytes=8388608,maxTotalBytes=16777216}={}) {
+export function readCorpus(manifestPath,{maxFileBytes=16777216,maxTotalBytes=33554432}={}) {
   const absolute = path.resolve(manifestPath);
   const root = fs.realpathSync(path.dirname(absolute));
   const raw = pinnedFile(root,path.basename(absolute),1048576);
