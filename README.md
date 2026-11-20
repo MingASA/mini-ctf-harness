@@ -122,6 +122,10 @@ Thinking 采样 `temperature=1.0, top_p=0.95, top_k=20`；Non-thinking 为 `0.7,
 
 每个 `knowledge/<分类>/<技术对象>/*.json` 文件描述一个可验证的判断。文件名和分类组成稳定 ID。新增卡片时，在 `summary` 给出结论，在 `applies`、`detail` 和 `boundary` 说明版本、前提、反例；`sources.reference` 链到定义该行为的规范或手册，`sources.context` 与 `relevance` 说明它与题目的关系。为新知识添加真实的查询问法和期望命中 ID，并用 `node --test offline_harness/test/knowledge.test.mjs` 验证。PHP 示例另可在已加载 JSON 扩展的 64 位 PHP 7.4 或 8.x 环境下执行 `php -d zend.assertions=1 -d assert.exception=0 -d assert.warning=0 offline_harness/test/fixtures/knowledge-php.php`。
 
+在 `offline_harness` 下运行 `node scripts/evaluate-knowledge.mjs` 可评估额外的开发查询集；运行 `node scripts/evaluate-knowledge.mjs src/knowledge/catalog.mjs test/fixtures/knowledge-validation.json` 可评估另一组查询。脚本首个可选参数也可指向原版检索模块，便于对比。两组共 49 条已覆盖查询和 41 条未覆盖查询，最终都参与过问题诊断和修正，应视为回归集，不能据此宣称盲测或比赛解题准确率。具体结果见 [验证记录](offline_harness/evaluation/knowledge-validation.json)。
+
+模型接口实测使用 `node scripts/smoke-knowledge.mjs 独立服务URL 比赛配置路径 输出JSON路径`，服务模型别名为 `knowledge-smoke-9b`。脚本验证真实模型的搜索→读卡→引用、搜索分页和未覆盖主题三条流程。脚本中的轮数、生成长度及超时是实测预算，不是查阅器或知识工具的产品限制。
+
 ## 交互
 
 ```text
