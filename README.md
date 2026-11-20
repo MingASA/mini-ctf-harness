@@ -78,41 +78,41 @@ de632c79cb58be69c4685967e114a329fd819ba6fb9e87c1c79843dc7a2e73bd
 
 Thinking 采样 `temperature=1.0, top_p=0.95, top_k=20`；Non-thinking 为 `0.7, 0.80, 20`。内置 15 个原始 SKILL.md 与 32 个 References；Pi 直接发现 `.agents/skills/`，按需使用通用 `read` 读取。
 
-## 主会话离线知识库
+## Offline knowledge in the main session
 
-运行 `./mini-ctf` 后，比赛会话中的模型自动获得 `knowledge` 工具。工具提供 `search`、`browse` 和 `get`，查询和结果直接留在当前任务对话及日志里。后台运行入口 `./mini-ctf run` 也使用相同工具。
+When you run `./mini-ctf`, the model in the competition session has access to the `knowledge` tool. The tool supports `search`, `browse`, and `get`. Calls and results stay in the current task conversation and logs. The non-interactive `./mini-ctf run` entry point uses the same tool.
 
-`/knowledge` 查看当前题的开关，`/knowledge off` 关闭，`/knowledge on` 开启。开关按题目保存并在重启后恢复；运行中的修改在完整轮次结束后生效，避免更换已经发给模型的工具契约。关闭后撤下工具及其使用提示，之前读取的资料仍保留在历史中。新题默认开启，可在模型配置中设置 `"knowledgeEnabled": false` 改变默认值。此开关控制仓库自带的离线卡片，不控制独立的 `rag_search` 服务。
+Use `/knowledge` to check the current task setting, `/knowledge off` to disable it, and `/knowledge on` to enable it. The setting is saved per task and restored on restart. Changes during a run take effect after the current turn so the tool contract stays consistent. Turning it off removes the tool and its instructions. Previously retrieved material stays in history. New tasks enable it by default. Set `"knowledgeEnabled": false` in the model configuration to change that default. This setting applies to the bundled offline cards. The separate `rag_search` service has its own controls.
 
-模型先用已有知识和题目证据推进。当关键事实不确定、观测与理解矛盾，或连续尝试无进展且需要核对事实假设时，由模型选择查询知识库。明确的知识缺口可立即触发求助。查询先看摘要，仍缺条件或细节时再读单卡，随后回到题目验证。这个时机由提示词引导和模型判断，程序提供工具并执行其调用。
+The model starts with what it already knows and the evidence in the task. It can look up a fact when a key detail is uncertain, an observation contradicts its understanding, or repeated attempts have stalled and an assumption needs checking. A specific gap can prompt an immediate lookup. The model reviews summaries first, reads a single card if it needs more detail or qualifications, then returns to the task to verify what it learned. The prompt guides that choice, and the harness executes the resulting tool call.
 
-例如模型需要核对 PNG 的 IDAT 行为时，可以先调用 `{"op":"search","query":"IDAT"}` 得到摘要，再按返回 ID 调用 `{"op":"get","id":"formats/png/idat-stream"}` 读取完整卡片及引用。搜索默认每页 3 条，目录默认 5 条；`limit` 可设置任意正整数。两者均支持 `scope`、题型 `tag` 和分页 `offset`。搜索额外返回匹配总数 `total`；下一页保持查询和过滤条件不变，将 `offset` 设为上一页的 `nextOffset`，该值为 `null` 时结束。`get` 只接受一个已登记 ID。
+To check PNG IDAT behavior, the model can call `{"op":"search","query":"IDAT"}` for summaries, then use `{"op":"get","id":"formats/png/idat-stream"}` to read the full card and references. Search defaults to three entries per page and browsing defaults to five. `limit` can be any positive integer. Both operations support `scope`, category `tag`, and pagination with `offset`. Search also returns the total match count in `total`. To request the next page, reuse the query and filters and pass the previous page’s `nextOffset` as `offset`. A `null` value marks the last page. The `get` operation accepts one registered ID.
 
-检索保留完整技术标识符，支持常见写法、英文词形和部分中英术语映射。未覆盖的标识符不会因为“怎么使用”等通用词而匹配其他主题；同一技术目录中的相关卡片仍可能作为候选出现，需核对摘要和边界。查询、卡片文件、字段长度和别名数量没有固定上限；工具展示仍使用现有的输出分页机制。
+Retrieval preserves complete technical identifiers and supports common spellings, English word forms, and selected Chinese–English term mappings. Generic phrases such as “how to use” do not cause an unknown identifier to match an unrelated topic. Related cards in the same technology scope can still appear, so check their summaries and applicability limits. Query length, card file size, field length, and alias count have no fixed cap. Tool output still uses the existing pagination mechanism.
 
-启动提示词包含固定的工具使用说明，具体卡片通过工具结果按需进入上下文。知识文件随仓库分发，首次查询在本进程建立索引；断网时可用。更新卡片后重启前端以加载新的内容。检索结果沿用工具日志与恢复机制，重新打开任务时可继续使用此前已读的结果。
+The startup prompt includes instructions for using the tool. Individual cards enter the model context through tool results as needed. The reference files ship with the repository, and the process builds the index on the first lookup. Retrieval works offline. Restart the frontend after editing cards to load the updated content. Lookups use the existing tool logs and session restore mechanism, so previously retrieved results remain available when you reopen a task.
 
-知识库有 157 张卡、44 个技术对象。同一张卡可服务多种题型，ID 只保留一份。
+The catalog contains 157 cards across 44 technology scopes. A card can apply to several categories while retaining a single ID.
 
-| 题型标签 | 卡数（含交叉标签） | 可以查的具体问题 |
+| Category tag | Card count (including shared tags) | Example topics |
 |---|---:|---|
-| web | 35 | HTTP 跳转与部分响应、Cookie 范围、Flask 会话与重复参数、SQLite 类型和 NULL、PHP 版本差异 |
-| reverse | 60 | x86-64 与 AArch64 语义、SysV 和 Windows 调用约定、PE、ELF、DEX、JVM、Wasm 与定宽运算 |
-| pwn | 20 | C 对象边界与生命周期、结构体布局、栈帧展开、调试符号、故障地址和转储判读 |
-| crypto | 25 | 模运算、椭圆曲线群律与压缩点、有限域、带错分片、整数格与 LLL、密码数据表示 |
-| misc | 89 | ext4、Windows minidump、图像元数据、电话双音、压缩归档、PDF、SQLite 和抓包 |
+| web | 35 | HTTP redirects and partial responses, cookie scope, Flask sessions and repeated parameters, SQLite types and NULL, PHP version differences |
+| reverse | 60 | x86-64 and AArch64 semantics, SysV and Windows calling conventions, PE, ELF, DEX, JVM, Wasm, and fixed-width arithmetic |
+| pwn | 20 | C object bounds and lifetime, struct layout, stack unwinding, debug symbols, fault addresses, and dump interpretation |
+| crypto | 25 | Modular arithmetic, elliptic curve group law and compressed points, finite fields, corrupted shares, integer lattices and LLL, and cryptographic data representation |
+| misc | 89 | ext4, Windows minidumps, image metadata, telephone dual tones, compressed archives, PDF, SQLite, and packet captures |
 
-人工核对内容时也可直接运行 `./mini-ctf knowledge search "问题" --limit 3 --offset 0`、`./mini-ctf knowledge browse --tag pwn` 或 `./mini-ctf knowledge get ID`。这些命令不请求模型。
+To check references manually, run `./mini-ctf knowledge search "question" --limit 3 --offset 0`, `./mini-ctf knowledge browse --tag pwn`, or `./mini-ctf knowledge get ID`. These commands do not call the model.
 
-独立查阅器支持 `ask --model MODEL_ID` 和 `ask --text-only --model MODEL_ID`。必须通过 `MINI_CTF_KNOWLEDGE_MODEL_URL` 指定独立模型服务，并提供比赛配置 `MINI_CTF_CONFIG`（安装后的启动器自动传入）。查阅器检查实验进程及模型租约，拒绝使用配置中的比赛服务，即使该服务当前空闲也不会占用其驻留 KV。`--text-only` 保留整张卡片的正文、适用边界和来源。查阅轮数及工具批次没有固定上限，按 Ctrl+C 可取消请求并释放租约。
+The standalone reader supports `ask --model MODEL_ID` and `ask --text-only --model MODEL_ID`. Set a separate model service with `MINI_CTF_KNOWLEDGE_MODEL_URL` and provide the competition configuration in `MINI_CTF_CONFIG`, which the installed launcher passes automatically. The reader checks experiment processes and model leases. It rejects the configured competition service even when idle to avoid using its resident KV cache. Text-only mode retains the full card details, applicability limits, and sources. Reader turns and tool batches have no fixed cap. Press Ctrl+C to cancel the request and release the lease.
 
-检索测试包含每卡一个问法、20 个额外改写，以及对应十道离线附件的十个知识问题（每个题型两个）。这些测试检查知识命中，单题最终答案与模型答题正确率需另外评估。
+The retrieval tests include one query per card, 20 additional paraphrases, and ten knowledge questions tied to offline artifacts, two per category. They measure whether the expected card is retrieved. Evaluate the final task answer and the model's solving accuracy separately.
 
-每个 `knowledge/<分类>/<技术对象>/*.json` 文件描述一个可验证的判断。文件名和分类组成稳定 ID。新增卡片时，在 `summary` 给出结论，在 `applies`、`detail` 和 `boundary` 说明版本、前提、反例；`sources.reference` 链到定义该行为的规范或手册，`sources.context` 与 `relevance` 说明它与题目的关系。为新知识添加真实的查询问法和期望命中 ID，并用 `node --test offline_harness/test/knowledge.test.mjs` 验证。PHP 示例另可在已加载 JSON 扩展的 64 位 PHP 7.4 或 8.x 环境下执行 `php -d zend.assertions=1 -d assert.exception=0 -d assert.warning=0 offline_harness/test/fixtures/knowledge-php.php`。
+Each file under `knowledge/<category>/<technology>/*.json` describes one verifiable fact. The path and filename form its stable ID. For new cards, state the fact in `summary` and use `applies`, `detail`, and `boundary` to capture version constraints, prerequisites, and exceptions. Link the defining specification or manual in `sources.reference`, and document the connection to the task in `sources.context` and `relevance`. Add a realistic query and its expected card ID, then run `node --test offline_harness/test/knowledge.test.mjs`. To check the PHP examples on 64-bit PHP 7.4 or 8.x with the JSON extension loaded, run `php -d zend.assertions=1 -d assert.exception=0 -d assert.warning=0 offline_harness/test/fixtures/knowledge-php.php`.
 
-在 `offline_harness` 下运行 `node scripts/evaluate-knowledge.mjs` 可评估额外的开发查询集；运行 `node scripts/evaluate-knowledge.mjs src/knowledge/catalog.mjs test/fixtures/knowledge-validation.json` 可评估另一组查询。脚本首个可选参数也可指向原版检索模块，便于对比。两组共 49 条已覆盖查询和 41 条未覆盖查询，最终都参与过问题诊断和修正，应视为回归集，不能据此宣称盲测或比赛解题准确率。具体结果见 [验证记录](offline_harness/evaluation/knowledge-validation.json)。
+From `offline_harness`, run `node scripts/evaluate-knowledge.mjs` to evaluate the development query set. To evaluate the other set, run `node scripts/evaluate-knowledge.mjs src/knowledge/catalog.mjs test/fixtures/knowledge-validation.json`. The optional first argument can point to the original retrieval module for comparison. The two sets include 49 covered queries and 41 uncovered queries. Both sets informed fixes and serve as regression fixtures. They do not measure blind or competition solving accuracy. See the [validation record](offline_harness/evaluation/knowledge-validation.json).
 
-模型接口实测使用 `node scripts/smoke-knowledge.mjs 独立服务URL 比赛配置路径 输出JSON路径`，服务模型别名为 `knowledge-smoke-9b`。脚本验证真实模型的搜索→读卡→引用、搜索分页和未覆盖主题三条流程。脚本中的轮数、生成长度及超时是实测预算，不是查阅器或知识工具的产品限制。
+To exercise the real model interface, run `node scripts/smoke-knowledge.mjs SEPARATE_SERVICE_URL COMPETITION_CONFIG_PATH OUTPUT_JSON_PATH` with the server model alias `knowledge-smoke-9b`. The script checks search followed by card reading and citation, search pagination, and a topic outside the catalog. Its turn, generation, and time budgets apply to the smoke test.
 
 ## 交互
 

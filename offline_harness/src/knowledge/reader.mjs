@@ -18,11 +18,11 @@ export async function askReference({baseUrl, model, question, lookup, textOnly =
   let reference;
   if (textOnly) {
     const {results} = lookup({op: 'search', query: question, limit: 1});
-    if (!results.length) return '知识库没有匹配项。';
+    if (!results.length) return 'No matching knowledge cards.';
     const {id, title, summary, applies, detail, boundary, sources} = lookup({op: 'get', id: results[0].id});
-    reference = [summary, detail, '适用边界：' + boundary, '来源：' + sources.reference].join('\n');
-    messages[0].content = '你是只读资料查询助手。依据所给原文回答最后的问题；若原文不足，说明缺少什么。';
-    messages[1].content = ['卡片 ' + id, title, applies, reference, '', '问题：' + question].join('\n');
+    reference = [summary, detail, 'Applicability limits: ' + boundary, 'Source: ' + sources.reference].join('\n');
+    messages[0].content = 'You are a read-only reference assistant. Answer the final question using the supplied reference. If it does not contain enough information, say what is missing.';
+    messages[1].content = ['Card ' + id, title, applies, reference, '', 'Question: ' + question].join('\n');
     reference = '[' + id + '] ' + reference;
   }
   signal?.throwIfAborted();
@@ -36,7 +36,7 @@ export async function askReference({baseUrl, model, question, lookup, textOnly =
     if (!message || message.role !== 'assistant') throw Error('Invalid local model reply');
     if (!message.tool_calls?.length) {
       if (!message.content?.trim()) throw Error('Local model returned an empty answer');
-      return textOnly ? '检索原文 ' + reference + '\n\n模型回答 ' + message.content.trim() : message.content;
+      return textOnly ? 'Retrieved reference ' + reference + '\n\nModel answer ' + message.content.trim() : message.content;
     }
     if (textOnly) throw Error('Unexpected tool call in text-only mode');
     if (!Array.isArray(message.tool_calls)) throw Error('Invalid tool call batch');

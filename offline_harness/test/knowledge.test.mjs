@@ -21,12 +21,12 @@ function readerConfig(t) {
 }
 const empty = {results:[],total:0,nextOffset:null};
 const fixtures = {
-  'languages/php/assert-string': ['zend.assertions', 'PHP 7.2 字符串断言还会求值吗', 'string assertion'],
-  'languages/php/number-string-comparison': ['==', 'PHP 8 非数字字符串和 0 比较', 'non-numeric string'],
-  'languages/php/numeric-trailing-space': ['is_numeric', '数字后面有空格', 'trailing whitespace'],
-  'formats/elf/nobits': ['SHT_NOBITS', '节的内存大小与文件大小', 'sh_offset'],
-  'formats/png/chunk-length': ['chunk length', 'PNG 数据块的长度包含类型吗', 'IEND 几个字节'],
-  'formats/png/crc-coverage': ['CRC32', '校验和包括块类型吗', 'PNG checksum']
+  'languages/php/assert-string': ['zend.assertions', 'Does PHP 7.2 still evaluate string assertions', 'string assertion'],
+  'languages/php/number-string-comparison': ['==', 'PHP 8 comparing a non-numeric string with 0', 'non-numeric string'],
+  'languages/php/numeric-trailing-space': ['is_numeric', 'whitespace after a numeric string', 'trailing whitespace'],
+  'formats/elf/nobits': ['SHT_NOBITS', 'ELF NOBITS section size in memory', 'sh_offset'],
+  'formats/png/chunk-length': ['chunk length', 'PNG chunk length and chunk type', 'PNG IEND byte length'],
+  'formats/png/crc-coverage': ['CRC32', 'PNG chunk checksum and chunk type', 'PNG checksum']
 };
 
 test('symbol and descriptive queries rank known cards; negatives abstain', t => {
@@ -153,7 +153,7 @@ test('loopback model protocol exposes only the lookup tool, and expands one card
   await once(server, 'listening');
   t.after(() => server.close());
   const baseUrl = 'http://127.0.0.1:' + server.address().port + '/v1';
-  const answer = await askReference({...readerConfig(t), baseUrl, model: 'protocol-fixture', question: 'PNG 校验范围', lookup});
+  const answer = await askReference({...readerConfig(t), baseUrl, model: 'protocol-fixture', question: 'PNG checksum coverage', lookup});
   assert.equal(answer, id);
   assert.deepEqual(seen[0].tools, [knowledgeTool]);
   assert.ok(!JSON.stringify(seen[0]).includes(id));
@@ -172,23 +172,23 @@ test('text-only servers receive full conditions and sources and return a verifia
     let raw = '';
     for await (const part of req) raw += part;
     body = JSON.parse(raw);
-    res.end(JSON.stringify({choices: [{message: {role: 'assistant', content: '本地回答'}}]}));
+    res.end(JSON.stringify({choices: [{message: {role: 'assistant', content: 'Local answer'}}]}));
   });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   t.after(() => server.close());
   const options = {...readerConfig(t), model: 'text-only-fixture', baseUrl: 'http://127.0.0.1:' + server.address().port + '/v1', lookup, textOnly: true};
-  assert.equal(await askReference({...options, question: 'QUIC'}), '知识库没有匹配项。');
+  assert.equal(await askReference({...options, question: 'QUIC'}), 'No matching knowledge cards.');
   assert.equal(body, undefined);
-  const answer = await askReference({...options, question: '两个 gz 顺次放在一起，解压工具只给第一段'});
-  assert.match(answer, /^检索原文 \[formats\/gzip\/members\]/);
-  assert.match(answer, /模型回答 本地回答$/);
+  const answer = await askReference({...options, question: 'Two concatenated gz members, decompression only returns the first'});
+  assert.match(answer, /^Retrieved reference \[formats\/gzip\/members\]/);
+  assert.match(answer, /Model answer Local answer$/);
   assert.ok(!('tools' in body));
   const prompt = body.messages[1].content;
   const card = lookup({op: 'get', id: 'formats/gzip/members'});
   assert.ok(prompt.includes(card.summary) && prompt.includes(card.id));
   assert.ok(prompt.includes(card.sources.reference) && prompt.includes(card.boundary) && prompt.includes(card.detail));
   assert.ok(!prompt.includes('formats/gzip/trailer'));
-  await askReference({...options,question:'SQLite group_concat 输入顺序'});
+  await askReference({...options,question:'SQLite group_concat input order'});
   assert.match(body.messages[1].content,/3\.44\.0/);
 });
