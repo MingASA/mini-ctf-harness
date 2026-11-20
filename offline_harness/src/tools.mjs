@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {hash, atomic} from './store.mjs';
 import {toolError} from './tool-errors.mjs';
+import {knowledgeTool,queryKnowledge} from './knowledge/tool.mjs';
 import {fileReadTool} from './read.mjs';
 import {boundedText,commandOutput,submissionOutput,recordCursor,isRunning} from './tool-output.mjs';
 
@@ -73,6 +74,7 @@ export function buildTools(store,broker,knowledge,verdict,onSubmission=()=>{},op
         return data;
       }),
     fileReadTool(store,broker,knowledge,options),
+    tool(knowledgeTool.function.name,knowledgeTool.function.description,knowledgeTool.function.parameters,queryKnowledge),
     tool('submit_flag',options.manualReview?'Save an exact candidate for the operator to submit and confirm in the frontend. Returns awaiting_review until the operator records the verdict.':'Submit an exact candidate to the configured judge. Returns correct, incorrect, or pending while the judge is processing.',
       schema({candidate:string('Exact candidate answer',4096)}),(a,id)=>{
         const result=verdict.submit(id,a.candidate),record={...result,call_id:id};onSubmission(record);store.append('submission',record);return result;

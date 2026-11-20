@@ -1,0 +1,21 @@
+{
+  "title": "点加和倍点的斜率公式不同",
+  "summary": "对 y²=x³+ax+b，倍点在 2y 可逆时使用斜率 (3x²+a)/(2y)，其中除法是域内求逆。",
+  "applies": "素数域上的非奇异短 Weierstrass 曲线；特征大于 3",
+  "detail": "两个不同且横坐标不同的点相加则用纵坐标差除以横坐标差；不能机械地把同一点代进差商。",
+  "boundary": "分母为零时需要按群律区分负点、倍点或无穷远点，不能以普通浮点除法替代。",
+  "aliases": [
+    "point doubling",
+    "倍点",
+    "斜率",
+    "有限域除法"
+  ],
+  "relevance": "解释两个公式为何在自加时一个出现 0/0、另一个有定义。",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc6090.html#appendix-F.1",
+    "context": "https://cryptohack.org/courses/elliptic/"
+  },
+  "tags": [
+    "crypto"
+  ]
+}

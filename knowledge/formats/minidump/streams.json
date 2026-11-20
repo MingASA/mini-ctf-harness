@@ -1,0 +1,22 @@
+{
+  "title": "MINIDUMP 的 StreamDirectoryRva 指向流目录",
+  "summary": "NumberOfStreams 决定目录条目数；每个目录条目通过类型与位置描述符定位对应流。",
+  "applies": "Windows MINIDUMP；已采集转储的静态解释",
+  "detail": "线程列表、模块列表和内存流是不同的信息来源。已有模块列表不保证每一页模块内容都被采集。",
+  "boundary": "精简转储缺少一段内存时，只能说没有对应采集数据，不能还原该页原本的字节。",
+  "aliases": [
+    "StreamDirectoryRva",
+    "NumberOfStreams",
+    "minidump",
+    "转储缺页"
+  ],
+  "relevance": "区分报告中的地址存在、流目录中有元数据与实际有内存字节。",
+  "sources": {
+    "reference": "https://learn.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_header",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "misc",
+    "pwn"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "title": "整数开方的 floor 根与精确幂",
+  "summary": "integer_nthroot 同时返回向下取整的根和是否恰好为整数幂的标记。",
+  "applies": "整数模运算；模数大于 1",
+  "aliases": [
+    "integer_nthroot",
+    "perfect power",
+    "整数开方",
+    "精确幂"
+  ],
+  "detail": "80 的四次整数根为 2，精确标记为假；81 返回 3 且标记为真。",
+  "boundary": "大整数转浮点再开方可能因舍入选错邻近整数。候选可用整数幂直接回代。",
+  "sources": {
+    "reference": "https://docs.sympy.org/latest/modules/core.html#sympy.core.intfunc.integer_nthroot",
+    "context": "https://cryptohack.org/courses/modular/"
+  },
+  "relevance": "从高次幂数据恢复整数时，区分近似候选与严格满足等式的值。",
+  "tags": [
+    "crypto"
+  ]
+}

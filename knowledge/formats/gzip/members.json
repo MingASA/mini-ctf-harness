@@ -1,0 +1,24 @@
+{
+  "title": "gzip 文件可连续包含多个成员",
+  "summary": "每个成员有独立的头、压缩数据和尾部；第一条流结束处仍可能跟有合法成员。",
+  "applies": "gzip 成员；RFC 1952",
+  "aliases": [
+    "concatenated gzip",
+    "unused_data",
+    "multi member",
+    "多成员",
+    "只解出第一段",
+    "顺次连接",
+    "拼接成员"
+  ],
+  "detail": "两个独立 gzip 成员顺序连接，完整解码结果应是两段明文顺序连接。",
+  "boundary": "某些只处理单流的 API 会把后续成员作为未消费数据返回。",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc1952.html#section-2",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "解释不同解码器对同一 gzip 附件给出不同明文长度。",
+  "tags": [
+    "misc"
+  ]
+}

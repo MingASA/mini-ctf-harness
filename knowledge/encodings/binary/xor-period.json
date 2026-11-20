@@ -1,0 +1,22 @@
+{
+  "title": "周期异或逆变换使用相同密钥字节和相同相位",
+  "summary": "若 y[i] = x[i] XOR key[i mod k]，逐字节再次异或同相位的 key 就恢复 x[i]。",
+  "applies": "逐字节的可逆位变换",
+  "detail": "若截取的样本从原序列偏移 j 开始，第一个样本使用 key[j mod k]。仅知道密钥长度不能决定截取点的相位。",
+  "boundary": "此结论针对已给定的字节变换；状态反馈或变长编码会改变索引关系。",
+  "aliases": [
+    "XOR",
+    "periodic key",
+    "循环异或",
+    "相位"
+  ],
+  "relevance": "复核字节校验器的显式变换时，避免取子串后错误地从密钥开头重新计数。",
+  "sources": {
+    "reference": "https://docs.python.org/3/library/stdtypes.html#bitwise-operations-on-integer-types",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "reverse",
+    "crypto"
+  ]
+}

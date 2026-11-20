@@ -1,0 +1,26 @@
+{
+  "title": "SQL 的 NOT IN 遇到 NULL 会产生未知值",
+  "summary": "在 SQLite 中，若左值非空、未匹配任何元素，而非空右侧集合含 NULL，NOT IN 的结果为 NULL，在 WHERE 中不保留该行。",
+  "applies": "SQLite 查询结果与跨方言边界",
+  "detail": "例如 3 NOT IN (1,NULL) 的结果是 NULL；1 NOT IN (1,NULL) 则为假，因为已经找到了匹配。",
+  "boundary": "空集合有自己的规则；不能把含 NULL 的集合简单等同于空集合。",
+  "aliases": [
+    "NOT IN",
+    "NULL",
+    "three valued logic",
+    "三值逻辑",
+    "空值",
+    "排除名单",
+    "不在名单",
+    "空值过滤"
+  ],
+  "relevance": "解释过滤语句看似应保留一条记录却得到空结果。",
+  "sources": {
+    "reference": "https://www.sqlite.org/lang_expr.html#the_in_and_not_in_operators",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "web",
+    "misc"
+  ]
+}

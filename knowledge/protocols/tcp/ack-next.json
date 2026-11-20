@@ -1,0 +1,20 @@
+{
+  "title": "TCP 确认号指向下一期待序号",
+  "summary": "累计 ACK 为 X 表示 X 之前的序列空间已连续收到，X 自身尚未由该 ACK 确认。",
+  "applies": "抓包重建；TCP 序列空间",
+  "aliases": [
+    "cumulative ACK",
+    "下一期待",
+    "接收边界"
+  ],
+  "detail": "单看两个方向的绝对序号不能判断顺序；各方向各有自己的序列空间。",
+  "boundary": "延迟 ACK 和重传都会使报文条数与 ACK 数量不一一对应。",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc9293.html#section-3.4",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "解释抓包时间线中相同 ACK 重复出现或 ACK 一次跨越多个段的情况。",
+  "tags": [
+    "misc"
+  ]
+}

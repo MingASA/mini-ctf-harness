@@ -1,0 +1,21 @@
+{
+  "title": "经典 pcap 的魔数同时编码字节序和时间精度",
+  "summary": "文件起始字节 d4 c3 b2 a1 为小端微秒格式，4d 3c b2 a1 为小端纳秒格式；对应大端序列分别反转。",
+  "applies": "传统 libpcap 格式；单接口捕获",
+  "aliases": [
+    "pcap magic",
+    "nanoseconds",
+    "microseconds",
+    "时间戳精度"
+  ],
+  "detail": "后续秒字段和小数部分使用文件端序，小数部分的量纲由魔数决定。",
+  "boundary": "pcapng 使用不同结构，不能套用此四值规则来解释其数据包时间戳。",
+  "sources": {
+    "reference": "https://man7.org/linux/man-pages/man5/pcap-savefile.5.html",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "重放离线时间线时，避免相邻包间隔被放大或缩小一千倍。",
+  "tags": [
+    "misc"
+  ]
+}

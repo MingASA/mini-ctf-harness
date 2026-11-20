@@ -1,0 +1,22 @@
+{
+  "title": "Wasm 的 LEB128 先存最低七位组",
+  "summary": "字节最高位为 1 表示后面还有一组。无符号 e5 8e 26 表示 624485。",
+  "applies": "WebAssembly 核心二进制格式",
+  "aliases": [
+    "LEB128",
+    "varuint",
+    "varint32",
+    "七位编码"
+  ],
+  "detail": "有符号编码要检查最后有效组的符号位进行扩展。例如 7f 按 sLEB 为 −1，按 uLEB 为 127。",
+  "boundary": "Wasm 对每种位宽限制最大编码长度和最后组的未用位；不能把任意长变体视为合法字段。",
+  "sources": {
+    "reference": "https://webassembly.github.io/spec/core/binary/values.html",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "读取模块中的立即数或区段长度时，避免把有符号常数解成巨大的正数。",
+  "tags": [
+    "reverse",
+    "misc"
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "title": "合并部分响应前要确认它们属于同一表示",
+  "summary": "能拼在一起的字节范围须属于同一表示。强校验标识可用于判断多次取得的部分是否来自同一版本。",
+  "applies": "离线 HTTP 事务与部分响应记录",
+  "detail": "同一 URL 的两条 206 即使区间恰好首尾相接，若强 ETag 不同，不能当作同一份对象。",
+  "boundary": "弱 ETag 只表达弱等价，不能据此证明分段字节完全相同。",
+  "aliases": [
+    "ETag",
+    "206",
+    "partial response",
+    "强校验",
+    "缓存重组"
+  ],
+  "relevance": "从多次请求重建附件时，避免把不同版本的片段拼在一起。",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc9110.html#section-15.3.7.3",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "web",
+    "misc"
+  ]
+}

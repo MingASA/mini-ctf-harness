@@ -1,0 +1,21 @@
+{
+  "title": "ext4 inode 编号从 1 起，组内位置从 0 起",
+  "summary": "若每组有 N 个 inode，则编号 ino 属于组 (ino−1)//N，组内索引为 (ino−1)%N。",
+  "applies": "ext4 文件系统镜像；Linux 内核格式文档",
+  "detail": "索引乘以 s_inode_size 才是相应 inode table 内的字节偏移；inode 表位置从组描述符取得。",
+  "boundary": "inode 表布局受文件系统特性影响，不能直接假定每组都在相同相对块号放置自己的表。",
+  "aliases": [
+    "inode table",
+    "block group",
+    "inode编号",
+    "组内索引"
+  ],
+  "relevance": "定位刚好位于组边界的 inode 时避免整组错位。",
+  "sources": {
+    "reference": "https://www.kernel.org/doc/html/latest/filesystems/ext4/inodes.html",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "misc"
+  ]
+}

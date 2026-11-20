@@ -1,0 +1,23 @@
+{
+  "title": "故障访问地址和发生故障的指令地址是两个字段",
+  "summary": "对提供 si_addr 的同步故障，si_addr 表示相关的故障地址；程序计数器标记当时正在执行的指令。",
+  "applies": "原生程序崩溃报告与 DWARF 调试元数据",
+  "detail": "例如分析数据访问故障时，报告中的访问地址可与代码地址相差很远，应据字段语义对应内存映射与符号。",
+  "boundary": "并非所有信号和来源都提供有意义的 si_addr。应同时检查信号种类与 si_code。",
+  "aliases": [
+    "si_addr",
+    "si_code",
+    "program counter",
+    "故障地址",
+    "指令地址"
+  ],
+  "relevance": "解读已有崩溃转储时，将源码位置与被访问数据的位置分别定位。",
+  "sources": {
+    "reference": "https://man7.org/linux/man-pages/man2/sigaction.2.html",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "pwn",
+    "reverse"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "title": "SQLite 列亲和性可改变等号两侧的转换",
+  "summary": "比较前的类型转换受列的亲和性影响。独立字面量之间的比较与同值写在列里后比较，可能返回不同结果。",
+  "applies": "SQLite 查询结果与跨方言边界",
+  "detail": "在普通表 t(x TEXT) 写入 42 后，x=42 可为真；独立表达式 '42'=42 则为假。",
+  "boundary": "应区分存储类别、列亲和性和表达式亲和性，严格表也不能消除所有表达式差异。",
+  "aliases": [
+    "affinity",
+    "typeof",
+    "SQLite 类型亲和性",
+    "文本比较"
+  ],
+  "relevance": "解释相同显示值在不同查询表达式中出现不一致结果。",
+  "sources": {
+    "reference": "https://www.sqlite.org/datatype3.html#type_conversions_prior_to_comparison",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "web",
+    "misc"
+  ]
+}

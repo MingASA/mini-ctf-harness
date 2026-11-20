@@ -1,0 +1,21 @@
+{
+  "title": "多项式评价码的距离决定唯一纠错上限",
+  "summary": "在 n 个不同域点记录次数小于 k 的多项式，最小距离为 n−k+1，可唯一纠正至多 floor((n−k)/2) 个未知位置错误。",
+  "applies": "有限域多项式与带错取样",
+  "detail": "两个不同候选最多在 k−1 个横坐标上一致。检查候选要统计整组观测上的一致数。",
+  "boundary": "已知错误位置的擦除与未知位置的错误成本不同。一般需满足 2e+s≤n−k，其中 e 为错误数、s 为擦除数。",
+  "aliases": [
+    "Reed-Solomon",
+    "minimum distance",
+    "损坏分片",
+    "纠错半径"
+  ],
+  "relevance": "判断现有分片是否足以唯一恢复原多项式，以及怎样判定候选一致性。",
+  "sources": {
+    "reference": "https://errorcorrectionzoo.org/c/reed_solomon",
+    "context": "https://cryptohack.org/courses/modular/"
+  },
+  "tags": [
+    "crypto"
+  ]
+}

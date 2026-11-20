@@ -1,0 +1,22 @@
+{
+  "title": "DER INTEGER 表示正数时可能有一个前导 00",
+  "summary": "ASN.1 INTEGER 的内容是有符号二进制补码；正整数的最高有效字节若最高位为 1，需要前导零。",
+  "applies": "密码学题的字节表示和参数解释",
+  "aliases": [
+    "DER INTEGER",
+    "ASN.1",
+    "符号字节",
+    "前导00"
+  ],
+  "detail": "正数 128 的 INTEGER 内容为 00 80；去掉 00 后，80 作为一字节 INTEGER 表示负数。",
+  "boundary": "这是类型的内容编码，不能把首字节 00 当作整数实际多出的有效位。",
+  "sources": {
+    "reference": "https://www.itu.int/rec/dologin_pub.asp?id=T-REC-X.690-202102-I%21%21PDF-E&lang=e&type=items",
+    "context": "https://cryptohack.org/courses/symmetric/"
+  },
+  "relevance": "核对公钥参数与原始无符号整数转储为何相差一个字节。",
+  "tags": [
+    "crypto",
+    "misc"
+  ]
+}

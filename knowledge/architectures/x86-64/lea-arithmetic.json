@@ -1,0 +1,21 @@
+{
+  "title": "LEA 只计算有效地址",
+  "summary": "lea eax,[rdi+rdi*4+3] 取出算术结果的低 32 位，不读取该地址指向的内存。",
+  "applies": "x86-64 的 64 位模式；Intel SDM 卷 1 和卷 2",
+  "aliases": [
+    "LEA",
+    "effective address",
+    "地址计算",
+    "乘五"
+  ],
+  "detail": "这条指令可用来实现 5×输入+3 并保留算术标志；反汇编中的方括号不一定代表一次访存。",
+  "boundary": "不能把所有带同样方括号的指令都等同于 LEA；MOV 的内存操作数会读写内存。",
+  "sources": {
+    "reference": "https://cdrdv2-public.intel.com/671110/325383-sdm-vol-2abcd.pdf",
+    "context": "https://ctf-wiki.org/executable/elf/structure/basic-info/"
+  },
+  "relevance": "静态还原纯数字变换时，判断表达式是否真的依赖外部内存内容。",
+  "tags": [
+    "reverse"
+  ]
+}

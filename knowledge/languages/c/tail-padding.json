@@ -1,0 +1,27 @@
+{
+  "title": "结构体数组元素步长包括末尾填充",
+  "summary": "连续结构体数组的元素地址相差 sizeof(元素类型)，成员末端可能不是下一元素起点。",
+  "applies": "C11；离线内存诊断与对象表示",
+  "detail": "在 int 为 4 字节且按 4 对齐的常见 ABI 中，struct { int n; char c; } 的大小通常为 8，第二元素从偏移 8 起。见 C11 §6.7.2.1、§6.5.3.4。",
+  "boundary": "打包文件格式可另外规定紧密排列；该情况下应使用其声明的记录步长。",
+  "aliases": [
+    "sizeof",
+    "offsetof",
+    "tail padding",
+    "尾部填充",
+    "数组步长",
+    "结构体数组",
+    "成员字节",
+    "结构体从",
+    "sizeof struct"
+  ],
+  "relevance": "核对内存中第二条记录和序列化文件中的第二条记录为何错位。",
+  "sources": {
+    "reference": "https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "pwn",
+    "reverse"
+  ]
+}
