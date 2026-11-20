@@ -14,6 +14,7 @@ export const slashCommands=[
  ['cancel','取消当前题的后台命令'],
  ['compact','在本轮结束后压缩上下文'],
  ['effort','选择思考模式、强度和预算'],
+ ['close-server','停止托管模型服务并保留会话'],
  ['model','查看并选择模型'],
  ['env','选择新题使用的运行环境'],
  ['checkpoint','在安全边界保存当前进度'],

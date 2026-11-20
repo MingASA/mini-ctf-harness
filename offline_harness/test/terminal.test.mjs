@@ -301,3 +301,25 @@ test('new-task wizard keeps drafts and recovers from missing or invalid attachme
   assert.equal(ui.wizard,null);
  }finally{await ui?.close();fs.rmSync(root,{recursive:true,force:true});}
 });
+
+
+test('closing the managed model leaves the terminal open and pauses scheduling until reload',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'close-managed-model-'));
+ let contest,ui,stops=0;
+ const profile={id:'fixture',model:'fixture',name:'Fixture model'};
+ const settings={model:'fixture',modelSelection:'fixture'};
+ try{
+  contest=new Contest({contestDir:root,modelRuntime:{exe:'/fixture/model'}},{testMode:true,
+   modelCatalog:{resolve:()=>profile,settings:()=>settings,activate:async()=>({settings,receipt:{}}),
+    stopManagedServer:async()=>{stops++;}}});
+  ui=new CompetitionTerminal(contest,{terminal:new Terminal()});
+  await ui.submit('/close-server');
+  assert.equal(stops,1);
+  assert.ok(!ui.closed);
+  assert.match(ui.notice,/用 \/model 重新加载/);
+  contest.start();
+  assert.equal(contest.enabled,false);
+  await contest.switchModel(undefined,'fixture');
+  assert.equal(contest.modelServerStopped,false);
+ }finally{await ui?.close();await contest?.close();fs.rmSync(root,{recursive:true,force:true});}
+});

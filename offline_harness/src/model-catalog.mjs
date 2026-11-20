@@ -142,6 +142,31 @@ export class ModelCatalog {
   const slots=await this.json(profile.baseUrl,'/slots',{signal});if(!Array.isArray(slots)||slots.some(s=>s.is_processing))throw Error('Selected model still has an active request');
   return {model:profile.model,baseUrl:profile.baseUrl,contextTokens:settings.contextTokens};
  }
+ async stopManagedServer(){
+  this.guard();
+  const runtime=this.config.modelRuntime;
+  if(!runtime?.exe)throw Error('No managed model runtime is configured');
+  const runtimeRoot=this.runtimeRoot();
+  if(!fs.existsSync(runtimeRoot))return;
+  const linux=runtime.platform==='linux';
+  let binary,args;
+  if(linux){
+   binary='python3';
+   args=[new URL('../scripts/managed_server.py',import.meta.url).pathname,'--stop',runtimeRoot];
+  }else{
+   const script=path.join(runtimeRoot,'Terminal-Model.ps1');
+   fs.copyFileSync(new URL('../scripts/Terminal-Model.ps1',import.meta.url),script);
+   binary=runtime.powershell??WINDOWS_POWERSHELL;
+   args=['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',windowsPath(script),
+    '-Stop','-RuntimeRoot',windowsPath(runtimeRoot),'-ExpectedExe',windowsPath(runtime.exe)];
+  }
+  try{
+   await this.execute(binary,args,{timeout:45000,maxBuffer:1024*1024,
+    env:windowsInteropEnv(),cwd:runtime.hostCwd??path.dirname(runtimeRoot)});
+  }catch(error){
+   throw new Error(error.stderr?.trim()||error.message,{cause:error});
+  }
+ }
  async activate(profile,current,{signal,projectorDevice}={}){
   this.guard();signal?.throwIfAborted();const settings=this.settings(profile,current,{projectorDevice});
   let startup;

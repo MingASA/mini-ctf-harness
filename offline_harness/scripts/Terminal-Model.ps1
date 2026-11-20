@@ -1,7 +1,18 @@
-param([Parameter(Mandatory=$true)][string]$Config)
+param(
+ [Parameter(Mandatory=$true,ParameterSetName='Start')][string]$Config,
+ [Parameter(Mandatory=$true,ParameterSetName='Stop')][switch]$Stop,
+ [Parameter(Mandatory=$true,ParameterSetName='Stop')][string]$RuntimeRoot,
+ [Parameter(Mandatory=$true,ParameterSetName='Stop')][string]$ExpectedExe
+)
 $ErrorActionPreference='Stop'
-$c=Get-Content -LiteralPath $Config -Raw | ConvertFrom-Json
-$root=[IO.Path]::GetFullPath([string]$c.root)
+if($Stop){
+ $root=[IO.Path]::GetFullPath($RuntimeRoot)
+ $exe=[IO.Path]::GetFullPath($ExpectedExe)
+}else{
+ $c=Get-Content -LiteralPath $Config -Raw | ConvertFrom-Json
+ $root=[IO.Path]::GetFullPath([string]$c.root)
+ $exe=[IO.Path]::GetFullPath([string]$c.exe)
+}
 if(![IO.Path]::IsPathRooted($root)){throw 'Model runtime needs an absolute path'}
 $ownerFile=Join-Path $root 'owner.json'
 $mutex=[Threading.Mutex]::new($false,'Local\OfflineHarnessInteractiveModelGPU0')
@@ -14,7 +25,10 @@ function Write-JsonAtomic([string]$File,$Value){
 function Owned-Process($record){
  $p=Get-Process -Id ([int]$record.pid) -ErrorAction SilentlyContinue
  if(!$p){return $null}
- if($p.Path -ne [string]$record.exe -or $p.StartTime.ToUniversalTime().ToString('o') -ne [string]$record.start_time){throw 'Model PID identity changed; process was not stopped'}
+ $recordedExe=[string]$record.exe
+ # Older starts could record a null Process.Path before Windows exposed it.
+ if(!$recordedExe){$recordedExe=$exe}
+ if($p.Path -ne $recordedExe -or $p.StartTime.ToUniversalTime().ToString('o') -ne [string]$record.start_time){throw 'Model PID identity changed; process was not stopped'}
  return $p
 }
 function Quote-Argument([string]$value){
@@ -27,12 +41,17 @@ try{
  if(Test-Path -LiteralPath $ownerFile){
   $owned=Get-Content -LiteralPath $ownerFile -Raw|ConvertFrom-Json
   $p=Owned-Process $owned
-  if($p -and $owned.key -eq $c.key){Write-Output 'Owned model is already resident';exit 0}
+  if(!$Stop -and $p -and $owned.key -eq $c.key){Write-Output 'Owned model is already resident';exit 0}
   if($p){
-   Stop-Process -Id $p.Id
+   Stop-Process -InputObject $p
    $p.WaitForExit(30000)|Out-Null;$p.Refresh()
    if(!$p.HasExited){throw 'Owned model has not exited'}
   }
+ }
+ if($Stop){
+  if(Test-Path -LiteralPath $ownerFile){Remove-Item -LiteralPath $ownerFile}
+  Write-Output 'Managed model stopped'
+  exit 0
  }
  $other=@(Get-CimInstance Win32_Process|Where-Object {$_.Name -like 'llama-server*'})
  if($other.Count){throw 'A model server outside this frontend is running; it was left untouched'}
@@ -59,7 +78,7 @@ try{
  $env:QWEN_VISION_CACHE_DIR=Join-Path $run 'vision-cache'
  $quoted=(@($c.args)|ForEach-Object {Quote-Argument ([string]$_)}) -join ' '
  $p=Start-Process -FilePath $c.exe -ArgumentList $quoted -WorkingDirectory (Split-Path $c.exe) -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $run 'stdout.log') -RedirectStandardError (Join-Path $run 'stderr.log')
- $record=@{requestId=$c.requestId;pid=$p.Id;exe=$p.Path;start_time=$p.StartTime.ToUniversalTime().ToString('o');key=$c.key;model=$c.model;run=$run;args=@($c.args);contextTokens=$c.contextTokens;baseUrl=$c.baseUrl}
+ $record=@{requestId=$c.requestId;pid=$p.Id;exe=$exe;start_time=$p.StartTime.ToUniversalTime().ToString('o');key=$c.key;model=$c.model;run=$run;args=@($c.args);contextTokens=$c.contextTokens;baseUrl=$c.baseUrl}
  # Publish ownership immediately, so a cancelled startup can be recovered by the next selection.
  Write-JsonAtomic (Join-Path $run 'process.json') $record
  Write-JsonAtomic $ownerFile $record
@@ -71,4 +90,4 @@ try{
  }
  if(!$ready){throw "Selected model startup timed out; logs: $run"}
  Write-Output ('Ready: '+$c.model+' '+$c.baseUrl)
-}catch{Write-JsonAtomic (Join-Path $root 'launch-failed.json') @{requestId=$c.requestId;error=$_.Exception.Message};throw}finally{if($locked){$mutex.ReleaseMutex()};$mutex.Dispose()}
+}catch{if(!$Stop){Write-JsonAtomic (Join-Path $root 'launch-failed.json') @{requestId=$c.requestId;error=$_.Exception.Message}};throw}finally{if($locked){$mutex.ReleaseMutex()};$mutex.Dispose()}

@@ -163,6 +163,7 @@ export class Contest extends EventEmitter {
  }
  switchModel(id,value,options){
   if(this.offloadingKV)throw Error('Wait for the RAM KV operation to finish');
+  if(this.modelClosePromise)throw Error('Wait for the model server to stop');
   if(this.modelSwitchPromise)throw Error('A model switch is already in progress');
   const pending=this.performModelSwitch(id,value,options);this.modelSwitchPromise=pending;pending.finally(()=>{this.modelSwitchPromise=null;}).catch(()=>{});return pending;
  }
@@ -181,9 +182,33 @@ export class Contest extends EventEmitter {
    const result=await this.catalog.activate(profile,current,{signal:controller.signal,projectorDevice});controller.signal.throwIfAborted();
    if(session)session.selectModel(result.settings,result.receipt);Object.assign(this.defaultModel,result.settings);
    atomic(path.join(this.root,'model-selection.json'),{id:profile.id,...result,time:Date.now()});
+   this.modelServerStopped=false;
    this.notice='模型已切换到 '+profile.name+'；输入消息或 /resume 继续。';return result;
   }catch(error){this.notice='模型切换未完成：'+error.message;throw error;}
   finally{if(this.pendingDefaultModel===pendingSettings)this.pendingDefaultModel=null;this.modelSwitching=false;this.modelSwitchController=null;this.emit('change');}
+ }
+ closeModelServer(){
+  if(this.booting||this.modelSwitchPromise||this.kvOperation||this.closing)
+   throw Error('请等待当前模型或 KV 操作完成');
+  if(this.modelClosePromise)return this.modelClosePromise;
+  const pending=this.performModelClose();
+  this.modelClosePromise=pending;
+  pending.finally(()=>{this.modelClosePromise=null;this.emit('change');}).catch(()=>{});
+  return pending;
+ }
+ async performModelClose(){
+  if(!this.config.modelRuntime?.exe)throw Error('当前安装没有托管模型服务');
+  this.interruptActive();
+  this.notice='正在关闭模型服务…';this.emit('change');
+  await this.execution;
+  const hadLease=Boolean(this.lease);
+  this.acquire();
+  try{
+   await this.catalog.stopManagedServer();
+   this.modelServerStopped=true;
+   this.resident=null;this.ramKvResident=null;this.holdResident=false;
+   this.notice='托管模型服务已关闭。用 /model 重新加载。';
+  }finally{if(this.modelServerStopped||!hadLease)this.release();}
  }
  effort(id,level,budget){const s=this.session(id);return level?s.requestEffort(level,budget):s.generationControls();}
  compact(id){id=this.resolveTaskId(id);
@@ -246,7 +271,7 @@ export class Contest extends EventEmitter {
    return await kv.save(session);
   }finally{this.offloadingKV=false;this.emit('change');}
  }
- start(){if(this.bootError&&this.retryInitialization){this.retryInitialization().catch(()=>{});return;}this.enabled=true;this.notice='';if(!this.interval)this.interval=setInterval(()=>{this.tick().catch(e=>{this.notice=e.message;this.emit('change');});},1000);this.tick().catch(e=>{this.notice=e.message;this.emit('change');});this.emit('change');}
+ start(){if(this.modelServerStopped||this.modelClosePromise){this.notice=this.modelClosePromise?'正在关闭模型服务…':'请先用 /model 加载模型。';this.emit('change');return;}if(this.bootError&&this.retryInitialization){this.retryInitialization().catch(()=>{});return;}this.enabled=true;this.notice='';if(!this.interval)this.interval=setInterval(()=>{this.tick().catch(e=>{this.notice=e.message;this.emit('change');});},1000);this.tick().catch(e=>{this.notice=e.message;this.emit('change');});this.emit('change');}
  async poll(){
   if(this.pollPromise)return this.pollPromise;
   this.polling=true;
@@ -262,7 +287,7 @@ export class Contest extends EventEmitter {
  release(){if(this.lease){fs.unlinkSync(this.lease);this.lease=null;}}
  async tick(){
   if(this.closing)return;await this.poll();this.emit('change');
-  if(this.booting||this.modelSwitching||this.offloadingKV||(!this.enabled&&!this.maintenance.has(this.manualNext))||this.busy||(!this.manualNext&&!this.queue.state.readyResume.length&&!this.queue.state.readyFresh.length))return;
+  if(this.booting||this.modelSwitching||this.modelClosePromise||this.modelServerStopped||this.offloadingKV||(!this.enabled&&!this.maintenance.has(this.manualNext))||this.busy||(!this.manualNext&&!this.queue.state.readyResume.length&&!this.queue.state.readyFresh.length))return;
   this.busy=true;
   this.execution=this.dispatch();await this.execution;
  }
@@ -297,5 +322,5 @@ export class Contest extends EventEmitter {
    this.busy=false;this.emit('change');
   }
  }
- async close(){this.cancelInitialization?.();this.modelSwitchController?.abort();this.closing=true;this.enabled=false;clearInterval(this.interval);if(this.active)this.session(this.active).pause();await this.execution;await this.kvOperation?.catch(()=>{});await this.modelSwitchPromise?.catch(()=>{});await this.initialization?.catch(()=>{});while(this.polling)await new Promise(r=>setTimeout(r,10));this.release();if(fs.existsSync(this.lock))fs.unlinkSync(this.lock);}
+ async close(){this.cancelInitialization?.();this.modelSwitchController?.abort();this.closing=true;this.enabled=false;clearInterval(this.interval);if(this.active)this.session(this.active).pause();await this.execution;await this.kvOperation?.catch(()=>{});await this.modelSwitchPromise?.catch(()=>{});await this.modelClosePromise?.catch(()=>{});await this.initialization?.catch(()=>{});while(this.polling)await new Promise(r=>setTimeout(r,10));this.release();if(fs.existsSync(this.lock))fs.unlinkSync(this.lock);}
 }
