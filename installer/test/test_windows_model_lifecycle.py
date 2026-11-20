@@ -44,10 +44,10 @@ $ErrorActionPreference='Stop'
 $OutputEncoding=[Console]::OutputEncoding=[Text.UTF8Encoding]::new()
 $global:FixtureRoot=$PSScriptRoot
 function Get-CimInstance($ClassName){
- if($ClassName -eq 'Win32_OperatingSystem'){return [pscustomobject]@{FreePhysicalMemory=16777216}}
+ if($ClassName -eq 'Win32_OperatingSystem'){throw 'Fixed RAM admission checks must not gate model loading'}
 }
 function Get-NetTCPConnection {}
-function nvidia-smi.exe {$global:LASTEXITCODE=0; '0'}
+function nvidia-smi.exe {throw 'GPU resource query unavailable'}
 function Invoke-RestMethod {
  if(Test-Path -LiteralPath (Join-Path $global:FixtureRoot 'ready')){return @{status='ok'}}
  return @{status='loading'}
