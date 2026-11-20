@@ -34,6 +34,27 @@ async function fixture(script,{template='changed'}={}){
 const done=(b,f,r,text='Ready')=>{f({content:text},'stop',{prompt_tokens:tokens(b),completion_tokens:10});r.end('data: [DONE]\n\n');};
 const generations=p=>p.requests.filter(r=>r.route==='/v1/chat/completions').map(r=>r.body);
 
+test('knowledge toggle preserves the in-flight turn, removes schema and guidance next slice, and survives reopening',async()=>{
+ const root=temp(),ready=deferred(),gate=deferred();
+ const p=await fixture(async(n,b,f,res)=>{if(n===1){ready.resolve();await gate.promise;}done(b,f,res);});
+ try{
+  const cfg=config(root,p.url),task={id:'knowledge-toggle',objective:'Check reference availability'};
+  let s=new InteractiveSession(task,cfg,opts);
+  const work=s.runSlice();await ready.promise;
+  assert.equal(s.requestKnowledge(false).pending,false);
+  assert.ok(s.tools().some(t=>t.name==='knowledge'));
+  s.enqueue('Continue');gate.resolve();assert.equal((await work).status,'ready');
+  assert.equal(s.knowledgeControls().enabled,false);assert.equal(s.knowledgeControls().pending,undefined);
+  assert.ok(!s.tools().some(t=>t.name==='knowledge'));assert.doesNotMatch(s.systemPrompt(),/Consult knowledge/);
+  s=new InteractiveSession(task,cfg,opts);assert.equal(s.knowledgeControls().enabled,false);
+  await s.runSlice();assert.ok(generations(p)[0].tools.some(t=>t.function.name==='knowledge'));
+  assert.ok(!generations(p)[1].tools.some(t=>t.function.name==='knowledge'));
+  s.requestKnowledge(true);s.enqueue('Check again');await s.runSlice();
+  assert.ok(generations(p)[2].tools.some(t=>t.function.name==='knowledge'));
+  assert.equal(new InteractiveSession(task,cfg,opts).knowledgeControls().enabled,true);
+ }finally{gate.resolve();await p.close();fs.rmSync(root,{recursive:true,force:true});}
+});
+
 test('a per-session window changes at a turn boundary on the same backend and survives reopening',async()=>{
  const root=temp(),ready=deferred(),gate=deferred();
  const p=await fixture(async(n,b,f,res)=>{if(n===1){ready.resolve();await gate.promise;}done(b,f,res);});

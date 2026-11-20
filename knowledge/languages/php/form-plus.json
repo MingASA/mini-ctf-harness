@@ -3,6 +3,7 @@
   "summary": "urldecode 把字面加号转换成空格，rawurldecode 保留它。",
   "applies": "PHP 7.4 和 8.x 的数据处理",
   "aliases": [
+    "URL decoding",
     "urldecode",
     "rawurldecode",
     "表单加号",

@@ -9,8 +9,12 @@ try {
   if (op === 'ask') {
     if (!values.model || Object.keys(values).some(k => k !== 'model' && k !== 'text-only') || args.length !== 1)
       throw Error('Usage: knowledge ask --model MODEL [--text-only] "question"');
-    console.log(await askReference({model: values.model, question: args[0], lookup, textOnly: values['text-only'],
-      baseUrl: process.env.MINI_CTF_KNOWLEDGE_MODEL_URL || 'http://127.0.0.1:8080/v1'}));
+    const controller = new AbortController();
+    const cancel = () => controller.abort();
+    process.once('SIGINT', cancel);process.once('SIGTERM', cancel);
+    try {console.log(await askReference({model: values.model, question: args[0], lookup, textOnly: values['text-only'], signal:controller.signal,
+      baseUrl: process.env.MINI_CTF_KNOWLEDGE_MODEL_URL}));}
+    finally {process.removeListener('SIGINT', cancel);process.removeListener('SIGTERM', cancel);}
   } else {
     const request = {op, ...values};
     if (op === 'search') request.query = args[0];

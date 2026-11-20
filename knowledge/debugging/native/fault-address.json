@@ -5,6 +5,7 @@
   "detail": "例如分析数据访问故障时，报告中的访问地址可与代码地址相差很远，应据字段语义对应内存映射与符号。",
   "boundary": "并非所有信号和来源都提供有意义的 si_addr。应同时检查信号种类与 si_code。",
   "aliases": [
+    "fault address",
     "si_addr",
     "si_code",
     "program counter",

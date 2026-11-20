@@ -3,13 +3,23 @@ import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {createServer} from 'node:http';
 import {once} from 'node:events';
-import {readFileSync} from 'node:fs';
+import {readFileSync, mkdtempSync, writeFileSync, rmSync} from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {loadCatalog} from '../src/knowledge/catalog.mjs';
 import {knowledgeTool, askReference} from '../src/knowledge/reader.mjs';
 import {metrics} from '../src/rag/evaluate.mjs';
 
 const lookup = loadCatalog();
+function readerConfig(t) {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'knowledge-reader-'));
+  t.after(() => rmSync(root, {recursive:true, force:true}));
+  const configFile = path.join(root, 'config.json');
+  writeFileSync(configFile, JSON.stringify({model:{baseUrl:'http://127.0.0.1:8080'}, modelLease:path.join(root, 'model-lease.json')}));
+  return {configFile};
+}
+const empty = {results:[],total:0,nextOffset:null};
 const fixtures = {
   'languages/php/assert-string': ['zend.assertions', 'PHP 7.2 字符串断言还会求值吗', 'string assertion'],
   'languages/php/number-string-comparison': ['==', 'PHP 8 非数字字符串和 0 比较', 'non-numeric string'],
@@ -35,10 +45,10 @@ test('symbol and descriptive queries rank known cards; negatives abstain', t => 
   t.diagnostic(JSON.stringify({queries: count, recallAt3: recall/count, mrrAt3: mrr/count}));
   for (const query of ['QUIC', 'PHP fibers', 'PNG acTL', '']) {
     if (query === '') assert.throws(() => lookup({op: 'search', query}));
-    else assert.deepEqual(lookup({op: 'search', query}), {results: []}, query);
+    else assert.deepEqual(lookup({op: 'search', query}), empty, query);
   }
-  assert.deepEqual(lookup({op: 'search', query: 'assert', scope: 'formats'}), {results: []});
-  assert.deepEqual(lookup({op: 'search', query: 'SHT_NOBITS', tag: 'web'}), {results: []});
+  assert.deepEqual(lookup({op: 'search', query: 'assert', scope: 'formats'}), empty);
+  assert.deepEqual(lookup({op: 'search', query: 'SHT_NOBITS', tag: 'web'}), empty);
   assert.equal(lookup({op: 'search', query: 'SHT_NOBITS', tag: 'reverse'}).results[0].id, 'formats/elf/nobits');
 });
 
@@ -72,7 +82,7 @@ test('browse is paginated; details require a single registered id', () => {
     assert.ok(hits.some(r => r.id === id), queries[id]);
   }
   for (const args of [{op: 'get', id: '../README.md'}, {op: 'get', id: '*'}, {op: 'get', id: rows.map(r => r.id)},
-    {op: 'browse', scope: 'unknown'}, {op: 'browse', offset: -1}, {op: 'search', query: 'a', limit: 6},
+    {op: 'browse', scope: 'unknown'}, {op: 'browse', offset: -1}, {op: 'search', query: 'a', limit: 0},
     {op: 'get', id: rows[0].id, includeAll: true}]) assert.throws(() => lookup(args));
 });
 
@@ -143,7 +153,7 @@ test('loopback model protocol exposes only the lookup tool, and expands one card
   await once(server, 'listening');
   t.after(() => server.close());
   const baseUrl = 'http://127.0.0.1:' + server.address().port + '/v1';
-  const answer = await askReference({baseUrl, model: 'protocol-fixture', question: 'PNG 校验范围', lookup});
+  const answer = await askReference({...readerConfig(t), baseUrl, model: 'protocol-fixture', question: 'PNG 校验范围', lookup});
   assert.equal(answer, id);
   assert.deepEqual(seen[0].tools, [knowledgeTool]);
   assert.ok(!JSON.stringify(seen[0]).includes(id));
@@ -156,7 +166,7 @@ test('loopback model protocol exposes only the lookup tool, and expands one card
     searchResultBytes: Buffer.byteLength(summary.content), cardBytes: Buffer.byteLength(detail.content)}));
 });
 
-test('text-only servers receive one bounded excerpt and return its verifiable card ID', async t => {
+test('text-only servers receive full conditions and sources and return a verifiable card ID', async t => {
   let body;
   const server = createServer(async (req, res) => {
     let raw = '';
@@ -167,7 +177,7 @@ test('text-only servers receive one bounded excerpt and return its verifiable ca
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   t.after(() => server.close());
-  const options = {model: 'text-only-fixture', baseUrl: 'http://127.0.0.1:' + server.address().port + '/v1', lookup, textOnly: true};
+  const options = {...readerConfig(t), model: 'text-only-fixture', baseUrl: 'http://127.0.0.1:' + server.address().port + '/v1', lookup, textOnly: true};
   assert.equal(await askReference({...options, question: 'QUIC'}), '知识库没有匹配项。');
   assert.equal(body, undefined);
   const answer = await askReference({...options, question: '两个 gz 顺次放在一起，解压工具只给第一段'});
@@ -177,6 +187,8 @@ test('text-only servers receive one bounded excerpt and return its verifiable ca
   const prompt = body.messages[1].content;
   const card = lookup({op: 'get', id: 'formats/gzip/members'});
   assert.ok(prompt.includes(card.summary) && prompt.includes(card.id));
-  assert.ok(!prompt.includes(card.sources.reference));
+  assert.ok(prompt.includes(card.sources.reference) && prompt.includes(card.boundary) && prompt.includes(card.detail));
   assert.ok(!prompt.includes('formats/gzip/trailer'));
+  await askReference({...options,question:'SQLite group_concat 输入顺序'});
+  assert.match(body.messages[1].content,/3\.44\.0/);
 });

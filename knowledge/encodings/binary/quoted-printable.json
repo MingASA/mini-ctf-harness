@@ -3,6 +3,7 @@
   "summary": "等号紧跟 CRLF 表示为传输而折行，解码时等号与换行一起去掉。",
   "applies": "二进制编码；文件与数值转储",
   "aliases": [
+    "末尾等号",
     "quoted printable",
     "soft line break",
     "软换行",

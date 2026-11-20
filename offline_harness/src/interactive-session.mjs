@@ -23,6 +23,7 @@ export const SESSION_DEFAULTS={runtimeProtocol:'native-read-compact-v3',mode:'me
 export class InteractiveSession extends EventEmitter {
  constructor(task,config,options={}){
   super();validateTask(task);this.task=task;this.config={...SESSION_DEFAULTS,...config};this.options=options;
+  if(this.config.knowledgeEnabled!==undefined&&typeof this.config.knowledgeEnabled!=='boolean')throw Error('knowledgeEnabled must be boolean');
   for(const k of ['contextTokens','promptTokens','generationTokens','maxTurns','maxGeneratedTokens','maxSeconds'])if(!Number.isInteger(this.config[k])||this.config[k]<1)throw Error('Invalid budget '+k);
   if(!Number.isInteger(this.config.reasoningTokens)||(this.config.reasoningTokens!==-1&&this.config.reasoningTokens<1))throw Error('Invalid budget reasoningTokens');
   if(this.config.promptTokens+this.config.generationTokens+64>this.config.contextTokens||this.config.reasoningTokens>=this.config.generationTokens)throw Error('Invalid context/output reserve');
@@ -32,7 +33,7 @@ export class InteractiveSession extends EventEmitter {
   if(existing&&existing.data.sha256!==hash(JSON.stringify(frozen)))throw Error('Task/config differs from durable session');
   if(!existing)this.store.append('interactive_task',{...frozen,sha256:hash(JSON.stringify(frozen))});
   Object.assign(this.config,compactFields(generationSettings(this.config,'compact')));
-  this.applyEffort();this.replayModel();
+  this.applyEffort();this.replayModel();this.applyKnowledge();
   const applied=this.store.events.findLast(e=>e.type==='window_applied'||e.type==='model_changed');
   this.sessionWindow=applied?.type==='window_applied'?applied.data.settings:null;
   this.broker=options.broker||new DockerBroker(this.config.sandbox,this.store);
@@ -133,7 +134,23 @@ export class InteractiveSession extends EventEmitter {
   catch(error){this.store.append('compact_resolved',{request_seq:request.seq,status:signal?.aborted?'interrupted':'failed',error:error.message});if(signal?.aborted)throw error;return {status:'failed',error:error.message};}
   finally{this.emit('auxiliary',{kind:'compact',status:'idle'});this.emit('change');}
  }
- systemPrompt(){return systemPrompt(this.config.mode,this.knowledge)+'\nThis is a persistent interactive competition session. A normal final response waits for the operator. Human corrections remain pinned until the operator archives them. submit_flag saves a candidate for the operator to submit. The frontend shows awaiting_review until the operator records correct or incorrect feedback.';}
+ knowledgeControls(){
+  return {enabled:this.store.events.findLast(e=>e.type==='knowledge_applied')?.data.enabled??(this.config.knowledgeEnabled!==false),
+   pending:this.pendingControl('knowledge')?.data.enabled};
+ }
+ requestKnowledge(enabled){
+  if(typeof enabled!=='boolean')throw Error('knowledgeEnabled must be boolean');
+  this.store.append('knowledge_requested',{enabled});
+  if(!this.running)this.applyKnowledge();
+  this.emit('change');return this.knowledgeControls();
+ }
+ applyKnowledge(){
+  const last=this.pendingControl('knowledge');if(!last)return;
+  this.store.append('knowledge_applied',{enabled:last.data.enabled});
+  for(const e of this.store.events.filter(e=>e.type==='knowledge_requested'&&!this.store.events.some(x=>x.type==='knowledge_resolved'&&x.data.request_seq===e.seq)))
+   this.store.append('knowledge_resolved',{request_seq:e.seq,status:e===last?'applied':'superseded'});
+ }
+ systemPrompt(){return systemPrompt(this.config.mode,this.knowledge,{knowledgeEnabled:this.knowledgeControls().enabled})+'\nThis is a persistent interactive competition session. A normal final response waits for the operator. Human corrections remain pinned until the operator archives them. submit_flag saves a candidate for the operator to submit. The frontend shows awaiting_review until the operator records correct or incorrect feedback.';}
 
  requestYield(){this.yieldRequested=true;}
  async cancelCommand(id){
@@ -146,7 +163,7 @@ export class InteractiveSession extends EventEmitter {
    if(!old)this.store.append('candidate',{id,taskId:this.task.id,candidate});
    return {submission_id:id,review_id:this.candidates().find(x=>x.id===id).review_id,status:'awaiting_review',message:'Saved for operator review in /queue.'};
   }};
-  const tools=buildTools(this.store,this.broker,this.knowledge,verdict,()=>{}, {manualReview:true,nativeImages:this.config.nativeImages,remainingMs:()=>this.budget().millisecondsRemaining,signal:()=>this.requestSignal});
+  const tools=buildTools(this.store,this.broker,this.knowledge,verdict,()=>{}, {manualReview:true,knowledgeEnabled:this.knowledgeControls().enabled,nativeImages:this.config.nativeImages,remainingMs:()=>this.budget().millisecondsRemaining,signal:()=>this.requestSignal});
   const wrap=tools.map(tool=>({...tool,execute:async(id,args,...rest)=>{
    const result=await tool.execute(id,args,...rest);
    if(['run_command','wait_job'].includes(tool.name)){
@@ -209,7 +226,7 @@ export class InteractiveSession extends EventEmitter {
   this.solveTimer=null;
   try{return await this.runActiveSlice({maintenanceOnly});}
   catch(error){if(this.budgetTimedOut){this.status='budget_exhausted';return {status:'budget_exhausted',dependencies:this.dependencies(),budget:this.budget()};}if(!this.operatorController.signal.aborted)throw error;this.status='paused';return {status:'paused',dependencies:this.dependencies(),budget:this.budget()};}
-  finally{clearTimeout(this.solveTimer);this.running=false;this.agent=null;this.operatorController=null;if(!this.dependencies().length)this.stopSolveClock(this.pauseRequested?'paused':this.status);this.emit('change');}
+  finally{clearTimeout(this.solveTimer);this.running=false;this.agent=null;this.operatorController=null;this.applyKnowledge();if(!this.dependencies().length)this.stopSolveClock(this.pauseRequested?'paused':this.status);this.emit('change');}
  }
  async runActiveSlice({maintenanceOnly}){
   if(this.agent)throw Error('Session already running');
@@ -266,6 +283,7 @@ export class InteractiveSession extends EventEmitter {
    finishTurn:async({message,context})=>{
     if(this.pauseRequested){outcome=this.candidates().some(x=>x.feedback?.status==='correct')?'correct':this.budgetTimedOut?'budget_exhausted':'paused';return {action:'end'};}
     if(['error','aborted'].includes(message.stopReason)||this.store.pending().length){outcome='needs_review';return {action:'end'};}
+    if(this.pendingControl('knowledge')){outcome='ready';return {action:'end'};}
     this.applyEffort(cfg);
     await this.compactRequested(client,context.messages,this.requestSignal);
     await this.applyWindow(client,context.messages);

@@ -4,16 +4,16 @@ export const knowledgeTool = {
   type: 'function',
   function: {
     name: 'knowledge',
-    description: 'Consult offline references when a specific knowledge gap blocks the next step, observed behavior contradicts your understanding, or attempts stall and a factual assumption needs checking. To seek help, start with {"op":"search","query":"topic"}. Wait for results before using {"op":"get","id":"returned-id"} for one full card. Browse discovers scopes. Omit fields not used by the chosen operation.',
+    description: 'Look up offline reference facts. Start with {"op":"search","query":"specific question"}; read the summaries, then {"op":"get","id":"ID from results"} for the full explanation, conditions and sources. To see more results, repeat the same search with offset=nextOffset; null means the end. {"op":"browse"} lists topics. Empty results mean no covered match; try a simpler factual question or browse. Omit unused fields.',
     parameters: {
       type: 'object', properties: {
         op: {type: 'string', enum: ['browse', 'search', 'get']},
-        query: {type: 'string', description: 'Required for search.'},
+        query: {type: 'string', minLength: 1, description: 'Required for search. Use a factual question with relevant format, identifier or runtime version.'},
         scope: {type: 'string', description: 'Optional exact scope returned by browse (for example formats/png). Omit when unknown. CTF categories belong in tag.'},
         tag: {type: 'string', description: 'Optional filter for browse/search: web, reverse, pwn, crypto, misc.'},
-        id: {type: 'string', description: 'Required for get. Copy one ID from search/browse.'},
-        offset: {type: 'integer', minimum: 0, description: 'Browse page offset.'},
-        limit: {type: 'integer', minimum: 1, maximum: 5}
+        id: {type: 'string', minLength: 1, description: 'Required for get. Copy one ID from search/browse.'},
+        offset: {type: 'integer', minimum: 0, description: 'Search/browse: copy nextOffset from the previous page, keeping query and filters unchanged. Default 0.'},
+        limit: {type: 'integer', minimum: 1, description: 'Results per page. Default 3 for search, 5 for browse; increase when useful.'}
       }, required: ['op'], additionalProperties: false
     }
   }
@@ -33,7 +33,8 @@ export const KNOWLEDGE_PROMPT = [
   'Keep routine task opening and familiar steps focused on the task. Reserve reference lookup for these knowledge gaps or an explicit request to consult the corpus.',
   'Form a targeted query from the relevant symbol, runtime version, format field or observed discrepancy. Start with op=search, omitting scope unless obtained from browse.',
   'Read the returned summaries and applicability first. Use op=get with one returned ID only when a needed detail, example or boundary is still missing.',
-  'Use op=browse when you need to discover available topics; use tag for CTF categories and nextOffset to page. If a scope is invalid, retry without scope.',
+  'Use op=browse to discover topics and tag to filter CTF categories. Both search and browse support pagination: keep query/filters unchanged and set offset to nextOffset; null means the end. If a scope is invalid, retry without scope.',
   'After reading, state which assumption the entry resolves and test the resulting hypothesis against the task. Reuse already retrieved facts while they remain applicable.',
+  'Search returns candidate references, not proof that the whole question is covered. Check the actual content and boundaries before applying it. When answering from a card, include its id or copy its citation field; do not omit version conditions.',
   'If nothing relevant is found, refine the query around a concrete uncertainty or return to task evidence. This local corpus works offline.'
 ].join(' ');

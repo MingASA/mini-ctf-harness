@@ -16,7 +16,10 @@ if args[:1]==['knowledge']:
     import shutil
     node=json.loads(state.read_text())['node'] if state.exists() else shutil.which('node')
     if not node:raise SystemExit('Knowledge lookup requires Node.js. Install the harness or put Node.js on PATH.')
-    os.execv(node,[node,str(root/'offline_harness/src/knowledge/cli.mjs'),*args[1:]])
+    env=dict(os.environ)
+    if state.exists():
+        installed=json.loads(state.read_text());env.update(MINI_CTF_DATA=installed['data_dir'],MINI_CTF_CONFIG=installed['config'])
+    os.execve(node,[node,str(root/'offline_harness/src/knowledge/cli.mjs'),*args[1:]],env)
 if not state.exists():raise SystemExit('Run ./mini-ctf install --data-dir /path/to/data first.')
 s=json.loads(state.read_text());env=dict(os.environ,MINI_CTF_DATA=s['data_dir'],MINI_CTF_CONFIG=s['config'],TMPDIR=s['workspace']+'/tmp')
 env['PATH']=str(pathlib.Path(s['node']).parent)+':'+env.get('PATH','')

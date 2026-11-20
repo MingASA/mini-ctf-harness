@@ -3,6 +3,7 @@
   "summary": "两个同余约束 x≡a (mod m)、x≡b (mod n) 同时有解，当且仅当两余数之差能被 gcd(m,n) 整除。",
   "applies": "整数模运算；模数大于 1",
   "aliases": [
+    "公因子",
     "solve_congruence",
     "generalized CRT",
     "中国剩余",
