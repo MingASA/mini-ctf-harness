@@ -8,6 +8,8 @@ if(!baseUrl||!configFile||!outputFile)throw Error('Usage: node scripts/smoke-kno
 const base=validateServiceUrl(baseUrl);
 if(!['127.0.0.1','[::1]'].includes(base.hostname))throw Error('Use loopback');
 const lease=acquireReader({base,configFile});
+const controller=new AbortController(),cancel=()=>controller.abort();
+process.once('SIGINT',cancel);process.once('SIGTERM',cancel);
 const cases=[
  {name:'search-get',question:'核对 PNG CRC32 校验范围。先调用 knowledge 搜索，再 get 命中的完整卡片，最后引用卡片 ID，用中文回答哪些字节被校验。'},
  {name:'pagination',question:'使用 knowledge 搜索 PNG，每页 2 条。再根据 nextOffset 读取第二页，get 第二页任意一张卡片，最后简短说明它的适用边界。请使用工具，不要猜测 ID 或 offset。'},
@@ -19,8 +21,8 @@ try{
   const messages=[{role:'system',content:'You are a reference assistant. '+KNOWLEDGE_PROMPT},{role:'user',content:item.question}];
   const calls=[];let answer='',failure;
   for(let turn=0;turn<6;turn++){
-   lease.guard();
-   const response=await fetch(base.href.replace(/\/$/,'')+'/chat/completions',{method:'POST',headers:{'content-type':'application/json'},signal:AbortSignal.timeout(180000),body:JSON.stringify({model:'knowledge-smoke-9b',messages,tools:[knowledgeTool],temperature:0.2,seed:42,max_tokens:384,chat_template_kwargs:{enable_thinking:false},stream:false})});
+   controller.signal.throwIfAborted();lease.guard();
+   const response=await fetch(base.href.replace(/\/$/,'')+'/chat/completions',{method:'POST',headers:{'content-type':'application/json'},signal:AbortSignal.any([controller.signal,AbortSignal.timeout(180000)]),body:JSON.stringify({model:'knowledge-smoke-9b',messages,tools:[knowledgeTool],temperature:0.2,seed:42,max_tokens:384,chat_template_kwargs:{enable_thinking:false},stream:false})});
    if(!response.ok)throw Error('Model HTTP '+response.status);
    const data=await response.json(),message=data.choices?.[0]?.message;
    if(!message)throw Error('No assistant message');
@@ -43,4 +45,4 @@ try{
   console.log(JSON.stringify({name:item.name,passed,calls:calls.map(c=>c.args)}));
  }
  if(results.some(r=>!r.passed))process.exitCode=1;
-}finally{lease.release();}
+}finally{process.removeListener('SIGINT',cancel);process.removeListener('SIGTERM',cancel);lease.release();}

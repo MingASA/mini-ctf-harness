@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
+import {spawnSync} from 'node:child_process';
 import {loadCatalog} from '../src/knowledge/catalog.mjs';
 import {askReference} from '../src/knowledge/reader.mjs';
 import {assertExperimentIdle} from '../src/native.mjs';
@@ -15,6 +16,15 @@ function config(root,baseUrl='http://127.0.0.1:8080'){
  const configFile=path.join(root,'config.json'),lease=path.join(root,'lease.json');
  fs.writeFileSync(configFile,JSON.stringify({model:{baseUrl},modelLease:lease}));return {configFile,lease};
 }
+
+test('offline CLI works in a checkout with no installed inference SDK',t=>{
+ const root=temp(t);
+ fs.cpSync(new URL('../src/',import.meta.url),path.join(root,'offline_harness/src'),{recursive:true});
+ fs.cpSync(new URL('../../knowledge/',import.meta.url),path.join(root,'knowledge'),{recursive:true});
+ const result=spawnSync(process.execPath,[path.join(root,'offline_harness/src/knowledge/cli.mjs'),'search','CRC32'],{cwd:root,encoding:'utf8'});
+ assert.equal(result.status,0,result.stderr);
+ assert.equal(JSON.parse(result.stdout).results[0].id,'formats/png/crc-coverage');
+});
 
 test('unknown technical subjects do not match generic prose or fragments of compound identifiers',()=>{
  for(const query of ['PHP fibers 怎么使用','QUIC 协议如何工作','safe-linking tcache glibc 2.35','PNG acTL 数据块长度','sqlite FTS5 参数怎么配置','JavaScript prototype pollution',
