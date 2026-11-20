@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
+import {validateSandbox} from '../src/broker.mjs';
 
 test('interactive and offline solvers repair sealed task roots before running as their owner', () => {
   const script = String.raw`
-import importlib.util, pathlib, tempfile
+import importlib.util, pathlib, tempfile, json
 from unittest.mock import patch
 
 def load(name, file):
@@ -46,6 +47,11 @@ with tempfile.TemporaryDirectory() as tmp:
     assert args[args.index('--memory-swap') + 1] == '6144m'
     assert args[args.index('--cpus') + 1] == '6'
     assert '--memory-reservation' not in args and '--cpuset-cpus' not in args
+    print(json.dumps({'Id':'fixture','Image':'image','State':{'Running':True},
+        'HostConfig':{'NetworkMode':'none','CapDrop':['ALL'],'SecurityOpt':['no-new-privileges'],
+                      'Memory':int(args[args.index('--memory')+1][:-1])*1024*1024,
+                      'PidsLimit':int(args[args.index('--pids-limit')+1]),'ReadonlyRootfs':True},
+        'Mounts':[{'Destination':'/work','Source':'/fixture/work','Type':'bind'}]}))
 
     class Result:
         stdout = ''
@@ -66,4 +72,5 @@ with tempfile.TemporaryDirectory() as tmp:
 `;
   const result = spawnSync('python3', ['-c', script], {cwd: new URL('..', import.meta.url), encoding: 'utf8'});
   assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(validateSandbox(JSON.parse(result.stdout),[],{containerId:'fixture',imageId:'image',workDir:'/fixture/work'}),true);
 });
