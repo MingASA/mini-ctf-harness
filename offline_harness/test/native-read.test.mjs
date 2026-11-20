@@ -49,11 +49,21 @@ test('generic native read preserves pagination, large text, evidence and replay;
  assert.equal(store.pending().length,0);
 });
 
+test('skill references larger than 8MiB remain readable by line range',async t=>{
+ const root=temp(t),file=path.join(root,'large.txt');
+ fs.writeFileSync(file,('x'.repeat(1023)+'\n').repeat(9*1024)+'TAIL');
+ const read=buildTools(new Store(path.join(root,'run')),{}, {root},{}).find(tool=>tool.name==='read');
+ const result=await read.execute('large-reference',{path:file,offset:9*1024+1,limit:1});
+ assert.equal(result.isError,undefined);assert.equal(result.content[0].text,'TAIL');
+});
+
 test('Docker read adapter reads task bytes with owner identity and rejects non-task paths',async t=>{
  const root=temp(t),work=path.join(root,'offline-harness/work/task');fs.mkdirSync(work,{recursive:true});
- const execute=async(_binary,args)=>{assert.deepEqual(args.slice(0,4),['exec','--user',`${process.getuid()}:${process.getgid()}`,'--env']);const at=args.indexOf('python3');const script=args[at+2].replaceAll("'/work/'",JSON.stringify(work+'/'));return exec('python3',['-c',script,...args.slice(at+3)]);};
+ const execute=async(_binary,args,options)=>{assert.deepEqual(args.slice(0,4),['exec','--user',`${process.getuid()}:${process.getgid()}`,'--env']);const at=args.indexOf('python3');const script=args[at+2].replaceAll("'/work/'",JSON.stringify(work+'/'));return exec('python3',['-c',script,...args.slice(at+3)],{maxBuffer:options.maxBuffer});};
  const broker=new DockerBroker({workDir:work,containerId:'fixture'},new Store(path.join(root,'store')),execute);
  fs.writeFileSync(path.join(work,'test.txt'),'hello\n');assert.equal((await broker.readFile(path.join(work,'test.txt'))).toString(),'hello\n');
+ const large=Buffer.alloc(21*1024*1024,120);fs.writeFileSync(path.join(work,'large.txt'),large);
+ assert.deepEqual(await broker.readFile(path.join(work,'large.txt')),large);
  fs.symlinkSync('/etc/passwd',path.join(work,'escape'));await assert.rejects(broker.readFile(path.join(work,'escape')),/File must be inside/);
  await assert.rejects(broker.readFile('/etc/passwd'),/File must be inside/);
 });

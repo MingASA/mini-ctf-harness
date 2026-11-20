@@ -39,13 +39,12 @@ export function resolveAttachmentPath(source){
  }
 }
 
-function scanAttachments(source,{maxBytes=200*1024*1024,maxFiles=5000}={}){
+function scanAttachments(source,{maxFiles=5000}={}){
  const files=[],directories=[];
  if(!source)return {files,directories};
  const {resolved,info}=resolveAttachmentPath(source);
- let bytes=0;
  const addFile=(src,name,size)=>{
-  if((bytes+=size)>maxBytes||files.length>=maxFiles)throw Error('Attachment import limit exceeded');
+  if(files.length>=maxFiles)throw Error('Attachment import limit exceeded');
   files.push({name,src,sha256:hash(fs.readFileSync(src)),bytes:size});
  };
  const visit=(dir,rel='')=>{

@@ -9,6 +9,15 @@ import {searchIndex,rrf,evidence} from '../src/rag/search.mjs';
 import {metrics,evaluateRetrieval} from '../src/rag/evaluate.mjs';
 const example=new URL('../examples/rag-retrieval/manifest.json',import.meta.url).pathname;
 function fixture(t){const root=fs.mkdtempSync(path.join(os.tmpdir(),'rag-core-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));const body='A rarequartz observation is retained in exact bytes.\n';fs.writeFileSync(path.join(root,'source.md'),body);const manifest={version:1,documents:[{id:'sample',title:'Specific record',path:'source.md',sha256:digest(body),source:{uri:'authored://test',revision:'v1',scope:'generic-reference'},tags:[]}]};const file=path.join(root,'manifest.json');fs.writeFileSync(file,JSON.stringify(manifest));return {root,file,manifest};}
+test('default corpus budgets accept 16MiB files and 32MiB total, rejecting larger inputs',t=>{
+ const {root,file,manifest}=fixture(t),bytes=Buffer.alloc(16*1024*1024,120);
+ fs.writeFileSync(path.join(root,'source.md'),bytes);manifest.documents[0].sha256=digest(bytes);
+ manifest.documents.push({...manifest.documents[0],id:'second'});fs.writeFileSync(file,JSON.stringify(manifest));
+ assert.equal(readCorpus(file).documents.reduce((sum,doc)=>sum+doc.bytes,0),32*1024*1024);
+ manifest.documents.push({...manifest.documents[0],id:'third'});fs.writeFileSync(file,JSON.stringify(manifest));
+ assert.throws(()=>readCorpus(file),/budget/);
+ fs.appendFileSync(path.join(root,'source.md'),'x');assert.throws(()=>readCorpus(file),/budget/);
+});
 test('import reads only explicit hash-pinned documents and retains source identity',t=>{const {root,file}=fixture(t);fs.writeFileSync(path.join(root,'unlisted.txt'),'GOLD_CANARY');const corpus=readCorpus(file);assert.equal(corpus.documents.length,1);assert.equal(JSON.stringify(corpus).includes('GOLD_CANARY'),false);assert.equal(corpus.documents[0].source.revision,'v1');});
 test('strict import rejects extra fields, unsafe paths, hash changes and symlinks',t=>{const {root,file,manifest}=fixture(t);for(const mutate of [d=>d.oracle='x',d=>d.path='../source.md',d=>d.sha256='0'.repeat(64)]){const copy=structuredClone(manifest);mutate(copy.documents[0]);fs.writeFileSync(file,JSON.stringify(copy));assert.throws(()=>readCorpus(file));}fs.writeFileSync(file,JSON.stringify(manifest));fs.renameSync(path.join(root,'source.md'),path.join(root,'other.md'));fs.symlinkSync('other.md',path.join(root,'source.md'));assert.throws(()=>readCorpus(file),/symlink/);});
 test('UTF-8 chunks retain exact ranges including BOM and overlapping Unicode',()=>{const bytes=Buffer.from('\ufeff'+('中文🙂 boundaries\n\n'.repeat(18)));const chunks=chunkBytes(bytes,{maxChunkBytes:80,overlapBytes:12});assert.ok(chunks.length>2);assert.equal(chunks[0].startByte,0);assert.equal(chunks.at(-1).endByte,bytes.length);for(const c of chunks){assert.deepEqual(Buffer.from(c.text),bytes.subarray(c.startByte,c.endByte));assert.equal(c.sha256,digest(Buffer.from(c.text)));assert.ok(c.endByte-c.startByte<=80);}assert.throws(()=>chunkBytes(Buffer.from([255])));assert.ok(tokenize('中文资料').includes('中文'));});

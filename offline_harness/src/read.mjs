@@ -15,7 +15,7 @@ export function fileReadTool(store,broker,skills,{nativeImages=false}={}){
    const [canonical,realRoot]=await Promise.all([fs.realpath(filename),fs.realpath(root)]);
    if(!within(canonical,realRoot))throw Error('File escaped the skills directory');
    const file=await fs.open(canonical,'r');
-   try{const stat=await file.stat();if(!stat.isFile()||stat.size>8*1024*1024)throw Error('Read requires a regular file within 8 MiB');return await file.readFile();}finally{await file.close();}
+   try{const stat=await file.stat();if(!stat.isFile())throw Error('Read requires a regular file');return await file.readFile();}finally{await file.close();}
   }
   if(!broker.readFile&&/^\/work\/\.tool-output\/[a-f0-9]{20}\.txt$/.test(filename)){
    const file=path.join(outputRoot(store,broker),path.basename(filename));
