@@ -226,7 +226,7 @@ Compose 描述的是独立运行的题目服务，例如一个 HTTP 应用和它
 
 工具镜像包含 cpio、7z、xz、zstd 等归档工具，以及 binwalk、foremost、exiftool、steghide、zsteg、YARA、ImageMagick、FFmpeg、PDF 和 Office 分析工具。取证工具包括 Volatility 3 和 Sleuth Kit。二进制分析和兼容工具包括 gdb-multiarch、radare2、Ghidra headless、jadx、QEMU user、MinGW、apktool 和 Wine 32/64。系统工具优先使用 Debian Bookworm 官方包，其余上游发布包固定版本和 SHA256。Wine 状态保存在题目工作目录的 `.wine` 中。
 
-解题容器资源由 `config.json` 的 `solver.memoryMiB`、`solver.cpus`、`solver.pids` 和 `solver.tmpMiB` 配置，分别控制内存、CPU 配额、进程数和 `/tmp` 大小。配置直接交给 Docker，创建及执行前检查不会附加固定数值上限；配额按需使用，不预留对应内存或独占 CPU。独立离线入口 `provision_sandbox.py` 也支持 `--memory-mib`、`--cpus`、`--pids`、`--tmp-mib`。容器仍使用只读根文件系统、能力丢弃和网络隔离，offloadKV 单独配置。
+解题容器默认最多使用 6 CPU、6 GiB 内存，通过 `config.json` 的 `solver.cpus`、`solver.memoryMiB` 调整，按需使用。已取消进程数和 `/tmp` 的独立配额；旧配置中的 `solver.pids`、`solver.tmpMiB` 不再生效。`/tmp` 仍是 tmpfs，其占用计入容器内存；没有独立的 128 MiB 上限。独立离线入口支持 `--memory-mib`、`--cpus`，旧 `--pids`、`--tmp-mib` 参数仅兼容接收并忽略。容器保留只读系统目录、能力丢弃和网络隔离，offloadKV 单独配置。
 
 扩展工具包括 Rizin、Pwndbg、ropper、angr、LIEF、SageMath、John、Hashcat 和 Scapy。默认 `python3` 可直接导入 NumPy、SciPy、Matplotlib、Scapy、LIEF 及原有 pwntools；`angr-python` 使用独立环境，`sage`／`sage -python` 使用 SageMath 环境，避免依赖冲突。Hashcat 使用容器内 CPU OpenCL，不占用推理 GPU；Scapy 的 PCAP 分析无需额外网络权限。`pwndbg` 为独立命令，普通 `gdb` 保留。
 
@@ -239,8 +239,8 @@ Windows 模型启动按引擎实际加载结果判断是否成功，不再要求
 ```sh
 smoke_work=$(mktemp -d)
 docker run --rm -i --pull=never --network none --read-only --cap-drop ALL \
-  --security-opt no-new-privileges --user "$(id -u):$(id -g)" --memory 2g --pids-limit 128 \
-  --tmpfs /tmp:rw,nosuid,nodev,size=128m --mount "type=bind,src=$smoke_work,dst=/work" \
+  --security-opt no-new-privileges --user "$(id -u):$(id -g)" --memory 6g --cpus 6 --pids-limit -1 \
+  --tmpfs /tmp:rw,nosuid,nodev,size=0 --mount "type=bind,src=$smoke_work,dst=/work" \
   IMAGE sh -s < docker/smoke-test.sh
 ```
 
