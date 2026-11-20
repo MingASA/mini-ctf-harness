@@ -110,6 +110,14 @@ test('branch waits for real target and MTP headroom, preserves history on KV rel
  await branch.destroy();assert.equal(fs.existsSync(branch.file),false);
 });
 
+test('branch KV can always be released when main has exhausted its headroom',async t=>{
+ const {state,url}=await server(t),s=session(t,url);accepted(s,1,[{role:'system',content:system},{role:'user',content:'main'}]);
+ const branch=BtwSession.create(s);branch.data.kvMayExist=true;state.free=0;
+ await branch.free();
+ assert.deepEqual(state.erase,[1]);assert.equal(branch.data.kvMayExist,false);assert.equal(branch.status,'idle');
+ await branch.destroy();
+});
+
 test('branch cancellation saves partial output and never interrupts or erases the main slot',async t=>{
  const {state,url}=await server(t),s=session(t,url);accepted(s,1,[{role:'system',content:system},{role:'user',content:'main'}]);
  const before=s.store.events.at(-1).digest,branch=BtwSession.create(s);state.hold=true;let mainGenerating=true;

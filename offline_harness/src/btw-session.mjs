@@ -39,10 +39,15 @@ export function snapshotBtw(session){
   generationTokens:session.config.generationTokens,body:{...body,messages,tools:copy(body.tools)}};
 }
 
-function headroom(snapshot,required=0){
+function btwPolicy(snapshot){
  const policy=snapshot?.ctf_btw;
  if(!policy?.enabled||!policy.kv_unified||policy.main_slot!==0||policy.branch_slot!==1||!Number.isSafeInteger(policy.required_free_cells))
   throw Error('当前后端不支持安全并发分支；请构建并启用带 /btw 补丁的 llama-server');
+ return policy;
+}
+
+function headroom(snapshot,required=0){
+ const policy=btwPolicy(snapshot);
  const contexts=Object.values(snapshot.contexts??{}).filter(Boolean);
  if(!contexts.length||contexts.some(c=>!c.supported))throw Error('后端 KV cell 统计不完整，不能安全申请分支 slot');
  const pools=contexts.flatMap(c=>c.pools??[]).filter(p=>['attention','attention_swa'].includes(p.kind));
@@ -157,7 +162,10 @@ export class BtwSession extends EventEmitter {
   try{
    this.pause();await this.running?.catch(()=>{});
    if(this.data.kvMayExist===false){this.status='idle';this.error='';this.emit('change');return {id_slot:1,n_erased:0,skipped:true};}
-   const snapshot=await this.json('/kv-cache',{timeout:4000});headroom(snapshot);
+   // Releasing slot 1 is the recovery path when main has consumed all
+   // headroom.  Validate the protected backend, but do not require spare KV
+   // cells before asking it to erase the branch.
+   const snapshot=await this.json('/kv-cache',{timeout:4000});btwPolicy(snapshot);
    const result=await this.json('/slots/1?action=erase',{method:'POST',body:{},timeout:30000});
    if(result.id_slot!==1)throw Error('后端没有确认释放分支 slot');
    this.data.kvMayExist=false;this.status='idle';this.error='';this.save();return result;
