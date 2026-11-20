@@ -1,24 +1,39 @@
 import {validateServiceUrl} from '../service-endpoint.mjs';
 
+function requestDeadline(timeoutMs) {
+  if (!Number.isSafeInteger(timeoutMs)||timeoutMs<1) throw Error('Invalid service timeout');
+  const controller=new AbortController(),deadline=Date.now()+timeoutMs;
+  let timer;
+  const expire=()=>{
+    const remaining=deadline-Date.now();
+    if(remaining>0){timer=setTimeout(expire,Math.min(remaining,2147483647));timer.unref?.();}
+    else controller.abort(new DOMException('The operation was aborted due to timeout','TimeoutError'));
+  };
+  expire();
+  return {signal:controller.signal,cancel:()=>clearTimeout(timer)};
+}
+
 export async function requestJson(endpoint,{method='POST',body,signal,timeoutMs=15000,token,fetchImpl=fetch,maxBytes=4194304}={}) {
   const url=validateServiceUrl(String(endpoint));
-  if (!Number.isInteger(timeoutMs)||timeoutMs<1||timeoutMs>300000) throw Error('Invalid service timeout');
-  const combined=signal?AbortSignal.any([signal,AbortSignal.timeout(timeoutMs)]):AbortSignal.timeout(timeoutMs);
-  const headers={accept:'application/json',...(body!==undefined?{'content-type':'application/json'}:{}),...(token?{authorization:'Bearer '+token}:{})};
-  const response=await fetchImpl(url,{method,headers,body:body===undefined?undefined:JSON.stringify(body),signal:combined,redirect:'error'});
-  if (response.status>=300&&response.status<400) throw Error('Service redirect rejected');
-  const limit=Number(response.headers.get('content-length')||0);
-  if (limit>maxBytes) throw Error('Service response exceeds byte budget');
-  const reader=response.body?.getReader();
-  if (!reader) throw Error('Service response has no body');
-  const blocks=[];let size=0;
+  const deadline=requestDeadline(timeoutMs);
   try {
-    while(true){combined.throwIfAborted();const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>maxBytes)throw Error('Service response exceeds byte budget');blocks.push(value);}
-  } finally {await reader.cancel().catch(()=>{});reader.releaseLock();}
-  let data;
-  try {data=JSON.parse(Buffer.concat(blocks).toString('utf8'));}catch {throw Error('Service returned invalid JSON');}
-  if (!response.ok) {const error=Error('Service HTTP '+response.status);error.code='HTTP_'+response.status;error.status=response.status;error.details=data;throw error;}
-  return data;
+    const combined=signal?AbortSignal.any([signal,deadline.signal]):deadline.signal;
+    const headers={accept:'application/json',...(body!==undefined?{'content-type':'application/json'}:{}),...(token?{authorization:'Bearer '+token}:{})};
+    const response=await fetchImpl(url,{method,headers,body:body===undefined?undefined:JSON.stringify(body),signal:combined,redirect:'error'});
+    if (response.status>=300&&response.status<400) throw Error('Service redirect rejected');
+    const limit=Number(response.headers.get('content-length')||0);
+    if (limit>maxBytes) throw Error('Service response exceeds byte budget');
+    const reader=response.body?.getReader();
+    if (!reader) throw Error('Service response has no body');
+    const blocks=[];let size=0;
+    try {
+      while(true){combined.throwIfAborted();const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>maxBytes)throw Error('Service response exceeds byte budget');blocks.push(value);}
+    } finally {await reader.cancel().catch(()=>{});reader.releaseLock();}
+    let data;
+    try {data=JSON.parse(Buffer.concat(blocks).toString('utf8'));}catch {throw Error('Service returned invalid JSON');}
+    if (!response.ok) {const error=Error('Service HTTP '+response.status);error.code='HTTP_'+response.status;error.status=response.status;error.details=data;throw error;}
+    return data;
+  } finally {deadline.cancel();}
 }
 function config(config,kind) {
   if (!config||typeof config.model!=='string'||!config.model||config.model.length>200||typeof config.revision!=='string'||!config.revision||config.revision.length>200) throw Error('Model and explicit revision are required');

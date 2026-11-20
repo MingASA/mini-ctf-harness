@@ -21,6 +21,15 @@ test('long deadlines do not overflow Node timers and a smaller configured queue 
  assert.throws(()=>queue.submit({}),error=>error.code==='QUEUE_FULL');
  await delay(20);assert.equal(queue.status(job.jobId).status,'running');
 });
+test('RAG HTTP transport accepts long configured timeouts without overflowing',async()=>{
+ for(const timeoutMs of [600000,2147483648]){
+  let observedSignal;
+  const result=await requestJson('http://127.0.0.1',{timeoutMs,fetchImpl:async(url,{signal})=>{
+   observedSignal=signal;await delay(20);signal.throwIfAborted();return new Response('{"ok":true}');
+  }});
+  assert.deepEqual(result,{ok:true});assert.equal(observedSignal.aborted,false);
+ }
+});
 test('queue distinguishes queued/running and preserves FIFO under concurrency one',async t=>{const releases=[];const starts=[];const queue=new JobQueue(request=>new Promise(resolve=>{starts.push(request);releases.push(resolve);}),{concurrency:1});t.after(()=>queue.close());const first=queue.submit('first'),second=queue.submit('second');assert.equal(second.status,'queued');await until(()=>releases.length===1);assert.equal(queue.status(first.jobId).status,'running');assert.equal(queue.status(second.jobId).queuePosition,1);releases[0]('one');await until(()=>releases.length===2);assert.deepEqual(starts,['first','second']);releases[1]('two');await until(()=>queue.status(second.jobId).status==='completed');assert.equal(queue.result(first.jobId).result,'one');});
 test('queue cancellation drops late result and queued cancellation does not execute',async t=>{let release;let started=0;const queue=new JobQueue(()=>{started++;return new Promise(resolve=>{release=resolve;});},{concurrency:1});t.after(()=>queue.close());const a=queue.submit({}),b=queue.submit({});await until(()=>started===1);queue.cancel(b.jobId);queue.cancel(a.jobId);release('late');await delay(10);assert.equal(queue.result(a.jobId).status,'cancelled');assert.equal('result' in queue.result(a.jobId),false);assert.equal(started,1);});
 test('deadline includes queue wait and fails with TIMEOUT; backpressure is bounded',async t=>{const queue=new JobQueue(()=>new Promise(()=>{}),{concurrency:1,maxJobs:2,timeoutMs:15});t.after(()=>queue.close());const a=queue.submit({}),b=queue.submit({});assert.throws(()=>queue.submit({}),error=>error.code==='QUEUE_FULL');await delay(35);for(const job of [a,b]){assert.equal(queue.status(job.jobId).status,'failed');assert.equal(queue.status(job.jobId).error.code,'TIMEOUT');}});
