@@ -8,6 +8,7 @@ import {ContextManager,wire} from '../src/context.mjs';
 import {NativeClient} from '../src/native.mjs';
 import {systemPrompt} from '../src/runner.mjs';
 import {skillsPrompt} from '../src/skills.mjs';
+import {KNOWLEDGE_PROMPT} from '../src/knowledge/tool.mjs';
 import {COMPACT_INITIAL_PROMPT,COMPACT_UPDATE_PROMPT,SOLVING_SYSTEM_PROMPT} from '../src/compact-prompts.mjs';
 import {summary,envelope,controlPayload} from './compact-fixture.mjs';
 const counter=async input=>Math.ceil(JSON.stringify(input).length/4);
@@ -18,7 +19,10 @@ function isExactPrefix(actual,expected){assert.deepEqual(actual.tools,expected.t
 test('current prompt files are connected and the solving system uses native skill locations',()=>{
  const root=new URL('../prompts/user-v2/',import.meta.url);
  assert.equal(COMPACT_INITIAL_PROMPT,fs.readFileSync(new URL('compact_initial.txt',root),'utf8'));assert.equal(COMPACT_UPDATE_PROMPT,fs.readFileSync(new URL('compact_update.txt',root),'utf8'));
- const docs=[{name:'exact-skill',description:'Exact descriptor',filePath:'/project/.agents/skills/exact-skill/SKILL.md'}];assert.equal(systemPrompt('memory-skills',{docs}),SOLVING_SYSTEM_PROMPT.replace('{{SKILL_CATALOG}}',skillsPrompt({docs})));
+ const docs=[{name:'exact-skill',description:'Exact descriptor',filePath:'/project/.agents/skills/exact-skill/SKILL.md'}];
+ const base=SOLVING_SYSTEM_PROMPT.replace('{{SKILL_CATALOG}}',skillsPrompt({docs}));
+ assert.equal(systemPrompt('memory-skills',{docs}),base+'\n'+KNOWLEDGE_PROMPT);
+ assert.equal(systemPrompt('memory-skills',{docs},{knowledgeEnabled:false}),base);
 });
 test('initial and update Compact preserve normal system/tools/typed history and every covered thinking/tool byte',async t=>{
  const {store,m}=fixture(t);activity(store,m,0,8);const c=new ContextManager(store,config),baseline=wire(c.assemble(m[0],m.slice(1),undefined));let first;

@@ -1,0 +1,21 @@
+{
+  "title": "tar 头校验时把校验字段临时视为空格",
+  "summary": "ustar 的 chksum 是整个 512 字节头的无符号字节和，计算时该字段本身的八字节均视为空格。",
+  "applies": "POSIX ustar 与 pax 归档",
+  "aliases": [
+    "tar checksum",
+    "chksum",
+    "八进制校验",
+    "ustar header"
+  ],
+  "detail": "直接把头中已存的八进制校验和文本也加进总和，会得到不同结果。",
+  "boundary": "此校验只覆盖头部，不能验证成员实际数据是否完好。",
+  "sources": {
+    "reference": "https://pubs.opengroup.org/onlinepubs/9699919799/utilities/pax.html",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "区分头部校验算法使用错误与文件数据确实损坏。",
+  "tags": [
+    "misc"
+  ]
+}

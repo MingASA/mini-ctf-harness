@@ -1,0 +1,21 @@
+{
+  "title": "Windows FILETIME 的纪元和计数单位",
+  "summary": "FILETIME 是从 UTC 1601-01-01 起的 100 纳秒间隔数，由高、低两个 32 位字组成。",
+  "applies": "常见时间戳字段的单位与纪元",
+  "aliases": [
+    "FILETIME",
+    "1601",
+    "100ns",
+    "Windows时间戳"
+  ],
+  "detail": "Unix 纪元对应 FILETIME 116444736000000000。换算时先减纪元差再除以 10000000，可避免误把字段当毫秒。",
+  "boundary": "字段单位不等于文件系统实际记录精度；高低两个 DWORD 的拼接也要遵守结构布局。",
+  "sources": {
+    "reference": "https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-filetime",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "将 Windows 文件元数据与 Unix 日志放到同一时间线。",
+  "tags": [
+    "misc"
+  ]
+}

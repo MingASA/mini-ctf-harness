@@ -1,0 +1,21 @@
+{
+  "title": "JVM tableswitch 的填充相对方法代码开始对齐",
+  "summary": "在 tableswitch 操作码后插入 0 至 3 字节，令随后的 default 偏移位于相对方法代码开始的四字节边界。",
+  "applies": "JVM class 文件及标准字节码",
+  "detail": "各分支位移以 tableswitch 操作码地址为原点，按有符号 32 位解释。",
+  "boundary": "文件整体的起始偏移与方法代码起点未必同余；按文件绝对位置对齐会读错。",
+  "aliases": [
+    "tableswitch",
+    "default offset",
+    "JVM switch",
+    "跳转表对齐"
+  ],
+  "relevance": "解释 switch 表中所有目标似乎都以同一偏差错位。",
+  "sources": {
+    "reference": "https://docs.oracle.com/javase/specs/jvms/se21/html/jvms-6.html#jvms-6.5.tableswitch",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "reverse"
+  ]
+}

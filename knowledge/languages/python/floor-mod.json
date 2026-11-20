@@ -1,0 +1,25 @@
+{
+  "title": "Python 负数的整除和余数",
+  "summary": "整数 // 向负无穷取整，非零余数与除数同号。",
+  "applies": "Python 3；标准库或内置整数",
+  "aliases": [
+    "floordiv",
+    "modulo",
+    "负余数",
+    "整除",
+    "取余",
+    "余数符号",
+    "floor division"
+  ],
+  "detail": "-7 // 3 为 -3，-7 % 3 为 2；二者保持 a == (a // b) * b + a % b。",
+  "boundary": "移植使用向零截断除法的程序时，负数输入的商和余数可能都变。",
+  "sources": {
+    "reference": "https://docs.python.org/3/library/stdtypes.html#numeric-types-int-float-complex",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "还原周期索引时，跨语言的负数取模差异会改变表项。",
+  "tags": [
+    "reverse",
+    "misc"
+  ]
+}

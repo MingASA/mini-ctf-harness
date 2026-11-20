@@ -1,0 +1,23 @@
+{
+  "title": "PT_LOAD 在文件和内存中可有不同长度",
+  "summary": "PT_LOAD 的 p_filesz 是文件承载的部分，p_memsz 是内存中的大小；后者较大时尾部补零。",
+  "applies": "ELF 文件；System V 通用 ABI",
+  "aliases": [
+    "PT_LOAD",
+    "p_filesz",
+    "p_memsz",
+    "虚拟地址",
+    "补零"
+  ],
+  "detail": "段内偏移 d 小于 p_filesz 才对应文件位置 p_offset+d。若 p_filesz ≤ d < p_memsz，该地址仍可属于段。",
+  "boundary": "对于可加载段，p_filesz 不得大于 p_memsz。地址映射还必须落在同一个段。",
+  "sources": {
+    "reference": "https://gabi.xinuos.com/elf/07-pheader.html",
+    "context": "https://ctf-wiki.org/executable/elf/structure/basic-info/"
+  },
+  "relevance": "把静态地址还原到原始文件时，判断为何某些地址没有可读文件字节。",
+  "tags": [
+    "reverse",
+    "misc"
+  ]
+}

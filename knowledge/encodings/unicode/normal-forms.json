@@ -1,0 +1,26 @@
+{
+  "title": "Unicode 规范等价不保证原始字节相同",
+  "summary": "预组字符 é 和 e 加组合重音在 NFC 规范化后相等，但原始 UTF-8 字节不同。",
+  "applies": "Unicode 文本与 JSON 字节记录",
+  "aliases": [
+    "NFC",
+    "NFD",
+    "combining mark",
+    "组合重音",
+    "规范化",
+    "哈希值",
+    "Unicode normalization",
+    "é"
+  ],
+  "detail": "前一种为 C3 A9，后一种为 65 CC 81。对原始字节做摘要会得到不同结果。",
+  "boundary": "NFKC 还会处理兼容等价；对证据做规范化前要保留原始字节。",
+  "sources": {
+    "reference": "https://www.unicode.org/reports/tr15/",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "定位看起来完全一样的口令提示、文件名或文本为何比较不相等。",
+  "tags": [
+    "misc",
+    "web"
+  ]
+}

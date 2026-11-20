@@ -1,0 +1,22 @@
+{
+  "title": "strpos 的 0 与 false",
+  "summary": "子串出现在开头时 strpos 返回整数 0，未找到时返回布尔 false。",
+  "applies": "PHP 7.4 和 8.x 的数据处理",
+  "aliases": [
+    "strpos",
+    "offset zero",
+    "开头",
+    "子串位置"
+  ],
+  "detail": "strpos(\"abc\",\"a\") 和 strpos(\"abc\",\"z\") 在普通 if 条件中都表现为假；使用严格比较才能区分这两个返回值。",
+  "boundary": "返回位置按字节计数；多字节文本的显示列号可能不同。",
+  "sources": {
+    "reference": "https://www.php.net/manual/en/function.strpos.php",
+    "context": "https://ctf-wiki.org/web/php/php/"
+  },
+  "relevance": "解释相同条件为何把开头命中和完全未命中分到同一分支。",
+  "tags": [
+    "web",
+    "reverse"
+  ]
+}

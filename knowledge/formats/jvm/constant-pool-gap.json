@@ -1,0 +1,20 @@
+{
+  "title": "JVM 常量池的 long 和 double 保留两个索引位",
+  "summary": "CONSTANT_Long 与 CONSTANT_Double 在常量池表占用两个编号；下一编号不可用。",
+  "applies": "JVM class 文件及标准字节码",
+  "detail": "一个条目从 #7 开始，则 #8 不能引用，下一个可用编号为 #9。常量池编号从 1 开始。",
+  "boundary": "class 文件里只有一个该常量的结构；无须为被保留的编号再从文件读一个标签。",
+  "aliases": [
+    "CONSTANT_Long",
+    "constant_pool_count",
+    "常量池跳号"
+  ],
+  "relevance": "定位后一项字符串或方法引用时，解释索引数和解析条目数为何不同。",
+  "sources": {
+    "reference": "https://docs.oracle.com/javase/specs/jvms/se21/html/jvms-4.html#jvms-4.4.5",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "reverse"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "title": "pcapng 每个 Section 可采用独立字节序",
+  "summary": "Section Header Block 的块类型 0a0d0d0a 在两种端序下相同，应使用 Byte-Order Magic 判断本节的字段端序。",
+  "applies": "pcapng v1；Section Header、Interface Description 与 Enhanced Packet Block",
+  "aliases": [
+    "pcapng section",
+    "byte-order magic",
+    "SHB",
+    "大小端切换"
+  ],
+  "detail": "同一文件可连续包含采用不同端序的多个节；下一个节出现时要重新解释长度字段。",
+  "boundary": "该标记只确定容器块字段的端序，包内容继续遵循各自协议的字节序。",
+  "sources": {
+    "reference": "https://www.ietf.org/archive/id/draft-ietf-opsawg-pcapng-04.html",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "解释抓包前半段可解析、在新的 Section 之后块长突然异常。",
+  "tags": [
+    "misc"
+  ]
+}

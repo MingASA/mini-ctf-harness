@@ -28,6 +28,7 @@ export const slashCommands=[
  ['archive','归档当前题的一条补充消息'],
  ['help','查看命令和快捷键'],
  ['skills','查看或搜索已安装的技能'],
+ ['knowledge','查看或开关当前题的离线知识库：on / off'],
  ['use-skill','将技能读取请求加入当前题'],
  ['discard','清空当前输入草稿'],
  ['quit','保存并退出终端'],

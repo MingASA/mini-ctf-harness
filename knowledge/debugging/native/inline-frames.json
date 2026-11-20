@@ -1,0 +1,22 @@
+{
+  "title": "内联调用可以有逻辑帧却没有独立物理栈帧",
+  "summary": "调试器可根据编译器发出的内联调试信息显示内联调用；程序中不一定有与该帧对应的独立 call。",
+  "applies": "原生程序的离线栈回溯、符号匹配与调试信息",
+  "detail": "源码里两层调用可以在机器码里共用一段指令。阅读栈报告时要区分内联位置与真正的运行时调用帧。",
+  "boundary": "编译器未发出足够调试信息时，调试器不能完整重建所有内联层次。",
+  "aliases": [
+    "inline frame",
+    "inlining",
+    "内联帧",
+    "逻辑调用栈"
+  ],
+  "relevance": "解释调用链比反汇编中实际调用指令多一层。",
+  "sources": {
+    "reference": "https://sourceware.org/gdb/current/onlinedocs/gdb/Inline-Functions.html",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "pwn",
+    "reverse"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "title": "zlib 尾部是解压数据的 Adler-32",
+  "summary": "zlib 最后四字节按大端存放未压缩数据的 Adler-32。",
+  "applies": "zlib 包装的 DEFLATE 数据",
+  "aliases": [
+    "Adler-32",
+    "raw deflate",
+    "wrapper",
+    "大端校验"
+  ],
+  "detail": "同样使用 DEFLATE，gzip 外层使用 CRC32 与 ISIZE，裸 DEFLATE 则没有 zlib 的该尾部。",
+  "boundary": "只有先确定外层封装才能解释最后四字节；出现常见头字节也不能单独证明文件完整。",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc1950.html#section-2",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "解释压缩内容能解开但用 CRC32 核对尾部持续失败的现象。",
+  "tags": [
+    "misc"
+  ]
+}

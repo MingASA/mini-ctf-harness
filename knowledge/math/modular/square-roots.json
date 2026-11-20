@@ -1,0 +1,21 @@
+{
+  "title": "模平方根通常要保留两个符号",
+  "summary": "对奇素数 p，若非零 a 是平方剩余，模 p 的平方根恰有两个，互为相反数。",
+  "applies": "整数模运算；模数大于 1",
+  "aliases": [
+    "sqrt_mod",
+    "quadratic residue",
+    "平方剩余",
+    "两个根"
+  ],
+  "detail": "模 7 时，2 的平方根是 3 和 4。仅保存库函数给出的一个代表值会丢失另一个候选。",
+  "boundary": "a≡0 时只有零根；合数模数不能直接沿用“两根”结论。",
+  "sources": {
+    "reference": "https://docs.sympy.org/latest/modules/ntheory.html#sympy.ntheory.residue_ntheory.sqrt_mod",
+    "context": "https://cryptohack.org/courses/modular/"
+  },
+  "relevance": "还原平方变换时，判断结果是否具有唯一性。",
+  "tags": [
+    "crypto"
+  ]
+}

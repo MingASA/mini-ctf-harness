@@ -1,0 +1,21 @@
+{
+  "title": "gzip 末尾的 ISIZE 是模 2^32 的长度",
+  "summary": "每个成员尾部的 CRC32 校验解压后的字节，ISIZE 记录其字节数的低 32 位，两者均为小端。",
+  "applies": "gzip 成员；RFC 1952",
+  "aliases": [
+    "ISIZE",
+    "gzip crc",
+    "trailer",
+    "原始大小"
+  ],
+  "detail": "当成员解压量为 2^32 字节时，ISIZE 可为 0；这与真正空成员的长度字段相同。",
+  "boundary": "尾部值只描述当前成员；最后四字节无法表示多成员文件的完整解压量。",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc1952.html#section-2",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "判断附件长度时避免把环绕的四字节值当成精确总量。",
+  "tags": [
+    "misc"
+  ]
+}

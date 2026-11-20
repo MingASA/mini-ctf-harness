@@ -14,6 +14,19 @@ class Terminal {
 const delay=()=>new Promise(r=>setTimeout(r,60));
 const down='\x1b[B';
 
+test('/knowledge controls only the selected task and reports durable on/off state',async t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'terminal-knowledge-'));
+ const contest=new Contest({contestDir:root,model:{baseUrl:'http://127.0.0.1:9'}},{testMode:true,provision:async id=>({containerId:id,workDir:path.join(root,'work',id)}),sessionOptions:()=>({broker:{validate:async()=>{}},knowledge:{docs:[]}})});
+ const ui=new CompetitionTerminal(contest,{terminal:new Terminal()});
+ t.after(async()=>{await ui.close();fs.rmSync(root,{recursive:true,force:true});});
+ await contest.add({id:'one',objective:'One'});await contest.add({id:'two',objective:'Two'});ui.setView('one');
+ await ui.submit('/knowledge off');assert.equal(contest.session('one').knowledgeControls().enabled,false);
+ assert.equal(contest.session('two').knowledgeControls().enabled,true);
+ await ui.submit('/knowledge');assert.match(ui.notice,/关闭/);
+ await assert.rejects(ui.submit('/knowledge maybe'),/用法/);
+ await ui.submit('/knowledge on');assert.equal(contest.session('one').knowledgeControls().enabled,true);
+});
+
 test('backend slot status stays above the selected panel and follows the active model service',async t=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'pi-slot-status-'));
  const origins=[];

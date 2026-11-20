@@ -1,0 +1,21 @@
+{
+  "title": "DEX insns_size 以 16 位代码单元计数",
+  "summary": "code_item 中 insns_size 的单位是 16 位 code unit；10 表示指令数组覆盖 20 个字节。",
+  "applies": "Android DEX 文件与 Dalvik 指令",
+  "detail": "指令可以占多个代码单元。读取原始指令数组和计算程序计数器时要先统一单位。",
+  "boundary": "存在异常处理表且单元数为奇数时，指令数组之后还有对齐填充；该填充不计入 insns_size。",
+  "aliases": [
+    "insns_size",
+    "code_item",
+    "code unit",
+    "指令字"
+  ],
+  "relevance": "从 DEX 记录恢复方法体边界时避免把长度缩小一半。",
+  "sources": {
+    "reference": "https://source.android.com/docs/core/runtime/dex-format",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "reverse"
+  ]
+}

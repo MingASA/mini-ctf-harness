@@ -21,6 +21,7 @@ const HELP=`Ctrl+N 创建题目 · Ctrl+L 切换查看 · Ctrl+P 暂停当前题
 /env [环境] 选择新题环境\n/model [编号或ID] 选择模型\n/compact 本轮结束后压缩 · /effort [normal|compact] [强度] [思考tokens|-1] 选择思考设置\n/pause  /resume [题号]  /offloadKV 暂停并保存驻留题的 KV 到 RAM\n/offloadKV config [参数=MiB …] 查看或修改 RAM KV 余量及总上限\n/cancel 命令ID  /checkpoint  /feedback 候选ID correct|incorrect|pending 说明
 /btw 开始或进入只读分支 · /btw free 释放分支 KV · /btw resume 继续 · /btw close 删除 · /main 返回主线
 /context [窗口 软压缩线] 调整当前会话，例如 /context 64K 48K
+/knowledge [on|off] 查看或开关当前题的离线知识库，设置会保存；运行中在完整轮次结束后生效
 /tab [面板]  /tool 序号 查看工具输出  /read 文件路径  /archive 消息ID
 /skills [检索词] 查看技能元数据 · /use-skill NAME 将读取请求加入本题消息队列\n/new 创建题目（题意可多行粘贴） /discard 清空当前草稿  /quit 保存退出
 直接输入补充消息；Enter 发送，Shift+Enter 换行；已送达表示服务已接受包含该消息的请求。`;
@@ -138,6 +139,12 @@ export class CompetitionTerminal {
    if(cmd==='/new'){this.beginNew();return;}
    if(cmd==='/quit'){await this.close();return;}
    if(cmd==='/help'){this.detail=HELP;}
+   else if(cmd==='/knowledge'){
+    if(args.length>1||(args.length&&!['on','off'].includes(args[0])))throw Error('用法：/knowledge [on|off]');
+    const s=this.contest.session(this.requireTask());
+    const state=args.length?s.requestKnowledge(args[0]==='on'):s.knowledgeControls();
+    this.notice='当前题离线知识库：'+(state.enabled?'开启':'关闭')+(state.pending===undefined?'':'；本轮完成后'+(state.pending?'开启':'关闭'))+'。/knowledge on|off 切换';
+   }
    else if(cmd==='/skills'){
     const k=this.contest.session(this.requireTask()).knowledge;
     this.detail=stringify(args.length?k.search(args.join(' ')):k.docs.map(({name,description,filePath})=>({name,description,filePath})));

@@ -1,0 +1,22 @@
+{
+  "title": "AES 的密钥位数不会改变分组宽度",
+  "summary": "AES-128、AES-192、AES-256 都处理 128 位即 16 字节分组。",
+  "applies": "密码学题的字节表示和参数解释",
+  "aliases": [
+    "AES-256",
+    "AES block size",
+    "分组宽度",
+    "密钥长度"
+  ],
+  "detail": "算法名称中的 128、192、256 指密钥位数。把 AES-256 的密文按 32 字节分块会合并相邻分组。",
+  "boundary": "分组宽度不能直接推出整个文件长度；模式、填充和外层字段都影响存储长度。",
+  "sources": {
+    "reference": "https://csrc.nist.gov/pubs/fips/197/final",
+    "context": "https://cryptohack.org/courses/symmetric/"
+  },
+  "relevance": "核对密文分块、IV 字节与文件切片时避免把密钥长度当块长度。",
+  "tags": [
+    "crypto",
+    "misc"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "title": "IPv4 IHL 的单位是 32 位字",
+  "summary": "IHL 为 5 表示 20 字节头，为 6 表示 24 字节；Total Length 计入头和数据。",
+  "applies": "离线 IPv4、IPv6 报文解析",
+  "aliases": [
+    "IHL",
+    "IP options",
+    "头长度",
+    "total length"
+  ],
+  "detail": "IHL 的低四位是单位数，前四位是版本。遇到 IP 选项时仍固定跳过 20 字节会读错上层端口。",
+  "boundary": "实际捕获字节数可能因抓包截断小于 Total Length。",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc791.html#section-3.1",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "在含选项或被截断的离线报文中正确定位负载。",
+  "tags": [
+    "misc"
+  ]
+}

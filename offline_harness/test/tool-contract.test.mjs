@@ -14,7 +14,7 @@ test('public schemas and results carry only command, job and submission semantic
  const store=setup(t),seen=[];
  const broker={start:async(...args)=>{seen.push(args);return {job_id:'j1',status:'running',stdout:'ready',stderr:'',stdout_next_offset:5,stderr_next_offset:0,child:{pid:123},supervisor:{pid:456},time:1234};},read:async(id,wait,offsets)=>{seen.push({id,wait,offsets});return {job_id:id,status:'running',stdout:'ready\n',stderr:''};}};
  const tools=buildTools(store,broker,{}, {submit:()=>({status:'pending',submission_id:'private',candidate_sha256:'private'})});
- assert.deepEqual(tools.map(x=>x.name),['view_image','run_command','wait_job','read','submit_flag']);
+ assert.deepEqual(tools.map(x=>x.name),['view_image','run_command','wait_job','read','knowledge','submit_flag']);
  for(const [name,key] of [['run_command','command'],['wait_job','job_id'],['submit_flag','candidate']])assert.deepEqual(Object.keys(tools.find(x=>x.name===name).parameters.properties),[key]);
  const run=data(await tools.find(x=>x.name==='run_command').execute('launch',{command:'printf ready'}));
  assert.deepEqual(run,{status:'running',job_id:'j1',stdout:'ready'});assert.equal(seen[0][3],15);

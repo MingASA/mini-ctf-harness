@@ -1,0 +1,22 @@
+{
+  "title": "HTTP/1.1 分块长度是十六进制字节数",
+  "summary": "chunk-size 行的数字按十六进制解释，不计入该行、扩展和数据后的 CRLF。",
+  "applies": "HTTP 表示与离线消息解析",
+  "aliases": [
+    "chunked",
+    "chunk-size",
+    "transfer-encoding",
+    "十六进制长度"
+  ],
+  "detail": "长度行 a 表示 10 个数据字节。零长度块标记数据块结束，其后仍可能有 trailer 字段。",
+  "boundary": "这种边界属于传输编码，不能从 HTTP/2 的 DATA 帧中套用相同文本语法。",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc9112.html#section-7.1",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "重建离线响应正文时，区分实际载荷与分块标记。",
+  "tags": [
+    "web",
+    "misc"
+  ]
+}

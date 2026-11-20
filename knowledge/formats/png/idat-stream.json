@@ -1,0 +1,20 @@
+{
+  "title": "多个 IDAT 共用一个压缩流",
+  "summary": "一幅 PNG 的各 IDAT 数据字段按顺序拼接，形成一个 zlib 数据流。",
+  "applies": "PNG 规范；独立 PNG 图像",
+  "aliases": [
+    "IDAT",
+    "multiple chunks",
+    "压缩流拼接"
+  ],
+  "detail": "块分界可落在 DEFLATE 数据内部；从第二个 IDAT 的开头单独解压可能报错。",
+  "boundary": "拼接时只取各块的 Data；长度、类型和 CRC 均属于外层。此规则讨论静态图像的 IDAT。",
+  "sources": {
+    "reference": "https://www.w3.org/TR/png-3/#11IDAT",
+    "context": "https://ctf-wiki.org/misc/picture/png/"
+  },
+  "relevance": "解释图像有多个数据块、单块均不能独立解压的现象。",
+  "tags": [
+    "misc"
+  ]
+}

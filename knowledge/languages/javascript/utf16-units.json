@@ -1,0 +1,25 @@
+{
+  "title": "JavaScript 的字符串长度按 UTF-16 单元",
+  "summary": "补充平面字符通常占两个 UTF-16 代码单元，\"😀\".length 为 2。",
+  "applies": "ECMAScript；Number、BigInt 与字符串",
+  "aliases": [
+    "charCodeAt",
+    "codePointAt",
+    "代理项",
+    "surrogate pair",
+    "emoji",
+    "UTF-16",
+    "String.length"
+  ],
+  "detail": "charCodeAt(0) 只给出高代理项；codePointAt(0) 返回该字符的完整码点。",
+  "boundary": "字素簇可以由多个码点组成；按码点遍历也不能保证等于屏幕上的字符个数。",
+  "sources": {
+    "reference": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/length",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "从浏览器导出的索引位置回到原文时，处理补充平面字符造成的偏移。",
+  "tags": [
+    "reverse",
+    "web"
+  ]
+}

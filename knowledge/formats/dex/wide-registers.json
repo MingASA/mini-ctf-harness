@@ -1,0 +1,21 @@
+{
+  "title": "Dalvik 的 long 和 double 值占相邻寄存器对",
+  "summary": "Dalvik 寄存器通常承载 32 位数据，宽值使用相邻两个寄存器；寄存器对没有偶数起始要求。",
+  "applies": "Android DEX 文件与 Dalvik 指令",
+  "detail": "方法输入位于该方法寄存器组的末尾，宽参数要算成两格。实例方法还带接收者引用。",
+  "boundary": "寄存器编号是虚拟机的槽位，不能按本机 ARM 寄存器编号解释。",
+  "aliases": [
+    "move-wide",
+    "register pair",
+    "Dalvik",
+    "宽参数"
+  ],
+  "relevance": "复原 smali 参数表时区分参数数量和寄存器槽数量。",
+  "sources": {
+    "reference": "https://source.android.com/docs/core/runtime/dalvik-bytecode",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "reverse"
+  ]
+}

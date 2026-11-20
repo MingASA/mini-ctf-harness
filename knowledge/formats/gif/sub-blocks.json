@@ -1,0 +1,21 @@
+{
+  "title": "GIF 图像子块的零长度结束标记",
+  "summary": "子块的首字节是随后的字节数，取值 1 至 255；长度为 0 的块表示子块序列结束。",
+  "applies": "GIF89a 图像数据与图形控制扩展",
+  "aliases": [
+    "GIF sub-block",
+    "block terminator",
+    "LZW data",
+    "子块长度"
+  ],
+  "detail": "把图像数据交给 LZW 层前要连接各子块的数据，剔除长度前缀与块终止符。",
+  "boundary": "数据区内出现的 00 可以是普通数据；只有在期待长度字节的位置才是子块终止。",
+  "sources": {
+    "reference": "https://www.w3.org/Graphics/GIF/spec-gif89a.txt",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "复原动图数据流时，定位为何解码从某个块边界开始失效。",
+  "tags": [
+    "misc"
+  ]
+}

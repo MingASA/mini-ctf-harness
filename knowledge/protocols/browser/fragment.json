@@ -1,0 +1,21 @@
+{
+  "title": "HTTP 请求目标不包含 URL 的 fragment",
+  "summary": "浏览器解析 URL 后，# 开始的片段由客户端处理，不随请求目标发送给服务器。",
+  "applies": "浏览器对 URL、Cookie 和源的解释",
+  "detail": "两个历史记录 URL 仅片段不同时，服务端访问日志中可能看到完全相同的路径和查询。",
+  "boundary": "百分号编码的 %23 在相应 URL 组件内是数据；应在正确的解析阶段判断。",
+  "aliases": [
+    "fragment",
+    "hash",
+    "锚点",
+    "井号"
+  ],
+  "relevance": "对照地址栏与 HAR、访问日志时判断哪一段信息只在客户端可见。",
+  "sources": {
+    "reference": "https://developer.mozilla.org/en-US/docs/Web/URI/Reference/Fragment",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "web"
+  ]
+}

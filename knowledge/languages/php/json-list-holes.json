@@ -1,0 +1,22 @@
+{
+  "title": "PHP 数组下标缺口与 JSON 形状",
+  "summary": "json_encode 只把从 0 开始、依次连续编号的 PHP 数组编码为 JSON 数组。",
+  "applies": "PHP 7.4 和 8.x 的数据处理",
+  "aliases": [
+    "json_encode",
+    "array_values",
+    "unset",
+    "列表变对象"
+  ],
+  "detail": "从 [10,20,30] 中 unset 下标 1 后，剩余键为 0、2，编码结果是带这两个属性名的对象。",
+  "boundary": "array_values 会重新连续编号；重新编号后的 JSON 不能还原此前存在的缺口。",
+  "sources": {
+    "reference": "https://www.php.net/manual/en/function.json-encode.php",
+    "context": "https://ctf-wiki.org/web/php/php/"
+  },
+  "relevance": "解释两个内容相似的附件为什么分别以中括号和大括号保存。",
+  "tags": [
+    "web",
+    "reverse"
+  ]
+}

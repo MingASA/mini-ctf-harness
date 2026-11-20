@@ -90,6 +90,38 @@ de632c79cb58be69c4685967e114a329fd819ba6fb9e87c1c79843dc7a2e73bd
 
 Thinking 采样 `temperature=1.0, top_p=0.95, top_k=20`；Non-thinking 为 `0.7, 0.80, 20`。内置 15 个原始 SKILL.md 与 32 个 References；Pi 直接发现 `.agents/skills/`，按需使用通用 `read` 读取。
 
+## 主会话离线知识库
+
+运行 `./mini-ctf` 后，比赛会话中的模型自动获得 `knowledge` 工具。工具提供 `search`、`browse` 和 `get`，查询和结果直接留在当前任务对话及日志里。后台运行入口 `./mini-ctf run` 也使用相同工具。
+
+`/knowledge` 查看当前题的开关，`/knowledge off` 关闭，`/knowledge on` 开启。开关按题目保存并在重启后恢复；运行中的修改在完整轮次结束后生效，避免更换已经发给模型的工具契约。关闭后撤下工具及其使用提示，之前读取的资料仍保留在历史中。新题默认开启，可在模型配置中设置 `"knowledgeEnabled": false` 改变默认值。此开关控制仓库自带的离线卡片，不控制独立的 `rag_search` 服务。
+
+模型先用已有知识和题目证据推进。当关键事实不确定、观测与理解矛盾，或连续尝试无进展且需要核对事实假设时，由模型选择查询知识库。明确的知识缺口可立即触发求助。查询先看摘要，仍缺条件或细节时再读单卡，随后回到题目验证。这个时机由提示词引导和模型判断，程序提供工具并执行其调用。
+
+例如模型需要核对 PNG 的 IDAT 行为时，可以先调用 `{"op":"search","query":"IDAT"}` 得到摘要，再按返回 ID 调用 `{"op":"get","id":"formats/png/idat-stream"}` 读取完整卡片及引用。搜索默认每页 3 条，目录默认 5 条；`limit` 可设置任意正整数。两者均支持 `scope`、题型 `tag` 和分页 `offset`。搜索额外返回匹配总数 `total`；下一页保持查询和过滤条件不变，将 `offset` 设为上一页的 `nextOffset`，该值为 `null` 时结束。`get` 只接受一个已登记 ID。
+
+检索保留完整技术标识符，支持常见写法、英文词形和部分中英术语映射。未覆盖的标识符不会因为“怎么使用”等通用词而匹配其他主题；同一技术目录中的相关卡片仍可能作为候选出现，需核对摘要和边界。查询、卡片文件、字段长度和别名数量没有固定上限；工具展示仍使用现有的输出分页机制。
+
+启动提示词包含固定的工具使用说明，具体卡片通过工具结果按需进入上下文。知识文件随仓库分发，首次查询在本进程建立索引；断网时可用。更新卡片后重启前端以加载新的内容。检索结果沿用工具日志与恢复机制，重新打开任务时可继续使用此前已读的结果。
+
+知识库有 157 张卡、44 个技术对象。同一张卡可服务多种题型，ID 只保留一份。
+
+| 题型标签 | 卡数（含交叉标签） | 可以查的具体问题 |
+|---|---:|---|
+| web | 35 | HTTP 跳转与部分响应、Cookie 范围、Flask 会话与重复参数、SQLite 类型和 NULL、PHP 版本差异 |
+| reverse | 60 | x86-64 与 AArch64 语义、SysV 和 Windows 调用约定、PE、ELF、DEX、JVM、Wasm 与定宽运算 |
+| pwn | 20 | C 对象边界与生命周期、结构体布局、栈帧展开、调试符号、故障地址和转储判读 |
+| crypto | 25 | 模运算、椭圆曲线群律与压缩点、有限域、带错分片、整数格与 LLL、密码数据表示 |
+| misc | 89 | ext4、Windows minidump、图像元数据、电话双音、压缩归档、PDF、SQLite 和抓包 |
+
+人工核对内容时也可直接运行 `./mini-ctf knowledge search "问题" --limit 3 --offset 0`、`./mini-ctf knowledge browse --tag pwn` 或 `./mini-ctf knowledge get ID`。这些命令不请求模型。
+
+独立查阅器支持 `ask --model MODEL_ID` 和 `ask --text-only --model MODEL_ID`。必须通过 `MINI_CTF_KNOWLEDGE_MODEL_URL` 指定独立模型服务，并提供比赛配置 `MINI_CTF_CONFIG`（安装后的启动器自动传入）。查阅器检查实验进程及模型租约，拒绝使用配置中的比赛服务，即使该服务当前空闲也不会占用其驻留 KV。`--text-only` 保留整张卡片的正文、适用边界和来源。查阅轮数及工具批次没有固定上限，按 Ctrl+C 可取消请求并释放租约。
+
+检索测试包含每卡一个问法、20 个额外改写，以及对应十道离线附件的十个知识问题（每个题型两个）。这些测试检查知识命中，单题最终答案与模型答题正确率需另外评估。
+
+每个 `knowledge/<分类>/<技术对象>/*.json` 文件描述一个可验证的判断。文件名和分类组成稳定 ID。新增卡片时，在 `summary` 给出结论，在 `applies`、`detail` 和 `boundary` 说明版本、前提、反例；`sources.reference` 链到定义该行为的规范或手册，`sources.context` 与 `relevance` 说明它与题目的关系。为新知识添加真实的查询问法和期望命中 ID，并用 `node --test offline_harness/test/knowledge.test.mjs` 验证。PHP 示例另可在已加载 JSON 扩展的 64 位 PHP 7.4 或 8.x 环境下执行 `php -d zend.assertions=1 -d assert.exception=0 -d assert.warning=0 offline_harness/test/fixtures/knowledge-php.php`。
+
 ## 交互
 
 ```text
