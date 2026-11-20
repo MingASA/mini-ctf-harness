@@ -54,7 +54,7 @@ with tempfile.TemporaryDirectory() as tmp:
     args = next(value for kind, value in events if kind == 'docker' and value[0] == 'create')
     assert args[args.index('--user') + 1] == '1234:4321'
     assert '--read-only' in args and args[args.index('--cap-drop') + 1] == 'ALL'
-    assert args[args.index('--memory') + 1] == '2048m'
+    assert args[args.index('--memory') + 1] == '6144m'
 
     containers = []
     for memory, cpus, pids, tmp_mib in [(6144, 6, 128, 128), (16384, 12.5, 4096, 2048), (64, 0.25, 8, 8), (0, 0, -1, 1024)]:
@@ -68,8 +68,8 @@ with tempfile.TemporaryDirectory() as tmp:
         assert args[args.index('--memory') + 1] == str(memory)+'m'
         assert args[args.index('--memory-swap') + 1] == str(memory)+'m'
         assert args[args.index('--cpus') + 1] == str(cpus)
-        assert args[args.index('--pids-limit') + 1] == str(pids)
-        assert args[args.index('--tmpfs') + 1] == '/tmp:rw,nosuid,nodev,size='+str(tmp_mib)+'m'
+        assert args[args.index('--pids-limit') + 1] == '-1'
+        assert args[args.index('--tmpfs') + 1] == '/tmp:rw,nosuid,nodev,size=0'
         assert '--memory-reservation' not in args and '--cpuset-cpus' not in args
         containers.append({'Id':'fixture','Image':'image','State':{'Running':True},
             'HostConfig':{'NetworkMode':'none','CapDrop':['ALL'],'SecurityOpt':['no-new-privileges'],
@@ -98,8 +98,8 @@ with tempfile.TemporaryDirectory() as tmp:
     assert args[args.index('--memory') + 1] == '16384m'
     assert args[args.index('--memory-swap') + 1] == '16384m'
     assert args[args.index('--cpus') + 1] == '12.5'
-    assert args[args.index('--pids-limit') + 1] == '4096'
-    assert args[args.index('--tmpfs') + 1] == '/tmp:rw,nosuid,nodev,size=2048m'
+    assert args[args.index('--pids-limit') + 1] == '-1'
+    assert args[args.index('--tmpfs') + 1] == '/tmp:rw,nosuid,nodev,size=0'
 `;
   const result = spawnSync('python3', ['-c', script], {cwd: new URL('..', import.meta.url), encoding: 'utf8'});
   assert.equal(result.status, 0, result.stderr || result.stdout);

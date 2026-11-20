@@ -157,7 +157,7 @@ def install(args):
     run([npm,'ci','--ignore-scripts','--no-audit','--no-fund'],cwd=ROOT/'offline_harness',env=env)
     config={'contestDir':str(work/'sessions'),'modelLease':str(work/'model-lease.json'),'autoStart':True,'environment':'offline','hostCwd':str(data),'wslDistribution':os.environ.get('WSL_DISTRO_NAME'),
       'runtime':{'root':str(work/'runtime'),'execRoot':str(work/'dx'),'docker':docker,'dockerd':dockerd,'pluginDir':str(plugin),'solverImage':args.solver_image or 'mini-ctf-tools:1','solverArchive':str(data/'assets/solver.tar')},
-      'provision':{'workBase':str(work/'offline-harness/work')},'solver':{'memoryMiB':2048,'cpus':1,'pids':128,'tmpMiB':128},'environments':{'offline':{'type':'offline'},'lan':{'type':'lan','targetUrl':''}},'services':{},'uid':os.getuid(),'gid':os.getgid(),
+      'provision':{'workBase':str(work/'offline-harness/work')},'solver':{'memoryMiB':6144,'cpus':6},'environments':{'offline':{'type':'offline'},'lan':{'type':'lan','targetUrl':''}},'services':{},'uid':os.getuid(),'gid':os.getgid(),
       'model':{'mode':'memory-skills','model':args.model,'baseUrl':'http://127.0.0.1:'+str(args.port),'contextTokens':55296,'promptTokens':40960,'compactSoftTokens':40960,'generationTokens':8192,'reasoningTokens':-1,'reasoningEffort':'medium','safetyTokens':0,'compactThinking':False,'compactReasoningEffort':'xhigh','compactReasoningTokens':4096,'compactTokens':8192,'maxTurns':10000,'maxGeneratedTokens':10000000,'maxSeconds':7200,'nativeImages':False,'kv':{'enabled':False,'slot':0}}}
     prior_file=data/'config.json'
     prior={}

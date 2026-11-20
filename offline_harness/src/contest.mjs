@@ -138,7 +138,7 @@ export class Contest extends EventEmitter {
    // Import before starting the new solver. No target services are deployed.
    const attachments=writeAttachments(files,work);
    const out=path.join(runDir,'sandbox.json');
-   const resources=Object.entries({memoryMiB:'--memory-mib',cpus:'--cpus',pids:'--pids',tmpMiB:'--tmp-mib'})
+   const resources=Object.entries({memoryMiB:'--memory-mib',cpus:'--cpus'})
     .flatMap(([key,flag])=>this.config.solver?.[key]===undefined?[]:[flag,String(this.config.solver[key])]);
    await exec('python3',[new URL('../scripts/provision_sandbox.py',import.meta.url).pathname,'--docker',p.docker||'docker','--host',p.dockerHost||'unix:///var/run/docker.sock','--image',p.image,'--work-base',base,'--work-dir',work,'--out',out,...resources],{timeout:60000,maxBuffer:1024*1024});
    sandbox=JSON.parse(fs.readFileSync(out));return this.register({id,title,objective,target,attachmentDir,attachments,sandbox,runDir});

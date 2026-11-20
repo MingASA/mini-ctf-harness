@@ -79,13 +79,14 @@ class Environment:
             if not source:raise RuntimeError('LAN solver subnet has no free address')
         elif kind!='offline':raise ValueError('Unknown environment type')
         # Resource policy belongs to the operator; Docker validates its own options.
-        limits=self.c.get('solver',{});memory=limits.get('memoryMiB',2048);pids=limits.get('pids',128);tmp=limits.get('tmpMiB',128)
+        limits=self.c.get('solver',{});memory=limits.get('memoryMiB',6144)
+        # Ignore obsolete pids/tmpMiB settings, including those in old installs.
         # The task root is the solver's mutable workspace.  Public inputs may
         # remain read-only below it, but the owner must be able to create job
         # records and analysis artifacts at the root.
         os.chown(work,self.c['uid'],self.c['gid'])
         os.chmod(work,0o700)
-        args=['create','--pull=never','--name','ctf-front-'+task+'-'+uuid.uuid4().hex[:8],'--label','qwen.interactive=true','--network',network['Id'] if network else 'none','--read-only','--cap-drop','ALL','--security-opt','no-new-privileges','--user',str(self.c['uid'])+':'+str(self.c['gid']),'--memory',str(memory)+'m','--memory-swap',str(memory)+'m','--cpus',str(limits.get('cpus',1)),'--pids-limit',str(pids),'--tmpfs','/tmp:rw,nosuid,nodev,size='+str(tmp)+'m','--mount','type=bind,src='+str(work)+',dst=/work','--workdir','/work']
+        args=['create','--pull=never','--name','ctf-front-'+task+'-'+uuid.uuid4().hex[:8],'--label','qwen.interactive=true','--network',network['Id'] if network else 'none','--read-only','--cap-drop','ALL','--security-opt','no-new-privileges','--user',str(self.c['uid'])+':'+str(self.c['gid']),'--memory',str(memory)+'m','--memory-swap',str(memory)+'m','--cpus',str(limits.get('cpus',6)),'--pids-limit','-1','--tmpfs','/tmp:rw,nosuid,nodev,size=0','--mount','type=bind,src='+str(work)+',dst=/work','--workdir','/work']
         if network:args.extend(['--dns','127.0.0.1'])
         if source:args.extend(['--ip',source,'--sysctl','net.ipv6.conf.all.disable_ipv6=1','--sysctl','net.ipv6.conf.default.disable_ipv6=1'])
         cid=self.docker(*args,self.r['solverImage'],'sleep','infinity');receipt={'docker':self.bin,'dockerHost':self.host,'containerId':cid,'imageId':self.r['solverImage'],'workDir':str(work)}
