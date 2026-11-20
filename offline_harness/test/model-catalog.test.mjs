@@ -41,7 +41,7 @@ test('a failed model identity probe cannot replace the current selection',async(
 test('managed loading uses a detached native launcher and verifies identity after loading',async()=>{
  const root=temp();try{
   const modelPath=path.join(root,'fixture.gguf'),exe=path.join(root,'llama-server.exe');fs.writeFileSync(modelPath,'GGUF');fs.writeFileSync(exe,'fixture');let ready=false,launched=0;
-  const b=backend({model:'beta'});const catalog=new ModelCatalog({contestDir:root,discoverLocalModels:false,modelRuntime:{exe,runDir:path.join(root,'runtime'),platform:'linux'}},{fetchFn:async(...args)=>{if(!ready)throw TypeError('loading');return b.fetch(...args);},executeFn:async(cmd,args,opt)=>{launched++;assert.ok(args.some(a=>a.endsWith('managed_server.py')));assert.equal(opt.cwd,root);const selection=JSON.parse(fs.readFileSync(path.join(root,'runtime/selection.json')));fs.writeFileSync(path.join(root,'runtime/owner.json'),JSON.stringify({key:selection.key}));ready=true;return {stdout:'{}'};}});
+  const b=backend({model:'beta'});const catalog=new ModelCatalog({contestDir:root,discoverLocalModels:false,modelRuntime:{exe,runDir:path.join(root,'runtime'),platform:'linux'}},{fetchFn:async(...args)=>{if(!ready)throw TypeError('loading');return b.fetch(...args);},executeFn:async(cmd,args,opt)=>{launched++;assert.ok(args.some(a=>a.endsWith('managed_server.py')));assert.equal(opt.cwd,root);const selection=JSON.parse(fs.readFileSync(path.join(root,'runtime/selection.json')));fs.writeFileSync(path.join(root,'runtime/owner.json'),JSON.stringify({key:selection.key,selectionId:selection.requestId}));ready=true;return {stdout:'{}'};}});
   const {receipt}=await catalog.activate({id:'beta',model:'beta',modelPath,baseUrl:'http://127.0.0.1:8080'},cfg(root));assert.equal(receipt.model,'beta');assert.equal(launched,1);assert.ok(JSON.parse(fs.readFileSync(path.join(root,'runtime/selection.json'))).args.includes('--slots'));
  }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
@@ -53,7 +53,7 @@ test('managed vision relaunches on an explicit projector device choice and persi
   const catalog=new ModelCatalog({contestDir:root,modelRuntime:{exe,runDir,platform:'linux'}},{
    fetchFn:b.fetch,executeFn:async()=>{
     const launch=JSON.parse(fs.readFileSync(path.join(runDir,'selection.json')));
-    fs.writeFileSync(path.join(runDir,'owner.json'),JSON.stringify({key:launch.key}));launches.push(launch);return {stdout:'{}'};
+    fs.writeFileSync(path.join(runDir,'owner.json'),JSON.stringify({key:launch.key,selectionId:launch.requestId}));launches.push(launch);return {stdout:'{}'};
    }});
   const profile={id:'vision',model:'vision',modelPath,mmprojPath,nativeImages:true,baseUrl:'http://127.0.0.1:8080'};
   const base=cfg(root);
@@ -61,7 +61,8 @@ test('managed vision relaunches on an explicit projector device choice and persi
   const {settings}=await catalog.activate(profile,base,{projectorDevice:'gpu'});
   assert.equal(settings.projectorDevice,'gpu');
   await catalog.activate(profile,{...base,...settings});
-  assert.equal(launches.length,2);
+  assert.equal(launches.length,3);
+  assert.equal(launches[1].key,launches[2].key);
   assert.ok(launches[0].args.includes('--no-mmproj-offload'));
   assert.ok(launches[1].args.includes('--mmproj-offload'));
   assert.notEqual(launches[0].key,launches[1].key);

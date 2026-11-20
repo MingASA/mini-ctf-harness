@@ -4,7 +4,7 @@ import path from 'node:path';
 import {execFile,execFileSync,spawn} from 'node:child_process';
 import {promisify} from 'node:util';
 import {setTimeout as delay} from 'node:timers/promises';
-import {hash} from './store.mjs';
+import {atomic,hash} from './store.mjs';
 import {ramKvLimits,ramKvLocation,ramKvProfile} from './ram-kv.mjs';
 const execute=promisify(execFile);
 const WINDOWS_POWERSHELL='/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe';
@@ -186,9 +186,10 @@ export class ModelCatalog {
    if(ram)args.push('--slot-save-path',ram.hostDirectory);
    const ramIdentity=ram?{exeTime:fs.statSync(exe).mtimeMs,projectorTime:settings.nativeImages?fs.statSync(profile.mmprojPath).mtimeMs:null}:undefined;
    const launch={libraryDirs:this.config.modelRuntime?.libraryDirs??[],requestId:crypto.randomUUID(),key:hash(JSON.stringify({profile:descriptor({...profile,contextTokens:settings.contextTokens}),exe,args,weight:fs.statSync(profile.modelPath).mtimeMs,ramIdentity})),model:profile.model,baseUrl:profile.baseUrl,contextTokens:settings.contextTokens,exe:hostPath(exe),args,root:hostPath(runtimeRoot)};
-   const ownerFile=path.join(runtimeRoot,'owner.json');
-   if(fs.existsSync(ownerFile)&&JSON.parse(fs.readFileSync(ownerFile)).key===launch.key){try{const receipt=await this.verify(profile,settings,signal);return {settings,receipt};}catch(error){if(signal?.aborted)throw error;}}
-   const config=path.join(runtimeRoot,'selection.json');fs.writeFileSync(config,JSON.stringify(launch));
+   // Detached launchers may start after a cancellation and another selection.
+   // Keep their input immutable; selection.json names the latest desired request.
+   const config=path.join(runtimeRoot,'selection-'+launch.requestId+'.json');
+   atomic(config,launch);atomic(path.join(runtimeRoot,'selection.json'),launch);
    const linux=this.config.modelRuntime?.platform==='linux';
    const binary=linux?'python3':this.config.modelRuntime?.powershell??WINDOWS_POWERSHELL,argv=linux?[new URL('../scripts/managed_server.py',import.meta.url).pathname,config]:['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',windowsPath(script),'-Config',windowsPath(config)];
    if(this.execute===execute){
@@ -203,7 +204,14 @@ export class ModelCatalog {
   // Generation is never used as a readiness probe. A late cancellation drains naturally.
   let receipt;
   for(let attempt=0;;attempt++){
-   try{if(startup){const ownerFile=path.join(startup.root,'owner.json');if(!fs.existsSync(ownerFile)||JSON.parse(fs.readFileSync(ownerFile)).key!==startup.key)throw Error('Waiting for selected model ownership');}receipt=await this.verify(profile,settings,signal);break;}
+   try{
+    if(startup){
+     const ownerFile=path.join(startup.root,'owner.json');
+     const owner=fs.existsSync(ownerFile)?JSON.parse(fs.readFileSync(ownerFile)):null;
+     if(owner?.key!==startup.key||owner.selectionId!==startup.id)throw Error('Waiting for selected model ownership');
+    }
+    receipt=await this.verify(profile,settings,signal);break;
+   }
    catch(error){
     if(signal?.aborted)throw error;
     const failure=startup&&path.join(startup.root,'launch-failed.json');

@@ -151,7 +151,7 @@ export class Contest extends EventEmitter {
  async delete(id){
   id=this.resolveTaskId(id);const record=this.records.get(id);if(!record)throw Error('Unknown task '+id);
   if(this.deleting.has(id))throw Error('会话正在删除');
-  if(this.modelSwitching||this.offloadingKV)throw Error('模型或 KV 操作进行中，请稍后再删除');
+  if(this.modelSwitching||this.modelClosePromise||this.offloadingKV)throw Error('模型或 KV 操作进行中，请稍后再删除');
   if(!this.options.deprovision)throw Error('当前启动方式未配置会话容器删除功能');
   const runDir=path.resolve(record.config.runDir),tasksDir=path.join(this.root,'tasks');
   if(runDir!==path.join(tasksDir,id)||fs.realpathSync(tasksDir)!==path.join(fs.realpathSync(this.root),'tasks'))
@@ -289,7 +289,7 @@ export class Contest extends EventEmitter {
  async performRamOffload(id){
   id=this.resolveTaskId(id);
   const session=this.session(id);
-  if(this.offloadingKV||this.modelSwitching||this.closing)throw Error('Another model operation is in progress');
+  if(this.offloadingKV||this.modelSwitching||this.modelClosePromise||this.modelServerStopped||this.closing)throw Error('Another model operation is in progress');
   if((this.active??this.resident)!==id)throw Error('只有当前驻留题的 KV 可以保存');
   if(!this.catalog.ramKvOwned?.(session.config))throw Error('当前引擎未启用 RAM KV。需通过 modelRuntime.ramKv 配置后重新启动引擎');
   this.offloadingKV=true;

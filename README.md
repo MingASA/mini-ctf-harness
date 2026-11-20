@@ -72,6 +72,8 @@ de632c79cb58be69c4685967e114a329fd819ba6fb9e87c1c79843dc7a2e73bd
 
 安装后 `/model` 中有四项：`qwen3.8-27b-iq4xs`、`qwen3.8-27b-iq4xs-vision`、`qwen3.5-9b-ctf-web-q8`、`qwen3.5-9b-ctf-web-q8-vision`。默认仍启动 27B 文本版；切换模型时会重新加载权重，视觉项同时加载相应 F16 projector。已有的额外模型配置会随重新安装保留。
 
+加载中可按 `Ctrl+C` 取消等待，再用 `/model` 重新选择，或用 `/close-server` 关闭服务。重选相同配置会核验并复用当前服务进程；终端收到本次选择的启动器确认并核验模型身份后，才报告切换成功。
+
 在终端选择视觉型号时，可选 CPU（使用系统内存）或 GPU（使用显存）。也可以直接指定 `/model qwen3.5-9b-ctf-web-q8-vision gpu`，或在启动命令中传入 `--model qwen3.5-9b-ctf-web-q8-vision --projector-device gpu`。启动时省略此参数会使用已保存的选择，首次使用默认 CPU。视觉配置也接受 `"projectorDevice": "cpu"` 或 `"gpu"`。
 
 默认是 16 GB 显存配置：55,296 上下文、Q8 KV、单槽、无 MTP；普通生成 medium、总输出 8K；40K 软 Compact，Compact 默认关闭思考，单次总输出上限为 8K。硬件不同可修改数据目录的 `config.json` 中 `contextTokens`、`compactSoftTokens`、`gpuLayers`、`kvType` 等参数。两套权重和 projector 约 26 GB；连同引擎、下载缓存、工具镜像和可增长的 ext4 工作区，建议数据盘至少预留 55 GB。
@@ -249,6 +251,8 @@ cd offline_harness
 npm test
 python3 -m unittest discover -s ../installer/test
 ```
+
+在 WSL 中可额外运行 Windows 进程生命周期测试：`HARNESS_TEST_WINDOWS_LIFECYCLE=1 python3 -m unittest discover -s ../installer/test`。这些测试启动独立的 PowerShell 假服务，模拟 GPU 与就绪探测，不加载模型权重。测试本机 HTTP 下载服务时，如环境配置了代理，请将 `127.0.0.1,localhost` 加入 `NO_PROXY`。
 
 `offline_harness/src/` 是运行时，`prompts/` 是普通解题和 Compact 提示词，`installer/` 管理安装及校验，`docker/` 定义工具环境。模型权重、运行记录、用户配置和依赖目录保存在本机并由 Git 忽略。
 
