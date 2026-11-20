@@ -10,14 +10,8 @@ import {streamChunks} from './native-stream.mjs';
 import {hash} from './store.mjs';
 import {LocalModelRecovery} from './local-model.mjs';
 
-export const DEFAULT_GUARD = process.env.MINI_CTF_PROCESS_GUARD;
-export function assertExperimentIdle(processFile = DEFAULT_GUARD) {
-  if (!processFile||!fs.existsSync(processFile)) return;
-  const p = JSON.parse(fs.readFileSync(processFile,'utf8').replace(/^\uFEFF/,''));
-  if (!Number.isInteger(p.pid) || p.pid < 1) throw Error('Invalid active experiment process receipt');
-  const proc = `/proc/${p.pid}/stat`;
-  if (fs.existsSync(proc) && fs.readFileSync(proc,'utf8').split(') ').at(-1)[0] !== 'Z') throw Error(`Current experiment is running (PID ${p.pid}); no model or metadata request permitted`);
-}
+import {assertExperimentIdle} from './process-guard.mjs';
+export {DEFAULT_GUARD,assertExperimentIdle} from './process-guard.mjs';
 
 export class NativeClient {
   constructor(config, store, {guard = assertExperimentIdle, fetchFn = fetch, onAccepted = ()=>{},localRecovery,operatorSignal,requestSignal,onAuxiliary=()=>{}} = {}) {

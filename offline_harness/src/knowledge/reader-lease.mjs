@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {CONFIG_FILE, DATA_ROOT} from '../paths.mjs';
-import {assertExperimentIdle} from '../native.mjs';
+import {assertExperimentIdle} from '../process-guard.mjs';
 
 // Standalone readers must use a separate server. A quiet competition server can
 // still hold resident KV; "not processing" is not permission to reuse it.
