@@ -58,7 +58,7 @@ export function buildTools(store,broker,knowledge,verdict,onSubmission=()=>{},op
         store.put(image,'tool:view_image');
         return {content:[{type:'text',text:image.path},{type:'image',mimeType:image.mimeType,data:image.data}],details:{}};
       })},
-    tool('run_command','Run a command in /work. Wait up to 15 seconds and return its output and exit code. If still running, return its job ID and new output; the command continues in the background.',
+    tool('run_command','Run a shell command or installed analysis tool in /work. Tool recipes: cat /opt/ctf-tools/README.md. Use python3 for NumPy/Scapy/pwntools, angr-python for angr, sage for SageMath, and ctf-decompile for Ghidra C export. Wait up to 15 seconds and return its output and exit code. If still running, return its job ID and new output; the command continues in the background.',
       schema({command:string('Shell command inside /work',16000)}),
       (a,id,signal,limit)=>broker.start(a.command,limit,id,Math.min(15,remaining()),signal)),
     tool('wait_job','Wait for an existing job and return new output. Each call waits up to 120 seconds. If still running, return a reminder; the job continues and you may wait again or do other work.',

@@ -1,6 +1,6 @@
 ---
 name: ctf-constraint-solving
-description: Solve finite arithmetic and bit-vector constraints using Python, SymPy, or Z3, with exact candidate
+description: Solve finite arithmetic and bit-vector constraints using Python, SageMath, SymPy, Z3 or angr, with exact candidate
   checks and resumable bounded searches. Use for coupled input checks, small unknown keys or states, modular equations,
   and overflow-sensitive predicates. Prefer ctf-reverse-transforms when a direct inverse is already clear.
 ---
@@ -8,6 +8,14 @@ description: Solve finite arithmetic and bit-vector constraints using Python, Sy
 # Exact Constraint and Bounded Search Solving
 
 Choose the simplest exact method that fits the constraints, execute it, and check the candidate in the original computation.
+
+## Available interpreters
+
+- Default `python3` includes Z3, SymPy, NumPy, SciPy and Matplotlib. Use NumPy/SciPy for arrays, transforms and numerical analysis; they do not replace exact finite-field or integer arithmetic.
+- `sage solve.sage` provides exact fields, polynomials and lattice operations. Use `sage -python solve.py` with `from sage.all import ...` for Python syntax.
+- `angr-python solve.py` provides angr/claripy in an isolated environment. Use it for a program's path constraints after locating concrete find/avoid addresses and modeling its input. Inspect unconstrained inputs and replay a candidate against the real program. Default `python3` and Sage do not share angr's dependencies.
+
+For command examples, `run_command` can read `/opt/ctf-tools/README.md`. Save plots with `plt.savefig(...)` instead of opening a GUI.
 
 ## Choose a reference
 - Decide between algebra, enumeration, and SMT; encode widths or signedness: [model-selection.md](references/model-selection.md).

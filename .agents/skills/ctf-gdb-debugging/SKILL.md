@@ -1,7 +1,7 @@
 ---
 name: ctf-gdb-debugging
 description: Reproduce native-program crashes and inspect live registers, memory, branches, and library mappings
-  with GDB. Use for a core dump, an unexpected return or syscall result, a failing exploit stage, or local/remote
+  with GDB or Pwndbg. Use for a core dump, an unexpected return or syscall result, a failing exploit stage, or local/remote
   runtime differences. For static binary identification use ctf-binary-recon.
 ---
 
@@ -14,7 +14,10 @@ Save program input as bytes. Keep GDB commands in a separate file. Choose the st
 
 ```bash
 gdb -q -batch -x inspect.gdb --args ./program
+pwndbg -q -batch -ex 'break main' -ex 'run < input.bin' -ex 'telescope $sp 8' --args ./program
 ```
+
+`pwndbg` is installed as its own command; ordinary `gdb` stays available. In pwntools use `context.gdb_binary = 'pwndbg'`. Set the executable with `--args` or `file` before running. Use `break *ADDRESS` for an instruction address and `break NAME` for a symbol. Keep binary stdin in a file; do not feed debugger commands and program bytes through competing readers. If disabling ASLR is denied, inspect the actual breakpoint/run result and account for current mappings.
 
 ## Choose a reference
 - Replaying input, selecting breakpoints, reading a crash, or watchpoints: [replay-and-stops.md](references/replay-and-stops.md).

@@ -12,6 +12,8 @@ Turn a measured overwrite into a working payload and verify each required stage.
 ## Start
 Identify the input operation, overwrite extent, architecture, and protections. Determine the smallest useful control-flow destination or callable primitive before choosing a longer chain.
 
+The solver already has pwntools, ROPgadget, ropper, GDB and Pwndbg. Start with `context.binary = ELF('./program')`; use `cyclic`/`cyclic_find`, `ROP(elf)`, `flat` and a pwntools tube rather than separately reinventing packing, gadget scanning and process synchronization. For gadgets use `ROPgadget --binary ./program --only 'pop|ret'` or `ropper --file ./program --search 'pop rdi; ret'`, choosing instructions for the observed architecture. Validate the resulting chain in the current process.
+
 ## Choose a reference
 - Finding an overwrite offset, confirming control, and respecting payload bytes: [offset-and-control.md](references/offset-and-control.md).
 - Function calls, gadgets, stack alignment, staged leaks, and libc resolution: [rop-construction.md](references/rop-construction.md).

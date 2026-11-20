@@ -1,0 +1,7 @@
+# Default python3: keep compatible with requirements.txt (pwntools environment).
+numpy==2.2.6
+scipy==1.15.3
+matplotlib==3.10.3
+scapy==2.8.0
+lief==1.0.0
+ropper==1.13.13
