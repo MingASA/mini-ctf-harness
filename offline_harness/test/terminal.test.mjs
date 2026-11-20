@@ -47,6 +47,9 @@ test('backend slot status stays above the selected panel and follows the active 
  await delay();
  assert.deepEqual(origins,[defaultOrigin+'/kv-cache',defaultOrigin+'/slots']);
  assert.match(ui.tui.getScreenLines().join('\n'),/slot 0 · 空闲 · 提示 tokens 640/);
+ ui.detail='Long reference help\n'.repeat(150);ui.renderNow();await delay();
+ assert.match(ui.tui.getScreenLines().slice(2,6).join('\n'),/slot 0 · 空闲 · 提示 tokens 640/);
+ ui.detail=null;
  await contest.add({id:'selected',objective:'Show this conversation'});
  await contest.add({id:'active',objective:'Report state from this model service'});
  contest.session('active').config.baseUrl=activeOrigin;

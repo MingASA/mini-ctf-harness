@@ -37,7 +37,7 @@ export class CompetitionTerminal {
   this.scroll=new ScrollView(this.content,{follow:'end',primary:true,scrollbar:'auto'});
   this.tui.setLayoutRoot(new VStack([
    {component:this.header,basis:2,shrink:0},
-   {component:this.slotBar,basis:'auto',minSize:1,maxSize:9},
+   {component:this.slotBar,basis:'auto',minSize:1,maxSize:9,shrink:0},
    {component:new HStack([{component:new ScrollView(this.sidebar,{follow:'none'}),basis:30,minSize:16,maxSize:40},{component:this.scroll,grow:1,minSize:10}],{gap:1}),grow:1,minSize:3},
    {component:this.binding,basis:2,shrink:0},{component:this.editor,basis:'auto',maxSize:9,minSize:3,shrink:0},{component:this.footer,basis:2,shrink:0}
   ]));
