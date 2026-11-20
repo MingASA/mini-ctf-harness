@@ -51,6 +51,9 @@ export function commandOutput(store,broker,data){
  if(data.message)result.message=data.message;
  if(data.status==='unknown_exit')result.message='Job stopped; its exit code is unavailable. Inspect the output and files before deciding what to do next.';
  if(data.status==='unknown_launch')result.message='Launch status is uncertain. Use wait_job to observe this job.';
+ if(data.status==='job_missing')result.message='No retained job record exists. Do not keep waiting; this job cannot be observed.';
+ if(data.status==='job_record_missing')result.message='No retained job record exists after launch acknowledgement failed. Do not keep waiting; its state cannot be observed.';
+ if(data.status==='launch_failed')result.message='The command did not start because sandbox job storage is unavailable.';
  return result;
 }
 export function submissionOutput(data){return {status:data.status,...(data.review_id?{review_id:data.review_id}:{}),...(data.message?{message:data.message}:{})};}

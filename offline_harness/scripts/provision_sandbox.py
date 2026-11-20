@@ -15,6 +15,11 @@ def provision(docker, host, image, work_base, work_dir=None):
     if not work.is_relative_to(base) or work==base:raise ValueError('Work directory must be inside the dedicated work base')
     if not work_dir:work.mkdir(parents=True,exist_ok=False)
     if not work.is_dir():raise ValueError('Work directory is not a directory')
+    # An explicit public export can be sealed 0555.  Its root is nevertheless
+    # the solver workspace; keep nested public inputs read-only while making
+    # the root owner-writable for retained jobs and analysis output.
+    os.chown(work,os.getuid(),os.getgid())
+    os.chmod(work,0o700)
     cid=call('run','-d','--name',ident,'--label','qwen.offline-harness=true','--network','none',
         '--read-only','--cap-drop','ALL','--security-opt','no-new-privileges','--user',f'{os.getuid()}:{os.getgid()}','--memory','2048m','--memory-swap','2048m',
         '--cpus','0.5','--pids-limit','128','--tmpfs','/tmp:rw,nosuid,nodev,size=128m',

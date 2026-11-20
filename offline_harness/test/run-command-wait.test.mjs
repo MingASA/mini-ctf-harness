@@ -43,6 +43,48 @@ function fixture(t){
  return {root,work,store,broker,get launches(){return launches;}};
 }
 
+function sandboxFixture(t,{startError}={}){
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'command-preflight-')),work=path.join(root,'offline-harness/work/task');
+ fs.mkdirSync(work,{recursive:true});const store=new Store(path.join(root,'run'));let starts=0;
+ const container={Id:'synthetic',Image:'fixture-image',State:{Running:true},HostConfig:{Privileged:false,PidMode:'',IpcMode:'',NetworkMode:'none',CapAdd:[],Devices:[],DeviceRequests:[],CapDrop:['ALL'],SecurityOpt:['no-new-privileges:true'],Memory:2048*1024*1024,PidsLimit:128,ReadonlyRootfs:true,PortBindings:{}},Mounts:[{Destination:'/work',Source:work,Type:'bind'}],NetworkSettings:{Networks:{}}};
+ const execute=async(binary,args,options)=>{
+  assert.equal(binary,'docker');
+  if(args[0]==='inspect')return {stdout:JSON.stringify([container])};
+  const at=args.indexOf('python3'),script=args[at+2],parameters=args.slice(at+3);
+  assert.ok(at>0);assert.ok([JOB_SCRIPTS.start,JOB_SCRIPTS.read,JOB_SCRIPTS.cancel].includes(script));
+  if(script===JOB_SCRIPTS.start){starts++;const error=startError?.();if(error)throw error;parameters.push(work);}
+  else if(script===JOB_SCRIPTS.read){assert.equal(parameters[1],'/work');parameters[1]=work;}
+  else parameters.push(work);
+  return exec('python3',['-c',script,...parameters],{timeout:options.timeout,maxBuffer:options.maxBuffer});
+ };
+ const broker=new DockerBroker({workDir:work,containerId:'synthetic',imageId:'fixture-image'},store,execute);
+ t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ return {root,work,store,broker,get starts(){return starts;}};
+}
+
+test('sandbox validation performs one retained-job preflight before model work begins',async t=>{
+ const f=sandboxFixture(t);
+ await f.broker.validate();
+ assert.equal(f.starts,1);
+ assert.equal(f.store.events.length,0);
+ assert.ok(fs.existsSync(path.join(f.work,'.offline-jobs')));
+ await f.broker.validate();
+ assert.equal(f.starts,1);
+});
+
+test('sandbox validation rejects unavailable job storage and allows a later retry',async t=>{
+ let fail=true;
+ const f=sandboxFixture(t,{startError:()=>{
+  if(!fail)return undefined;
+  const error=Error('synthetic docker failure');error.stderr='RuntimeError: Job storage unavailable: [Errno 13] Permission denied';return error;
+ }});
+ await assert.rejects(f.broker.validate(),/Sandbox job-storage preflight failed: \[Errno 13\] Permission denied/);
+ assert.equal(f.store.events.length,0);
+ fail=false;
+ await f.broker.validate();
+ assert.equal(f.starts,2);
+});
+
 test('run_command returns a quick command result immediately with stdout, stderr and nonzero exit code',async t=>{
  const f=fixture(t),tool=buildTools(f.store,f.broker,{},{}).find(t=>t.name==='run_command');
  const args={command:"printf 'quick中文'; printf 'diagnostic' >&2; exit 7"};
@@ -116,13 +158,55 @@ test('lost launch acknowledgement observes the same real job and never invokes S
  assert.equal((await f.broker.read(result.job_id)).stdout,'x');
 });
 
-test('unavailable launch receipt returns explicit unknown outcome and a reserved observable job',async t=>{
+test('a known job-storage launcher failure says that the command did not start',async t=>{
+ const f=fixture(t),execute=f.broker.execute;
+ f.broker.execute=async(binary,args,options)=>{
+  if(args.includes(JOB_SCRIPTS.start)){const error=Error('synthetic storage failure');error.stderr='RuntimeError: Job storage unavailable: [Errno 13] Permission denied';throw error;}
+  return execute(binary,args,options);
+ };
+ const tool=buildTools(f.store,f.broker,{},{}).find(t=>t.name==='run_command');
+ const result=observation(await tool.execute('storage-failure',{command:'printf forbidden'}));
+ assert.equal(result.status,'launch_failed');assert.match(result.message,/did not start/);assert.equal(result.job_id,'j1');assert.equal(f.launches,0);
+ assert.ok(f.store.events.some(e=>e.type==='job_launch_failed'));
+ assert.ok(!f.store.events.some(e=>e.type==='job_launch_ack_lost'));
+});
+
+test('terminal launch failures do not create an interactive wait dependency',async t=>{
+ const f=fixture(t),broker={validate:async()=>{},start:async()=>({job_id:'j1',status:'launch_failed',error:'Job storage is unavailable'})};
+ const session=new InteractiveSession({id:'storage-failure',objective:'Exercise a failed launcher.'},{runDir:f.store.root,baseUrl:'http://127.0.0.1:8081'},{store:f.store,broker,knowledge:{docs:[]},guard:()=>{}});
+ const result=observation(await session.tools().find(t=>t.name==='run_command').execute('launch-failure',{command:'printf forbidden'}));
+ assert.equal(result.status,'launch_failed');assert.deepEqual(session.dependencies(),[]);
+});
+
+test('a missing retained record is distinct from a lost launch acknowledgement',async t=>{
  const f=fixture(t),execute=f.broker.execute;
  f.broker.execute=async(binary,args,options)=>{if(args.includes(JOB_SCRIPTS.start))throw Error('Synthetic transport unavailable before execution');return execute(binary,args,options);};
  const tool=buildTools(f.store,f.broker,{},{}).find(t=>t.name==='run_command');
  const result=observation(await tool.execute('no-ack',{command:'printf forbidden'}));
- assert.equal(result.status,'unknown_launch');assert.match(result.message,/uncertain/);assert.equal(result.job_id,'j1');assert.equal(f.launches,0);assert.equal(f.store.pending().length,0);
+ assert.equal(result.status,'job_record_missing');assert.match(result.message,/Do not keep waiting/);assert.equal(result.job_id,'j1');assert.equal(f.launches,0);assert.equal(f.store.pending().length,0);
+ assert.ok(f.store.events.some(e=>e.type==='job_launch_record_missing'));
+ assert.ok(!f.store.events.some(e=>e.type==='job_launch_ack_lost'));
  const replay=observation(await tool.execute('no-ack',{command:'printf forbidden'}));assert.deepEqual(replay,result);assert.equal(f.launches,0);
+});
+
+test('transport loss with no observable job record remains an uncertain launch',async t=>{
+ const f=fixture(t),execute=f.broker.execute;
+ f.broker.execute=async(binary,args,options)=>{
+  if(args.includes(JOB_SCRIPTS.start))throw Error('Synthetic launch transport unavailable');
+  if(args.includes(JOB_SCRIPTS.read))throw Error('Synthetic observation transport unavailable');
+  return execute(binary,args,options);
+ };
+ const result=observation(await buildTools(f.store,f.broker,{},{}).find(t=>t.name==='run_command').execute('transport-failure',{command:'printf forbidden'}));
+ assert.equal(result.status,'unknown_launch');assert.match(result.message,/uncertain/);assert.equal(f.launches,0);
+ assert.ok(f.store.events.some(e=>e.type==='job_launch_ack_lost'));
+ assert.ok(f.store.events.some(e=>e.type==='job_launch_observation_failed'));
+});
+
+test('wait_job returns a terminal record-missing result instead of a FileNotFoundError loop',async t=>{
+ const f=fixture(t),storage='a'.repeat(32);
+ f.store.append('job_launch_attempt',{job_id:'j1',storage_id:storage,callId:'missing',command_hash:'b'.repeat(64),seconds:1});
+ const result=observation(await buildTools(f.store,f.broker,{},{}).find(t=>t.name==='wait_job').execute('wait-missing',{job_id:'j1'}));
+ assert.equal(result.status,'job_missing');assert.match(result.message,/Do not keep waiting/);assert.equal(result.job_id,'j1');
 });
 
 test('identical commands execute again with j1, j2 and a stable j3 after restart, without new evidence',async t=>{

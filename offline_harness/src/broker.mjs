@@ -1,9 +1,15 @@
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {hash} from './store.mjs';
 import {validateNetworkPolicy,verifyEgress} from './network-policy.mjs';
 const exec = promisify(execFile);
+const JOB_STORAGE_PREFLIGHT_COMMAND='printf offline-harness-job-storage-preflight';
+const JOB_STORAGE_PREFLIGHT_OUTPUT='offline-harness-job-storage-preflight';
+
+const errorText=error=>[error?.stderr,error?.message].filter(value=>typeof value==='string').join('\n');
+const jobStorageFailure=error=>errorText(error).match(/Job storage unavailable:\s*([^\r\n]+)/)?.[1];
 
 export function validateSandbox(container, networks, config) {
   const h=container.HostConfig || {};
@@ -123,12 +129,16 @@ const START = CONTROL+String.raw`
 import subprocess,hashlib,base64
 jid,encoded,seconds=sys.argv[1],sys.argv[2],int(sys.argv[3]);work=sys.argv[4] if len(sys.argv)>4 else '/work'
 command=base64.b64decode(encoded,validate=True).decode('utf-8')
-root=job_root(jid,work);root.parent.mkdir(exist_ok=True)
-if root.exists():
- if (root/'command.sha256').read_text()!=hashlib.sha256(command.encode()).hexdigest():raise ValueError('Job command changed')
- print(json.dumps({'job_id':jid,'existing':True}));sys.exit(0)
-root.mkdir();(root/'command.sha256').write_text(hashlib.sha256(command.encode()).hexdigest())
-atomic(root,'status.json',{'status':'starting','job_id':jid})
+root=job_root(jid,work)
+try:
+ root.parent.mkdir(exist_ok=True)
+ if root.exists():
+  if (root/'command.sha256').read_text()!=hashlib.sha256(command.encode()).hexdigest():raise ValueError('Job command changed')
+  print(json.dumps({'job_id':jid,'existing':True}));sys.exit(0)
+ root.mkdir();(root/'command.sha256').write_text(hashlib.sha256(command.encode()).hexdigest())
+ atomic(root,'status.json',{'status':'starting','job_id':jid})
+except OSError as error:
+ raise RuntimeError('Job storage unavailable: '+str(error)) from error
 `+'\nworker='+JSON.stringify(WORKER)+String.raw`
 p=subprocess.Popen(['python3','-c',worker,str(root),encoded,str(seconds),work],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
 atomic(root,'launcher.json',{'supervisor':identity(p.pid)})
@@ -136,7 +146,11 @@ print(json.dumps({'job_id':jid,'supervisor_pid':p.pid}))
 `;
 const READ = CONTROL+String.raw`
 root=job_root(sys.argv[1],sys.argv[2] if len(sys.argv)>2 else '/work')
+if not root.is_dir() or not (root/'status.json').is_file():
+ print(json.dumps({'status':'job_missing','error':'No retained job record exists'}));sys.exit(0)
 if len(sys.argv)>6 and sys.argv[6]:
+ if not (root/'command.sha256').is_file():
+  print(json.dumps({'status':'job_missing','error':'No retained job record exists'}));sys.exit(0)
  if (root/'command.sha256').read_text()!=sys.argv[6]:raise ValueError('Retained command identity changed')
 wait=int(sys.argv[5]) if len(sys.argv)>5 else 0
 if not 0<=wait<=120:raise ValueError('Wait must be 0..120 seconds')
@@ -198,6 +212,7 @@ export const JOB_SCRIPTS = Object.freeze({start:START,read:READ,cancel:CANCEL,wo
 export class DockerBroker {
   constructor(config, store, execute=exec) {
     this.config=config;this.store=store;this.execute=execute;
+    this.jobStoragePreflight=undefined;
     if(!config.workDir.includes('/offline-harness/work/') || config.workDir.includes('/benchmarks/')) throw Error('Development sandbox must use its own offline-harness/work directory');
     if(fs.realpathSync(config.workDir)!==config.workDir) throw Error('Work directory must be canonical');
   }
@@ -234,6 +249,24 @@ finally:os.close(fd)
     const networks=c.HostConfig.NetworkMode==='none'?[]:await Promise.all(Object.keys(c.NetworkSettings.Networks).map(async name=>JSON.parse(await this.docker(['network','inspect',name]))[0]));
     validateSandbox(c,networks,this.config);
     if(this.config.egress?.mode==='lan' && c.HostConfig.NetworkMode!=='none' && !networks.every(n=>n.Internal)) await verifyEgress(this.config,this.execute);
+    await this.validateJobStorage();
+  }
+  async validateJobStorage() {
+    if(this.jobStoragePreflight)return this.jobStoragePreflight;
+    const preflight=(async()=>{
+      const id=crypto.randomUUID().replaceAll('-',''),command=JOB_STORAGE_PREFLIGHT_COMMAND,encoded=Buffer.from(command,'utf8').toString('base64');
+      try {
+        const started=JSON.parse(await this.docker(['exec',this.config.containerId,'python3','-c',START,id,encoded,'5']));
+        if(started.job_id!==id)throw Error('Job storage preflight returned an unexpected job identity');
+        const observed=JSON.parse(await this.docker(['exec',this.config.containerId,'python3','-c',READ,id,'/work','0','0','5',hash(command)],{timeout:25000}));
+        if(observed.status!=='finished'||observed.exit_code!==0||observed.stdout!==JOB_STORAGE_PREFLIGHT_OUTPUT)throw Error('Job storage preflight could not observe its command output and exit status');
+      }catch(error) {
+        const detail=jobStorageFailure(error);
+        throw Error(detail?`Sandbox job-storage preflight failed: ${detail}`:'Sandbox job-storage preflight failed. The solver must be able to create and observe jobs under /work/.offline-jobs.');
+      }
+    })();
+    this.jobStoragePreflight=preflight;
+    try{return await preflight;}catch(error){if(this.jobStoragePreflight===preflight)this.jobStoragePreflight=undefined;throw error;}
   }
   checkCommand(command, seconds) {
     if(typeof command!=='string' || command.length>16000 || !command.trim() || !Number.isInteger(seconds) || seconds<1 || seconds>3600) throw Error('Invalid command or runtime budget');
@@ -268,14 +301,24 @@ finally:os.close(fd)
     let response;
     try{response={...JSON.parse(await this.docker(['exec',this.config.containerId,'python3','-c',START,job.storage_id,encoded,String(seconds)])),job_id:id};}
     catch(error){
+      const storageError=jobStorageFailure(error);
+      if(storageError){
+        this.store.append('job_launch_failed',{job_id:id,error_kind:'job_storage_unavailable'});
+        return {job_id:id,status:'launch_failed',exit_code:null,execution_confirmed:false,error:'Job storage is unavailable; the command was not started.',note:'Repair the writable /work job storage before running another command.'};
+      }
       // Observe this exact allocated job. A lost acknowledgement is never
       // permission to invoke START a second time.
-      this.store.append('job_launch_ack_lost',{job_id:id,error_kind:error.name});
       try{
         const retained=await this.read(id,waitSeconds,{},signal);
+        if(retained.status==='job_missing'){
+          this.store.append('job_launch_record_missing',{job_id:id,error_kind:error.name});
+          return {...retained,status:'job_record_missing',execution_confirmed:false,error:'No retained job record exists after the launch acknowledgement failed.',note:'Do not keep waiting for this job; its state cannot be observed.'};
+        }
+        this.store.append('job_launch_ack_lost',{job_id:id,error_kind:error.name});
         this.store.append('job_launch_observed',{job_id:id,status:retained.status});
         return {...retained,launch_ack_lost:true,command_replayed:false};
       }catch(observationError){
+        this.store.append('job_launch_ack_lost',{job_id:id,error_kind:error.name});
         this.store.append('job_launch_observation_failed',{job_id:id,error_kind:observationError.name});
         return {job_id:id,status:'unknown_launch',exit_code:null,execution_confirmed:false,error:'Local launch acknowledgement unavailable',note:'The command was not replayed. Observe this job with wait_job before assuming its effects.'};
       }
