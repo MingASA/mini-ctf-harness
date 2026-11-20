@@ -1,0 +1,154 @@
+{
+  "reviewed_pr": "https://github.com/MingASA/mini-ctf-harness/pull/1",
+  "original_head": "1e65dff8c29e4ac45108b4d64aa5067edc8f25d1",
+  "implementation_revision": "477848ace6235b363dacda72db4a729e32dc2859",
+  "btw_revision": "1d6a9a0ea2da8453bcbc7802e9bfe89412618804",
+  "retrieval": {
+    "method": "Offline lexical retrieval with identifier coverage, bilingual terms, Chinese evidence spans, BM25 ranking and deterministic pagination.",
+    "development": {
+      "before": {
+        "positive": 29,
+        "top1": 26,
+        "top3": 29,
+        "mrr": 0.942528735632184,
+        "negative": 21,
+        "falseMatches": 19
+      },
+      "after": {
+        "positive": 29,
+        "top1": 27,
+        "top3": 29,
+        "mrr": 0.9655172413793104,
+        "negative": 21,
+        "falseMatches": 0
+      }
+    },
+    "validation": {
+      "before": {
+        "positive": 20,
+        "top1": 17,
+        "top3": 20,
+        "mrr": 0.925,
+        "negative": 20,
+        "falseMatches": 18
+      },
+      "after": {
+        "positive": 20,
+        "top1": 17,
+        "top3": 20,
+        "mrr": 0.925,
+        "negative": 20,
+        "falseMatches": 0
+      }
+    },
+    "first_validation_pass_before_followup_fixes": {
+      "positive": 20,
+      "top1": 16,
+      "top3": 18,
+      "negative": 20,
+      "falseMatches": 1
+    },
+    "qualification": "Both sets were ultimately used for diagnosis and regression. These are not blind benchmark scores. The initial development shadow-space query was relabeled negative because the card does not contain the requested fact.",
+    "dataset_sha256": {
+      "knowledge-heldout.json": "6b7c67d318cbf9c9847dba0d62d54071805498b1cb2b4d27842b12a3492faa30",
+      "knowledge-validation.json": "c7074782c42986601739f5ff037be60c9fda1a4a51ab0f818203a37ccdfc703d"
+    }
+  },
+  "automation": {
+    "main_full_suite": {
+      "tests": 260,
+      "pass": 260,
+      "fail": 0
+    },
+    "main_terminal_followup_after_layout_fix": {
+      "tests": 15,
+      "pass": 15,
+      "fail": 0
+    },
+    "btw_full_suite": {
+      "tests": 281,
+      "pass": 281,
+      "fail": 0
+    }
+  },
+  "real_model": {
+    "model": "qwen3.5-9B-ctf-instruct-experiment.gguf",
+    "backend": "llama.cpp b12144 (local linux-btw build)",
+    "execution": "CPU only, four threads, dedicated port 18989; no competition slot used",
+    "context_tokens": 8192,
+    "temperature": 0.2,
+    "seed": 42,
+    "thinking": false,
+    "cases": [
+      {
+        "name": "search-get",
+        "passed": true,
+        "question": "核对 PNG CRC32 校验范围。先调用 knowledge 搜索，再 get 命中的完整卡片，最后引用卡片 ID，用中文回答哪些字节被校验。",
+        "calls": [
+          {
+            "op": "search",
+            "query": "PNG CRC32 校验范围 哪些字节被校验"
+          },
+          {
+            "op": "get",
+            "id": "formats/png/crc-coverage"
+          }
+        ],
+        "answer": "根据卡片 **formats/png/crc-coverage** 的完整内容，PNG 块 CRC32 校验的字节范围是：\n\n- **CRC 输入 = 4 字节类型字段 + 紧随其后的全部数据字段**\n- 即使数据字段为空（如 IEND 块），CRC 输入仍包含这 4 个类型字节\n- **不校验**：长度字段（Length）和 CRC 字段本身\n\n因此，被校验的字节是 **类型字段（4 字节）和数据字段（0 到任意长度）**，总长度 = 4 + 数据长度。"
+      },
+      {
+        "name": "pagination",
+        "passed": true,
+        "question": "使用 knowledge 搜索 PNG，每页 2 条。再根据 nextOffset 读取第二页，get 第二页任意一张卡片，最后简短说明它的适用边界。请使用工具，不要猜测 ID 或 offset。",
+        "calls": [
+          {
+            "op": "search",
+            "query": "PNG",
+            "limit": 2
+          },
+          {
+            "op": "search",
+            "query": "PNG",
+            "limit": 2,
+            "offset": 2
+          },
+          {
+            "op": "get",
+            "id": "formats/png/chunk-length"
+          }
+        ],
+        "answer": "这张卡片 `formats/png/chunk-length` 的适用边界是：\n\n- **适用**：在**有效且完整的 PNG 数据流**中，从**已确认的块起点**计算下一个块的偏移时，长度字段仅统计 Data 部分，完整块大小为 `Length + 12` 字节。\n- **不适用/边界**：当文件**截断**或**字段损坏**时，长度字段可能指向超出实际数据的位置；若错误地将类型或 CRC 字节计入长度，会导致从第二个块开始偏移错位。"
+      },
+      {
+        "name": "uncovered",
+        "passed": true,
+        "question": "请用 knowledge 查询 PHP fibers 怎么使用。如果库中没有匹配资料，直接说明知识库未覆盖，不能用其他 PHP 主题替代。",
+        "calls": [
+          {
+            "op": "search",
+            "query": "PHP fibers 怎么使用"
+          }
+        ],
+        "answer": "知识库中未覆盖 PHP fibers 的使用资料。"
+      }
+    ]
+  },
+  "limits_removed": [
+    "card byte size",
+    "card field and source URL lengths",
+    "alias count and length",
+    "query length",
+    "search/browse maximum page size",
+    "standalone reader turn count",
+    "standalone reader tool batch count",
+    "standalone reader fixed request timeout"
+  ],
+  "unchanged": "Existing tool display bounds, parameter type checks, stable card IDs, endpoint isolation, and process/model-lease protections remain.",
+  "limitations": [
+    "Corpus contains 157 short reference cards, not a comprehensive competition knowledge base.",
+    "Lexical retrieval can still miss unfamiliar paraphrases or return related candidates; the model must inspect applicability and boundaries.",
+    "Real-model cases explicitly requested lookup and pagination; autonomous lookup timing and full competition solve quality were not benchmarked.",
+    "BTW routing, recovery and toggles were tested through the harness protocol fixtures; no full live GPU competition was run."
+  ],
+  "recommendation": "Ready for a review PR with the stated evaluation limits. No PR created, no remote push, and no main merge performed."
+}
