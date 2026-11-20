@@ -205,7 +205,12 @@ export class NativeClient {
         if(!Array.isArray(data))throw Error('Invalid native slots');
         const busy=data.filter(x=>x.is_processing);
         if(busy.length){
-          if(!this.allowParallel()||this.config.nativeSlot!==0||busy.some(x=>x.id!==1))throw Error('Native model is already processing another request');
+          // The protected backend permits only the fixed main/BTW pair.
+          // Checking this symmetrically lets a branch preflight while slot 0
+          // is active without allowing arbitrary slot or task interleaving.
+          const peer=this.config.nativeSlot===0?1:this.config.nativeSlot===1?0:null;
+          const busyIds=new Set(busy.map(x=>x.id));
+          if(!this.allowParallel()||peer===null||busyIds.size!==1||!busyIds.has(peer))throw Error('Native model is already processing another request');
           const telemetry=await this.fetchFn(this.origin+'/kv-cache',{redirect:'error',signal:signal?AbortSignal.any([signal,AbortSignal.timeout(10000)]):AbortSignal.timeout(10000)});
           if(!telemetry.ok)throw Error('Parallel branch requires the protected KV backend');
           const policy=(await telemetry.json()).ctf_btw;
