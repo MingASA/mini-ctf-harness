@@ -151,7 +151,7 @@ export class InteractiveSession extends EventEmitter {
    const result=await tool.execute(id,args,...rest);
    if(['run_command','wait_job'].includes(tool.name)){
     const job=result.details;
-    if(!['finished','cancelled','unknown_exit'].includes(job?.job_status)){
+    if(!['finished','cancelled','unknown_exit','job_missing','job_record_missing','launch_failed'].includes(job?.job_status)){
      const id=job?.job_id||this.store.events.findLast(e=>e.type==='job_started')?.data.job_id;
      if(id&&tool.name==='run_command')this.trackDependency('command',id);
     }else{const dep=this.dependencies().find(x=>x.kind==='command'&&x.id===job.job_id);if(dep)this.store.append('dependency_done',{...dep,result_status:job.job_status,observed:true});}
