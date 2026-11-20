@@ -19,7 +19,7 @@ export function acquireReader({base, configFile = CONFIG_FILE, guard = assertExp
     if (fs.existsSync(lease) && JSON.parse(fs.readFileSync(lease, 'utf8')).readerId === owner.readerId) fs.unlinkSync(lease);
   };
   try {
-    const protectedPorts = new Set(['8080']);
+    const protectedPorts = new Set();
     const visit = value => {
       if (!value || typeof value !== 'object') return;
       for (const [key, child] of Object.entries(value)) {
@@ -34,6 +34,7 @@ export function acquireReader({base, configFile = CONFIG_FILE, guard = assertExp
       const selection = path.join(config.contestDir, 'model-selection.json');
       if (fs.existsSync(selection)) visit(JSON.parse(fs.readFileSync(selection, 'utf8')));
     }
+    if (!protectedPorts.size) protectedPorts.add('8080'); // Harness default when no endpoint is configured.
     if (protectedPorts.has(base.port || (base.protocol==='https:'?'443':'80'))) throw Error('Standalone ask requires a separate model endpoint; this port belongs to a competition server and may hold resident KV. Use the session knowledge tool instead.');
     guard();
     return {guard, release};
