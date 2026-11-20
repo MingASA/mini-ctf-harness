@@ -1,0 +1,21 @@
+{
+  "title": "Classic pcap's magic number encodes both endianness and time precision simultaneously",
+  "summary": "Magic bytes d4 c3 b2 a1 indicate little-endian microseconds and 4d 3c b2 a1 indicate little-endian nanoseconds. Reverse each sequence for big-endian.",
+  "applies": "Legacy libpcap format; single interface capture",
+  "aliases": [
+    "pcap magic",
+    "nanoseconds",
+    "microseconds",
+    "timestamp precision"
+  ],
+  "detail": "The subsequent seconds field and decimal part use file-endian order, and the dimension of the decimal part is determined by the magic number.",
+  "boundary": "pcapng uses a different structure and cannot apply this four-value rule to interpret its packet timestamps.",
+  "sources": {
+    "reference": "https://man7.org/linux/man-pages/man5/pcap-savefile.5.html",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "Prevent the gap between adjacent packets from being enlarged or reduced by a thousand times when replaying the offline timeline.",
+  "tags": [
+    "misc"
+  ]
+}

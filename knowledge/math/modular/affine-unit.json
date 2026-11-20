@@ -1,0 +1,21 @@
+{
+  "title": "Affine transformations on the alphabet are reversible depending on the multiplier",
+  "summary": "y=ax+b (mod m) gives a permutation if and only if gcd(a,m)=1; translation b does not change whether there is a one-to-one correspondence.",
+  "applies": "Finite cyclic alphabet; affine permutations of integers modulo m",
+  "detail": "When finding parameters from two pairs of characters, first get the differential congruence about a. There may be multiple candidates when the difference is irreversible, and the reversibility constraints must still be checked individually.",
+  "boundary": "The existence of a reversible transformation does not mean that it can be uniquely determined by just any two sets of correspondences.",
+  "aliases": [
+    "affine cipher",
+    "Affine",
+    "alphabet",
+    "Reversible multiplier"
+  ],
+  "relevance": "Determine whether the letter transformation given in the classical coding problem can be uniquely restored one by one.",
+  "sources": {
+    "reference": "https://cp-algorithms.com/algebra/linear_congruence_equation.html",
+    "context": "https://cryptohack.org/courses/modular/"
+  },
+  "tags": [
+    "crypto"
+  ]
+}

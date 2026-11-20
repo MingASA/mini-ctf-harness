@@ -1,0 +1,22 @@
+{
+  "title": "struct native layout and standard layout",
+  "summary": "@ takes native size, endianness, and alignment; <, >, !, and = do not insert native alignment padding.",
+  "applies": "Python 3; standard library or built-in integers",
+  "aliases": [
+    "struct",
+    "calcsize",
+    "native alignment",
+    "Structure filling"
+  ],
+  "detail": "On common x86-64 the I of @BI starts at offset 4, while the I of <BI follows the first byte, making the entire record 5 bytes.",
+  "boundary": "= Use native endianness and standard sizes; cross-end data still needs to know the actual endianness.",
+  "sources": {
+    "reference": "https://docs.python.org/3/library/struct.html#byte-order-size-and-alignment",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "Check padding semantics when the same field table is gradually misaligned in different parsers.",
+  "tags": [
+    "reverse",
+    "misc"
+  ]
+}

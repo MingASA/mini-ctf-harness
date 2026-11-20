@@ -1,0 +1,26 @@
+{
+  "title": "COUNT(*) and COUNT(x) count null values differently",
+  "summary": "COUNT(*) counts the result rows, COUNT(x) only counts the rows for which expression x is not NULL.",
+  "applies": "SQLite query results and crossing dialect boundaries",
+  "detail": "If LEFT JOIN does not match, the left row will still be retained. At this time, COUNT on the non-empty primary key on the right side will get 0, and COUNT(*) will get 1.",
+  "boundary": "Duplicate values are still counted in COUNT(x); only explicit DISTINCT counts as distinct non-NULL values.",
+  "aliases": [
+    "COUNT",
+    "LEFT JOIN",
+    "NULL count",
+    "null count",
+    "left join",
+    "Right table",
+    "count",
+    "Number of lines"
+  ],
+  "relevance": "Check why the summary number returned by the web backend and the number of detailed rows differ by one.",
+  "sources": {
+    "reference": "https://www.sqlite.org/lang_aggfunc.html",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "web",
+    "misc"
+  ]
+}

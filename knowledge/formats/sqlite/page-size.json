@@ -1,0 +1,21 @@
+{
+  "title": "A 1 in the SQLite page size field represents 65536",
+  "summary": "The two bytes at offset 16 of the database header are interpreted as big endian; when its value is 0x0001, the actual page size is 65536.",
+  "applies": "SQLite 3 master database and WAL files",
+  "aliases": [
+    "page size",
+    "Database page size",
+    "65536",
+    "page one"
+  ],
+  "detail": "Typical values are powers of two between 512 and 32768. Page N usually starts at (N−1) × page size.",
+  "boundary": "Page numbers start from 1, and the first 100 bytes of page 1 are occupied by the database file header.",
+  "sources": {
+    "reference": "https://www.sqlite.org/fileformat.html#page_size",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "When locating page boundaries from file offsets, special encoding biases all subsequent positions.",
+  "tags": [
+    "misc"
+  ]
+}

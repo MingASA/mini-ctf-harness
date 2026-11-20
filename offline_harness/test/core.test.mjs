@@ -78,6 +78,9 @@ test('sandbox rejects answer mounts, GPU access and public networking',()=>{
  const config={containerId:'id',imageId:'image',workDir:'/safe/work'};
  const c={Id:'id',Image:'image',State:{Running:true},Mounts:[{Destination:'/work',Source:'/safe/work',Type:'bind'}],HostConfig:{NetworkMode:'none',CapDrop:['ALL'],SecurityOpt:['no-new-privileges'],Memory:128*1024*1024,PidsLimit:64,ReadonlyRootfs:true}};
  assert.equal(validateSandbox(c,[],config),true);
+ const maxMemory=structuredClone(c);maxMemory.HostConfig.Memory=4096*1024*1024;
+ assert.equal(validateSandbox(maxMemory,[],config),true);
+ maxMemory.HostConfig.Memory+=1;assert.throws(()=>validateSandbox(maxMemory,[],config),/resource limits/);
  for(const mutate of [x=>x.Mounts.push({Destination:'/answers'}),x=>x.HostConfig.DeviceRequests=[{}],x=>x.HostConfig.NetworkMode='host',x=>x.HostConfig.Privileged=true]){
   const bad=structuredClone(c);mutate(bad);assert.throws(()=>validateSandbox(bad,[],config));
  }

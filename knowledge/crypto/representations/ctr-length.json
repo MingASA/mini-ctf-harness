@@ -1,0 +1,22 @@
+{
+  "title": "CTR last segment can be shorter than block length",
+  "summary": "CTR encrypts counter blocks to produce a keystream and XORs it with the data. A partial final block uses only the corresponding keystream bits.",
+  "applies": "Byte representation and parameter explanation of cryptography questions",
+  "aliases": [
+    "CTR",
+    "partial block",
+    "Counter mode",
+    "Last block length"
+  ],
+  "detail": "When calculating only the ciphertext payload of the pattern itself, the byte length is the same as the original text.",
+  "boundary": "The outer layer may additionally store nonces, counters, or tags; the total length of the stored files does not need to equal the payload length.",
+  "sources": {
+    "reference": "https://csrc.nist.gov/pubs/sp/800/38/a/final",
+    "context": "https://cryptohack.org/courses/symmetric/"
+  },
+  "relevance": "Distinguish between 16-byte aligned block formats and naturally reserved length data segments.",
+  "tags": [
+    "crypto",
+    "misc"
+  ]
+}

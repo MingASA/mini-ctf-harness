@@ -1,0 +1,20 @@
+{
+  "title": "When set simultaneously, Max-Age takes precedence over Expires.",
+  "summary": "When the browser supports these two properties, the relative lifetime Max-Age takes precedence over the absolute time Expires.",
+  "applies": "Browser interpretation of URLs, cookies, and origins",
+  "detail": "Max-Age=0 and Expires is in the future tense. It cannot be judged based on the latter that the cookie must be retained.",
+  "boundary": "Whether to replace existing records also depends on matching criteria such as name, domain, and path.",
+  "aliases": [
+    "Max-Age",
+    "Expires",
+    "Cookie expiration"
+  ],
+  "relevance": "How to interpret conflicting expiration prompts when rebuilding session timelines.",
+  "sources": {
+    "reference": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "web"
+  ]
+}

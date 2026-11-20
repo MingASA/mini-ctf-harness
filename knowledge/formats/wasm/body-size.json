@@ -1,0 +1,22 @@
+{
+  "title": "Wasm code body size includes local variable declarations",
+  "summary": "Each code body first gives the size in bytes; inside it is the local variable declaration vector first, followed by the instruction expression.",
+  "applies": "WebAssembly core binary format",
+  "aliases": [
+    "code section",
+    "function body",
+    "locals",
+    "local variable table"
+  ],
+  "detail": "Declare vectors to be compressed by repeat count and type. Two adjacent local variables have the same type and do not necessarily correspond to two declaration entries.",
+  "boundary": "Function parameters come from the function type and are not listed repeatedly in this local declaration vector, but will occupy the local index.",
+  "sources": {
+    "reference": "https://webassembly.github.io/spec/core/binary/modules.html",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "When entering function bytecode from an offset, avoid decoding declaration bytes into opcodes or miscalculating the first local variable number.",
+  "tags": [
+    "reverse",
+    "misc"
+  ]
+}

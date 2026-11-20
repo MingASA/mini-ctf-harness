@@ -1,0 +1,21 @@
+{
+  "title": "The next frame of the GIF may only update the local rectangle",
+  "summary": "The image descriptor gives the frame origin and size within the logical screen. Compositing also depends on how the preceding frame is disposed of.",
+  "applies": "GIF89a image data and graphics control extension",
+  "aliases": [
+    "disposal method",
+    "GIF frame",
+    "restore background",
+    "partial frame"
+  ],
+  "detail": "Solution 2: Restore the corresponding area to the background color, 3: Restore it to the state before displaying the graphic.",
+  "boundary": "The transparent index means that the pixel does not modify the existing canvas; it cannot simply cover the previous color with transparent black.",
+  "sources": {
+    "reference": "https://www.w3.org/Graphics/GIF/spec-gif89a.txt",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "Explain the situation where incomplete images are obtained when reading only a single frame, but complete text is displayed when playing.",
+  "tags": [
+    "misc"
+  ]
+}

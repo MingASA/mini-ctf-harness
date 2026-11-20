@@ -1,4 +1,17 @@
-export function sessionUsage(store,config){
+import {lastWindowEvent} from './session-window.mjs';
+
+export function backendSlotText(slots){
+ if(!Array.isArray(slots)||slots.some(s=>!s||!Number.isInteger(s.id)||typeof s.is_processing!=='boolean'))throw Error('无效的 slot 状态');
+ const retained=s=>Number.isSafeInteger(s.n_prompt_tokens)&&s.n_prompt_tokens>0;
+ const busy=slots.filter(s=>s.is_processing).length;
+ return [
+  `后端共 ${slots.length} 个 slot · 处理请求（含预填充）${busy} · 记录有提示 tokens 的 slot ${slots.filter(retained).length}`,
+  ...slots.map(s=>`slot ${s.id} · ${s.is_processing?'处理中':'空闲'} · 提示 tokens ${Number.isSafeInteger(s.n_prompt_tokens)?s.n_prompt_tokens.toLocaleString('en-US'):'未报告'}`),
+  'KV cell（空闲 / 共享 / 独占）：此版本的 /slots 未提供',
+ ].join('\n');
+}
+
+export function sessionUsage(store,config,sessionWindow){
  const requests=store.events.filter(e=>e.type==='model_request'),usages=new Map(store.events.filter(e=>e.type==='model_usage').map(e=>[e.data.requestId,e.data.completion_tokens]));
  const known=requests.filter(e=>Number.isInteger(usages.get(e.data.requestId)));
  const last=requests.at(-1),compact=store.events.findLast(e=>e.type==='compact_commit'),changed=store.events.findLast(e=>e.type==='model_changed');
@@ -7,7 +20,7 @@ export function sessionUsage(store,config){
  else if(last&&last.seq>(changed?.seq??-1)&&Number.isInteger(last.data.prompt_tokens))context=last.data.prompt_tokens+(usages.get(last.data.requestId)??0);
  return {turns:requests.length,ordinary:requests.filter(e=>!e.data.kind).length,compacts:requests.filter(e=>e.data.kind==='compact').length,
   generated:known.reduce((sum,e)=>sum+usages.get(e.data.requestId),0),unreported:requests.length-known.length,
-  context,soft:config.compactSoftTokens??Math.min(config.promptTokens??40960,40960,config.contextTokens-(config.generationTokens??8192)-(config.safetyTokens??2048)),total:config.contextTokens};
+  context,soft:sessionWindow?.compactSoftTokens??config.compactSoftTokens??Math.min(config.promptTokens??40960,40960,config.contextTokens-(config.generationTokens??8192)-(config.safetyTokens??2048)),total:sessionWindow?.contextTokens??config.contextTokens};
 }
 export const tokenLabel=n=>n>=1024?(n/1024).toFixed(1).replace(/\.0$/,'')+'K':String(n);
 export function contextLine(stats,width=20){
@@ -18,9 +31,18 @@ export function contextLine(stats,width=20){
 }
 export function usageLine(stats){return `已用 ${stats.turns} 轮 · 累计生成 ${stats.generated.toLocaleString('en-US')} tokens${stats.unreported?' · '+stats.unreported+' 次用量未确认':''}`;}
 export function budgetText(session){
- const s=sessionUsage(session.store,session.config),g=session.generationControls();
+ const s=sessionUsage(session.store,session.config,session.sessionWindow);
+ const thinking=scope=>{
+  const {current,pending}=session.generationControls(scope);
+  const describe=settings=>settings.thinking?`${settings.reasoningEffort} · 思考上限 ${settings.reasoningTokens===-1?'随输出预算':settings.reasoningTokens}`:'关闭';
+  return describe(current)+(pending?' · 待生效 '+describe(pending):'');
+ };
+ const latest=lastWindowEvent(session.store);
  return [usageLine(s),`普通调用 ${s.ordinary} 次 · Compact ${s.compacts} 次`,contextLine(s),
   `软压缩线 ${s.soft.toLocaleString('en-US')} tokens · 上下文总长 ${s.total.toLocaleString('en-US')} tokens`,
-  `思考 ${g.current.thinking?'开启':'关闭'} · 强度 ${g.current.reasoningEffort} · 思考上限 ${g.current.reasoningTokens===-1?'随输出预算':g.current.reasoningTokens}`,
+  `后端容量 ${session.config.contextTokens.toLocaleString('en-US')} tokens`,
+  ...(latest?.type==='window_requested'?[`待应用：窗口 ${latest.data.settings.contextTokens} · 软线 ${latest.data.settings.compactSoftTokens}`]:[]),
+  ...(latest?.type==='window_failed'?['窗口设置未生效：'+latest.data.error]:[]),
+  '正常推理思考 '+thinking('normal'),'Compact 压缩思考 '+thinking('compact'),
   `单次输出上限 ${session.config.generationTokens.toLocaleString('en-US')} tokens`].join('\n');
 }

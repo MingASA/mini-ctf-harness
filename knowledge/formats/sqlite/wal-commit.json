@@ -1,0 +1,21 @@
+{
+  "title": "SQLite WAL commit tags and database snapshots",
+  "summary": "Commit is marked when the number of database pages in the WAL frame header is non-zero; frames before the commit record can together constitute a transaction.",
+  "applies": "SQLite 3 master database and WAL files",
+  "aliases": [
+    "WAL",
+    "checkpoint",
+    "commit frame",
+    "Database log"
+  ],
+  "detail": "Looking only at the master database file may be missing committed changes that have not yet been checkpointed. To interpret a snapshot, confirm that the WAL belongs to the same set of files as the main library.",
+  "boundary": "Valid frames at the end of the file may also belong to uncommitted transactions; all frames cannot be considered final.",
+  "sources": {
+    "reference": "https://www.sqlite.org/fileformat.html#wal_file_format",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "Explains why reading the main file directly can show different records from opening the database with its WAL present.",
+  "tags": [
+    "misc"
+  ]
+}

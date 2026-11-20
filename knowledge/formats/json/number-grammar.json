@@ -1,0 +1,22 @@
+{
+  "title": "Syntax for JSON numbers excludes leading zeros and non-finite values",
+  "summary": "0 is legal, 01, NaN, and Infinity are not RFC 8259 numbers.",
+  "applies": "RFC 8259; JSON text",
+  "aliases": [
+    "NaN",
+    "Infinity",
+    "leading zero",
+    "JSON value"
+  ],
+  "detail": "Scientific notation can be written as 1e3; many numeric literals recognized by the host language cannot be written into JSON.",
+  "boundary": "Some parsers provide relaxed extensions; it accepts input without proof that the input conforms to an interchange format.",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc8259.html#section-6",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "Determine whether the attachment is standard JSON, a loosely parsed log, or another type of serialized text.",
+  "tags": [
+    "web",
+    "misc"
+  ]
+}

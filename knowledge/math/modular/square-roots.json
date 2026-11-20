@@ -1,0 +1,21 @@
+{
+  "title": "Modulo square roots usually keep two signs",
+  "summary": "For an odd prime p, a nonzero quadratic residue a has exactly two square roots modulo p, which are negatives of each other.",
+  "applies": "Integer modulo arithmetic; modulus greater than 1",
+  "aliases": [
+    "sqrt_mod",
+    "quadratic residue",
+    "squared remainder",
+    "two roots"
+  ],
+  "detail": "Modulo 7, the square root of 2 is 3 and 4. Saving only one representative value given by the library function loses another candidate.",
+  "boundary": "When a≡0, there are only zero roots; the composite modulus cannot directly follow the \"two roots\" conclusion.",
+  "sources": {
+    "reference": "https://docs.sympy.org/latest/modules/ntheory.html#sympy.ntheory.residue_ntheory.sqrt_mod",
+    "context": "https://cryptohack.org/courses/modular/"
+  },
+  "relevance": "When restoring the square transformation, determine whether the result is unique.",
+  "tags": [
+    "crypto"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "title": "Sub filtering takes the left value according to the byte pitch per pixel",
+  "summary": "When rebuilding a Sub row, the current filtered byte is added to the corresponding byte on the left that has been reconstructed in the same row, and the result is modulo 256.",
+  "applies": "PNG specification; stand-alone PNG image",
+  "aliases": [
+    "Sub filter",
+    "Inverse filtering",
+    "bytes per pixel",
+    "left byte"
+  ],
+  "detail": "The left distance is taken as the number of bytes of a full pixel and rounded up. The distance is 3 for 8-bit RGB and 1 for 1-bit grayscale.",
+  "boundary": "Missing left-hand bytes at the beginning of the line are zeroed. The left value comes from the reconstructed data.",
+  "sources": {
+    "reference": "https://www.w3.org/TR/png-3/#9Filters",
+    "context": "https://ctf-wiki.org/misc/picture/png/"
+  },
+  "relevance": "If the color channels are cyclically bit stringed, check which reconstructed byte the filter refers to.",
+  "tags": [
+    "misc"
+  ]
+}

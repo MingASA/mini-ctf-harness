@@ -1,0 +1,21 @@
+{
+  "title": "Dalvik's long and double values occupy adjacent register pairs",
+  "summary": "Dalvik registers typically carry 32-bit data, and wide values use two adjacent registers; there is no even starting requirement for register pairs.",
+  "applies": "Android DEX files and Dalvik instructions",
+  "detail": "Method input is located at the end of the method's register bank, and wide parameters are counted as two spaces. Instance methods also take receiver references.",
+  "boundary": "The register number is the slot of the virtual machine and cannot be interpreted as the native ARM register number.",
+  "aliases": [
+    "move-wide",
+    "register pair",
+    "Dalvik",
+    "wide parameter"
+  ],
+  "relevance": "Distinguish between the number of parameters and the number of register slots when restoring the smali parameter table.",
+  "sources": {
+    "reference": "https://source.android.com/docs/core/runtime/dalvik-bytecode",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "reverse"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "title": "json_decode decodes numbers outside the integer range",
+  "summary": "JSON integers outside the platform's integer range may be decoded to floating point by default, and JSON_BIGINT_AS_STRING may preserve their decimal text.",
+  "applies": "Data handling for PHP 7.4 and 8.x",
+  "aliases": [
+    "JSON_BIGINT_AS_STRING",
+    "json_decode",
+    "large integer precision",
+    "lose position"
+  ],
+  "detail": "On 64-bit PHP, 9223372036854775808 exceeds PHP_INT_MAX. Floating point output is insufficient to prove the original text when it is necessary to preserve each bit of the record ID.",
+  "boundary": "This option targets large integers; exponents and decimals still follow floating point parsing.",
+  "sources": {
+    "reference": "https://www.php.net/manual/en/function.json-decode.php",
+    "context": "https://ctf-wiki.org/web/php/php/"
+  },
+  "relevance": "Determine whether the difference between two long digital records comes from the original file or the decoder.",
+  "tags": [
+    "web",
+    "reverse"
+  ]
+}

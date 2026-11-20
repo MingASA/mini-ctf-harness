@@ -1,0 +1,22 @@
+{
+  "title": "Input range for PNG block CRC",
+  "summary": "PNG's block CRC covers the four-byte type and data, including the type even if the data is empty.",
+  "applies": "CRC check of PNG blocks",
+  "aliases": [
+    "CRC",
+    "CRC32",
+    "checksum",
+    "cyclic redundancy check",
+    "Checksum"
+  ],
+  "detail": "When calculating the CRC of a block, starting from the type field, four type bytes are taken followed by all the data. The stored CRC is read in big-endian order.",
+  "boundary": "Neither the length field nor the stored CRC participate in the calculation. Although the data of IEND is empty, the CRC input is still four type bytes IEND.",
+  "sources": {
+    "reference": "https://www.w3.org/TR/png-3/#5CRC-algorithm",
+    "context": "https://ctf-wiki.org/misc/picture/png/"
+  },
+  "relevance": "When checking whether an image is corrupted, taking the wrong CRC input range can misjudge valid blocks as corrupted.",
+  "tags": [
+    "misc"
+  ]
+}

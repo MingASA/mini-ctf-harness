@@ -1,0 +1,21 @@
+{
+  "title": "The slope formulas for point addition and point doubling are different.",
+  "summary": "For y² = x³ + ax + b, point doubling uses slope (3x² + a)/(2y) when 2y is invertible. Division is by a field inverse.",
+  "applies": "Nonsingular short Weierstrass curves over primes; characteristic > 3",
+  "detail": "To add two different points with different abscissas, divide the difference in ordinates by the difference in abscissas; the same point cannot be mechanically substituted into the difference quotient.",
+  "boundary": "When the denominator is zero, it is necessary to distinguish the negative point, the multiple point or the infinite point according to the group law, and it cannot be replaced by ordinary floating point division.",
+  "aliases": [
+    "point doubling",
+    "Double point",
+    "slope",
+    "Finite field division"
+  ],
+  "relevance": "Explain why one of the two formulas appears 0/0 and the other is defined when self-adding.",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc6090.html#appendix-F.1",
+    "context": "https://cryptohack.org/courses/elliptic/"
+  },
+  "tags": [
+    "crypto"
+  ]
+}

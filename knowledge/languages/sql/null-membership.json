@@ -1,0 +1,26 @@
+{
+  "title": "SQL's NOT IN will produce an unknown value when encountering NULL",
+  "summary": "In SQLite, if a non-NULL value has no match and the right-hand set contains NULL, NOT IN yields NULL and WHERE discards the row.",
+  "applies": "SQLite query results and crossing dialect boundaries",
+  "detail": "For example, the result of 3 NOT IN (1,NULL) is NULL; 1 NOT IN (1,NULL) is false because a match has been found.",
+  "boundary": "Empty collections have their own rules; a collection containing NULL cannot simply be equated with an empty collection.",
+  "aliases": [
+    "NOT IN",
+    "NULL",
+    "three valued logic",
+    "three-valued logic",
+    "null value",
+    "exclusion list",
+    "Not in the list",
+    "Null filtering"
+  ],
+  "relevance": "Explanation The filter statement appears to be retaining a record but gets an empty result.",
+  "sources": {
+    "reference": "https://www.sqlite.org/lang_expr.html#the_in_and_not_in_operators",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "web",
+    "misc"
+  ]
+}

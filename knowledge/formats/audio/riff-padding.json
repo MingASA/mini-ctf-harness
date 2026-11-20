@@ -1,0 +1,21 @@
+{
+  "title": "RIFF block has alignment padding after odd bytes of data",
+  "summary": "Data for regular RIFF subchunks is two-byte aligned, with odd lengths spanning a padding byte, and the chunk's size field does not contain this padding.",
+  "applies": "PCM audio in RIFF/WAVE",
+  "aliases": [
+    "RIFF",
+    "word padding",
+    "WAVE header",
+    "audio block alignment"
+  ],
+  "detail": "A block of length 5 has an 8-byte header, and the next block starts at the beginning of the current block plus 14.",
+  "boundary": "There can be optional metadata blocks in WAVE; all PCM data cannot be located with a fixed 44-byte header offset.",
+  "sources": {
+    "reference": "https://learn.microsoft.com/en-us/windows/win32/xaudio2/resource-interchange-file-format--riff-",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "When parsing annotated audio attachments, avoid mistaking padding for the first byte of the next chunk name.",
+  "tags": [
+    "misc"
+  ]
+}

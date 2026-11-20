@@ -1,3 +1,4 @@
+import {KNOWLEDGE_PROMPT} from './knowledge/tool.mjs';
 import {DATA_ROOT} from './paths.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -16,9 +17,9 @@ import {reconcileSubmissionFeedback} from './submission-feedback.mjs';
 import {recoverInterruptedTools} from './resume-tools.mjs';
 
 export const SYSTEM=SOLVING_SYSTEM_PROMPT;
-export function systemPrompt(mode,knowledge){
+export function systemPrompt(mode,knowledge,{knowledgeEnabled=true}={}){
  const catalog=mode==='memory-skills'?skillsPrompt(knowledge):'';
- return SYSTEM.replace('{{SKILL_CATALOG}}',catalog);
+ return SYSTEM.replace('{{SKILL_CATALOG}}',catalog)+(knowledgeEnabled?'\n'+KNOWLEDGE_PROMPT:'');
 }
 
 export function validateTask(task) {
@@ -56,8 +57,9 @@ export async function runTask(task,config,options={}) {
     if(!Number.isInteger(cfg.reasoningTokens)||(cfg.reasoningTokens!==-1&&cfg.reasoningTokens<1)||cfg.reasoningTokens>=cfg.generationTokens || cfg.generationTokens+cfg.promptTokens+64>cfg.contextTokens) throw Error('Invalid generation/context reserve');
     for(const key of ['reasoningEffort','compactReasoningEffort'])if(cfg[key]!==undefined&&!['low','medium','high','xhigh'].includes(cfg[key]))throw Error('Invalid '+key);
     if(cfg.compactThinking!==undefined&&typeof cfg.compactThinking!=='boolean')throw Error('Invalid compactThinking');
-    if(cfg.compactReasoningTokens!==undefined&&(!Number.isInteger(cfg.compactReasoningTokens)||cfg.compactReasoningTokens<1||cfg.compactReasoningTokens>=(cfg.compactTokens??cfg.generationTokens)))throw Error('Invalid compactReasoningTokens');
+    if(cfg.compactReasoningTokens!==undefined&&(!Number.isInteger(cfg.compactReasoningTokens)||(cfg.compactReasoningTokens!==-1&&cfg.compactReasoningTokens<1)||cfg.compactReasoningTokens>=(cfg.compactTokens??cfg.generationTokens)))throw Error('Invalid compactReasoningTokens');
     if(!['baseline','memory','memory-skills'].includes(cfg.mode)) throw Error('Unknown evaluation mode');
+    if(cfg.knowledgeEnabled!==undefined&&typeof cfg.knowledgeEnabled!=='boolean')throw Error('knowledgeEnabled must be boolean');
     const frozen=store.events.findLast(e=>e.type==='configuration');
     if(frozen && frozen.data.sha256!==hash(JSON.stringify(cfg))) throw Error('Run configuration changed; start a separate comparison run');
     if(!frozen) store.append('configuration',{sha256:hash(JSON.stringify(cfg)),config:cfg});
@@ -90,7 +92,7 @@ export async function runTask(task,config,options={}) {
     }
     let status='running',lastSubmission;
     const tools=buildTools(store,broker,knowledge,verdict,result=>{const rank={incorrect:1,pending:2,correct:3};if(!lastSubmission||(rank[result.status]??0)>=(rank[lastSubmission.status]??0))lastSubmission=result;},{nativeImages:cfg.nativeImages,remainingMs:()=>taskClock(store,cfg).millisecondsRemaining}).filter(tool=>
-      (cfg.nativeImages || tool.name!=='view_image'));
+      (cfg.nativeImages || tool.name!=='view_image') && (cfg.knowledgeEnabled!==false || tool.name!=='knowledge'));
     // Unknown/interrupted requests consume their full reserved generation budget.
     // A reported usage record replaces that reservation, including length failures.
     const total=(exclude)=>store.events.filter(e=>e.type==='model_request' && e.data.requestId!==exclude).reduce((n,e)=>{
@@ -140,7 +142,7 @@ export async function runTask(task,config,options={}) {
     execution=store.append('execution_start',{});
     solveSegment=beginSolve(store,cfg);
     if(solveSegment)budgetHeartbeat=setInterval(()=>checkpointSolve(store,cfg,solveSegment),1000);
-    const agent=new Agent({initialState:{systemPrompt:systemPrompt(cfg.mode,knowledge),model,tools,messages:saved,thinkingLevel:cfg.reasoningEffort??'medium'},
+    const agent=new Agent({initialState:{systemPrompt:systemPrompt(cfg.mode,knowledge,cfg),model,tools,messages:saved,thinkingLevel:cfg.reasoningEffort??'medium'},
       identity:{attribution:null},toolExecution:'sequential',streamFn:client.stream,
       beforeToolCall:()=>store.pending().length?{block:true,terminate:true,reason:'Uncertain earlier tool outcome'}:undefined,
       afterToolCall:()=>store.pending().length?{terminate:true}:undefined,

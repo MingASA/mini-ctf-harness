@@ -1,0 +1,22 @@
+{
+  "title": "Version differences for string assertions in assert()",
+  "summary": "PHP 7.2 deprecated string assertions. From PHP 8.0, assert() checks the string value for truthiness.",
+  "applies": "PHP 7.x and 8.x with assertions enabled",
+  "aliases": [
+    "assert",
+    "assert()",
+    "zend.assertions",
+    "string assertion",
+    "assert"
+  ],
+  "detail": "When an assertion runs in PHP 7.x, assert() evaluates the contents of a string argument. PHP 7.2 deprecated that behavior and PHP 8.0 removed it.",
+  "boundary": "PHP 7.2 retained the old behavior after deprecation. Configuration can disable or skip assertions, so the version alone does not show that a particular call evaluated the string.",
+  "sources": {
+    "reference": "https://www.php.net/manual/en/function.assert.php",
+    "context": "https://ctf-wiki.org/web/php/php/"
+  },
+  "relevance": "When reading the PHP source code attached to the old question, the same string parameter may represent different judgments in different versions.",
+  "tags": [
+    "web"
+  ]
+}

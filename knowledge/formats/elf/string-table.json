@@ -1,0 +1,22 @@
+{
+  "title": "ELF string tables can reference suffixes of existing strings",
+  "summary": "A string table index is a byte offset from the head of the table that can point inside another string and share a trailing NUL.",
+  "applies": "ELF file; System V Common ABI",
+  "aliases": [
+    "SHT_STRTAB",
+    "st_name",
+    "string table",
+    "Suffix sharing"
+  ],
+  "detail": "If the table contains foobar plus the terminating byte, the offset to b can legally represent bar.",
+  "boundary": "Before interpreting st_name and other fields, the associated string table must be selected first; the same offset in different tables does not matter.",
+  "sources": {
+    "reference": "https://gabi.xinuos.com/elf/04-strtab.html",
+    "context": "https://ctf-wiki.org/executable/elf/structure/basic-info/"
+  },
+  "relevance": "Explains the case where the index does not point to the first enumerated boundary of the string, but still gives a valid name.",
+  "tags": [
+    "reverse",
+    "misc"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "title": "Multiple Content-Encodings listed in order of encoding application",
+  "summary": "Content-Encoding: gzip, br means gzip was applied first and Brotli second. Decode Brotli before gzip.",
+  "applies": "HTTP representation and offline message parsing",
+  "aliases": [
+    "Content-Encoding",
+    "Brotli",
+    "Multiple compression",
+    "decoding order"
+  ],
+  "detail": "Transfer-Encoding describes message transmission, and Content-Encoding describes the representation itself, which belongs to different layers when restored offline.",
+  "boundary": "The packet capture viewer may have removed one of the layers; decoding it again will report that the header is invalid.",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc9110.html#section-8.4",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "Explains why a response can declare gzip even when the raw payload does not start with a gzip header.",
+  "tags": [
+    "web",
+    "misc"
+  ]
+}

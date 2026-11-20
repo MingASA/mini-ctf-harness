@@ -1,0 +1,20 @@
+{
+  "title": "Index color tRNS can be shorter than PLTE",
+  "summary": "Each byte in tRNS gives the transparency of the corresponding palette index, with subsequent indices without entries defaulting to fully opaque.",
+  "applies": "PNG specification; stand-alone PNG image",
+  "aliases": [
+    "tRNS",
+    "palette alpha",
+    "Transparent index"
+  ],
+  "detail": "For example, when the table has four colors and tRNS has only one zero byte, only index 0 is fully transparent.",
+  "boundary": "tRNS for grayscale and truecolor images represent specified transparent sample values, which are interpreted differently.",
+  "sources": {
+    "reference": "https://www.w3.org/TR/png-3/#11tRNS",
+    "context": "https://ctf-wiki.org/misc/picture/png/"
+  },
+  "relevance": "Distinguishing visible image lack of color from original index does not exist.",
+  "tags": [
+    "misc"
+  ]
+}

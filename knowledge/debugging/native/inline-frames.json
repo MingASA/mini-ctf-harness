@@ -1,0 +1,22 @@
+{
+  "title": "Inline calls can have logical frames but no separate physical stack frames",
+  "summary": "A debugger can show inlined calls from compiler debug information even when there is no separate machine-level call for the frame.",
+  "applies": "Offline stack traceback, symbol matching and debugging information for native programs",
+  "detail": "The two layers of calls in the source code can share an instruction in the machine code. When reading stack reports, distinguish between inline locations and actual runtime call frames.",
+  "boundary": "When the compiler does not emit sufficient debugging information, the debugger cannot completely reconstruct all inlining levels.",
+  "aliases": [
+    "inline frame",
+    "inlining",
+    "inline frame",
+    "Logical call stack"
+  ],
+  "relevance": "The interpreted call chain is one more layer above the actual call instructions in the disassembly.",
+  "sources": {
+    "reference": "https://sourceware.org/gdb/current/onlinedocs/gdb/Inline-Functions.html",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "pwn",
+    "reverse"
+  ]
+}

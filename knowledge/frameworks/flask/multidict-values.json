@@ -1,0 +1,21 @@
+{
+  "title": "Werkzeug's MultiDict can retain all values of parameters with the same name",
+  "summary": "Regular dictionary values usually return the first value of the key, and getlist returns all values with the same key.",
+  "applies": "Flask default configuration; request and session data explanation",
+  "detail": "For the input k=a&k=b, use get and getlist to log, and you may see a and a list with two elements respectively.",
+  "boundary": "If the request had been converted to a normal dictionary at an earlier layer, duplicates might have been lost.",
+  "aliases": [
+    "MultiDict",
+    "getlist",
+    "request.args",
+    "Repeat parameters"
+  ],
+  "relevance": "When reviewing the form and query log, avoid mistakenly thinking that the field with the same name has only been submitted once.",
+  "sources": {
+    "reference": "https://werkzeug.palletsprojects.com/en/stable/datastructures/#werkzeug.datastructures.MultiDict",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "web"
+  ]
+}

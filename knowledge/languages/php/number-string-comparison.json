@@ -1,0 +1,23 @@
+{
+  "title": "Relaxed comparison of numeric and non-numeric strings",
+  "summary": "With ==, PHP 7.x can consider 0 equal to a non-numeric string. PHP 8.x compares them as strings.",
+  "applies": "PHP 7.x vs. PHP 8.x; == between numbers and strings",
+  "aliases": [
+    "==",
+    "loose comparison",
+    "non-numeric string",
+    "Loose comparison",
+    "weak type comparison",
+    "Numbers and strings are equal"
+  ],
+  "detail": "0 == \"apple\" is true in PHP 7.x. PHP 8.x first converts the number into a string for this comparison, and the result is false.",
+  "boundary": "If the string itself is a legal numeric string, it is still compared numerically, for example, 42 == \"42\" is true in both version series.",
+  "sources": {
+    "reference": "https://www.php.net/manual/en/language.operators.comparison.php",
+    "context": "https://ctf-wiki.org/web/php/php/"
+  },
+  "relevance": "To determine the branch direction in the question source code, you need to know both the operand type and the PHP version.",
+  "tags": [
+    "web"
+  ]
+}

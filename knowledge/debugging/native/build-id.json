@@ -1,0 +1,22 @@
+{
+  "title": "Detached debugging symbols must match the corresponding build",
+  "summary": "GNU tools can associate executable files with separate debugging information based on build ID or .gnu_debuglink.",
+  "applies": "Offline stack traceback, symbol matching and debugging information for native programs",
+  "detail": "debuglink contains debug file name and CRC. The address layout may change after the same source code is recompiled, and the build identity of the actual sample is more reliable than the file name.",
+  "boundary": "build ID and debuglink are two mechanisms; having one does not enforce the presence of the other.",
+  "aliases": [
+    "build-id",
+    ".gnu_debuglink",
+    "separate debug",
+    "Symbol matching"
+  ],
+  "relevance": "Checking binaries with the same name gives the reason for completely different source lines.",
+  "sources": {
+    "reference": "https://sourceware.org/gdb/current/onlinedocs/gdb/Separate-Debug-Files.html",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "pwn",
+    "reverse"
+  ]
+}

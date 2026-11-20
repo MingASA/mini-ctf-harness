@@ -1,0 +1,21 @@
+{
+  "title": "CRT compatibility conditions for non-prime modules",
+  "summary": "Two congruence constraints x≡a (mod m) and x≡b (mod n) have solutions at the same time if and only if the difference between the two remainders is divisible by gcd(m,n).",
+  "applies": "Integer modulo arithmetic; modulus greater than 1",
+  "aliases": [
+    "solve_congruence",
+    "generalized CRT",
+    "China surplus",
+    "Modules are not mutually prime"
+  ],
+  "detail": "x≡1 (mod 4), x≡3 (mod 6) gives x≡9 (mod 12). The period of the solution is the least common multiple.",
+  "boundary": "When they are not mutually prime, the period cannot always be written as m×n; if the conditions are incompatible, there will be no solution.",
+  "sources": {
+    "reference": "https://docs.sympy.org/latest/modules/ntheory.html#sympy.ntheory.modular.solve_congruence",
+    "context": "https://cryptohack.org/courses/modular/"
+  },
+  "relevance": "Distinguish contradictory observations from periodic repetitions when incorporating periodic cues.",
+  "tags": [
+    "crypto"
+  ]
+}

@@ -14,6 +14,59 @@ class Terminal {
 const delay=()=>new Promise(r=>setTimeout(r,60));
 const down='\x1b[B';
 
+test('/knowledge controls only the selected task and reports durable on/off state',async t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'terminal-knowledge-'));
+ const contest=new Contest({contestDir:root,model:{baseUrl:'http://127.0.0.1:9'}},{testMode:true,provision:async id=>({containerId:id,workDir:path.join(root,'work',id)}),sessionOptions:()=>({broker:{validate:async()=>{}},knowledge:{docs:[]}})});
+ const ui=new CompetitionTerminal(contest,{terminal:new Terminal()});
+ t.after(async()=>{await ui.close();fs.rmSync(root,{recursive:true,force:true});});
+ await contest.add({id:'one',objective:'One'});await contest.add({id:'two',objective:'Two'});ui.setView('one');
+ await ui.submit('/knowledge off');assert.equal(contest.session('one').knowledgeControls().enabled,false);
+ assert.equal(contest.session('two').knowledgeControls().enabled,true);
+ await ui.submit('/knowledge');assert.match(ui.notice,/关闭/);
+ await assert.rejects(ui.submit('/knowledge maybe'),/用法/);
+ await ui.submit('/knowledge on');assert.equal(contest.session('one').knowledgeControls().enabled,true);
+});
+
+test('backend slot status stays above the selected panel and follows the active model service',async t=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'pi-slot-status-'));
+ const origins=[];
+ const defaultOrigin='http://127.0.0.1:9',activeOrigin='http://127.0.0.1:10';
+ const contest=new Contest({contestDir:root,model:{baseUrl:defaultOrigin}},{
+  testMode:true,
+  modelFetch:async url=>{
+   origins.push(url);
+   if(url.endsWith('/kv-cache'))return new Response('',{status:404});
+   return Response.json([{id:0,is_processing:url.startsWith(activeOrigin),n_prompt_tokens:640}]);
+  },
+  provision:async id=>({containerId:id,workDir:path.join(root,'work',id)}),
+  sessionOptions:()=>({broker:{validate:async()=>{}},knowledge:{docs:[]}}),
+ });
+ const ui=new CompetitionTerminal(contest,{terminal:new Terminal()});
+ t.after(async()=>{await ui.close();fs.rmSync(root,{recursive:true,force:true});});
+ ui.start();
+ await delay();
+ assert.deepEqual(origins,[defaultOrigin+'/kv-cache',defaultOrigin+'/slots']);
+ assert.match(ui.tui.getScreenLines().join('\n'),/slot 0 · 空闲 · 提示 tokens 640/);
+ ui.detail='Long reference help\n'.repeat(150);ui.renderNow();await delay();
+ assert.match(ui.tui.getScreenLines().slice(2,6).join('\n'),/slot 0 · 空闲 · 提示 tokens 640/);
+ ui.detail=null;
+ await contest.add({id:'selected',objective:'Show this conversation'});
+ await contest.add({id:'active',objective:'Report state from this model service'});
+ contest.session('active').config.baseUrl=activeOrigin;
+ contest.active='active';
+ ui.setView('selected');
+ await ui.refreshSlotStatus();
+ assert.equal(origins.at(-1),activeOrigin+'/slots');
+ for(const panel of ['output','queue','budget']){
+  await ui.submit('/tab '+panel);
+  ui.renderNow();
+  await delay();
+  const lines=ui.tui.getScreenLines();
+  assert.match(lines.slice(2,6).join('\n'),/slot 0 · 处理中 · 提示 tokens 640/);
+  assert.doesNotMatch(ui.content.text,/后端共 .* 个 slot/);
+ }
+});
+
 test('slash completion describes effort inline and Enter opens a picker with a retryable custom budget',async()=>{
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'pi-effort-picker-'));let c,ui,session;
  try{
@@ -22,9 +75,10 @@ test('slash completion describes effort inline and Enter opens a picker with a r
   const terminal=new Terminal();ui=new CompetitionTerminal(c,{terminal});ui.start();await delay();
   const screen=()=>ui.tui.getScreenLines().join('\n');
   for(const key of '/eff')terminal.input(key);
-  await delay();assert.match(screen(),/effort\s+选择思考模式、强度和预算/);
+  await delay();assert.match(screen(),/effort\s+设置正常推理或 Compact/);
   for(const key of 'ort')terminal.input(key);
-  await delay();terminal.input('\r');await delay();assert.match(screen(),/思考模式 · 当前 medium/);
+  await delay();terminal.input('\r');await delay();assert.match(screen(),/选择要调整的思考设置/);
+  terminal.input('\r');await delay();assert.match(screen(),/正常推理思考模式 · 当前 medium/);
   terminal.input(down);terminal.input(down);terminal.input('\r');await delay();
   assert.match(screen(),/思考预算 · xhigh/);
   for(let i=0;i<5;i++)terminal.input(down);
@@ -41,9 +95,28 @@ test('slash completion describes effort inline and Enter opens a picker with a r
   assert.equal(ui.tab,'output');
   const cancelled=ui.submit('/effort');await delay();terminal.input('\x1b');await cancelled;
   assert.equal(session.store.events.filter(e=>e.type==='effort_requested').length,1);
+  const compact=ui.submit('/effort');await delay();
+  terminal.input(down);terminal.input('\r');await delay();
+  assert.match(screen(),/Compact 压缩思考模式 · 当前 off/);
+  terminal.input(down);terminal.input('\r');await delay();
+  terminal.input('\r');await compact;
+  assert.equal(session.generationControls('compact').pending.reasoningEffort,'low');
+  assert.equal(session.generationControls().pending.reasoningEffort,'xhigh');
+  await ui.submit('/effort compact off');
+  assert.equal(session.generationControls('compact').pending.thinking,false);
   const priority=ui.submit('/priority');await delay();assert.match(screen(),/调整队列优先级/);
   terminal.input('1');terminal.input('5');terminal.input('\r');await priority;
   assert.equal(c.queue.item('fixture').priority,15);
+  session.running=false;
+  const window=ui.submit('/context');await delay();
+  assert.match(screen(),/后端容量/);
+  for(const key of '32K 16K')terminal.input(key);
+  terminal.input('\r');await window;
+  assert.equal(session.sessionWindow.contextTokens,32768);
+  await ui.submit('/context 48K 32K');ui.renderNow();
+  assert.match(ui.content.text,/软压缩线 32,768 tokens · 上下文总长 49,152 tokens/);
+  const cancelWindow=ui.submit('/context');await delay();terminal.input('\x1b');await cancelWindow;
+  assert.equal(session.sessionWindow.contextTokens,49152);
  }finally{if(session)session.running=false;await ui?.close();await c?.close();fs.rmSync(root,{recursive:true,force:true});}
 });
 
@@ -322,4 +395,27 @@ test('closing the managed model leaves the terminal open and pauses scheduling u
   await contest.switchModel(undefined,'fixture');
   assert.equal(contest.modelServerStopped,false);
  }finally{await ui?.close();await contest?.close();fs.rmSync(root,{recursive:true,force:true});}
+});
+test('/delete supports a direct task number and an interactive session picker',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'pi-delete-ui-'));let c,ui;const deleted=[];
+ try{
+  const provision=async id=>{const workDir=path.join(root,'work',id);fs.mkdirSync(workDir,{recursive:true});return {containerId:id.padEnd(64,'0'),workDir};};
+  const deprovision=async(id,sandbox)=>{deleted.push([id,sandbox.containerId]);fs.rmSync(sandbox.workDir,{recursive:true});return {deleted:true};};
+  c=new Contest({contestDir:path.join(root,'contest'),model:{baseUrl:'http://127.0.0.1:9'}},{testMode:true,guard:()=>{throw Error('No inference');},provision,deprovision,sessionOptions:()=>({broker:{validate:async()=>{}},knowledge:{docs:[]}})});
+  await c.add({id:'alpha',title:'第一题',objective:'fixture'});await c.add({id:'beta',title:'第二题',objective:'fixture'});
+  const terminal=new Terminal();ui=new CompetitionTerminal(c,{terminal});ui.start();
+  await ui.submit('/delete 01');assert.equal(c.records.has('alpha'),false);assert.equal(ui.selected,'beta');assert.match(ui.notice,/已删除 01/);
+  const choosing=ui.submit('/delete');await delay();assert.match(ui.tui.getScreenLines().join('\n'),/选择要删除的会话/);terminal.input('\r');await choosing;
+  assert.equal(c.records.size,0);assert.equal(ui.selected,undefined);assert.deepEqual(deleted.map(x=>x[0]),['alpha','beta']);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(c.root,'tasks.json'))),[]);
+ }finally{await ui?.close();await c?.close();fs.rmSync(root,{recursive:true,force:true});}
+});
+test('failed sandbox cleanup keeps the session and its queue state',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'pi-delete-failure-'));let c;
+ try{
+  c=new Contest({contestDir:path.join(root,'contest'),model:{baseUrl:'http://127.0.0.1:9'}},{testMode:true,guard:()=>{},provision:async id=>{const workDir=path.join(root,'work',id);fs.mkdirSync(workDir,{recursive:true});return {containerId:'a'.repeat(64),workDir};},deprovision:async()=>{throw Error('synthetic cleanup failure');},sessionOptions:()=>({broker:{validate:async()=>{}},knowledge:{docs:[]}})});
+  await c.add({id:'alpha',objective:'fixture'});const before=structuredClone(c.queue.item('alpha'));
+  await assert.rejects(c.delete('alpha'),/synthetic cleanup failure/);
+  assert.equal(c.records.has('alpha'),true);assert.deepEqual(c.queue.item('alpha'),before);assert.ok(fs.existsSync(c.records.get('alpha').config.sandbox.workDir));
+ }finally{await c?.close();fs.rmSync(root,{recursive:true,force:true});}
 });

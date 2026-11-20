@@ -1,0 +1,21 @@
+{
+  "title": "The padding relative method code of JVM tableswitch starts to align",
+  "summary": "Insert zero to three padding bytes after tableswitch so the following default offset is aligned to four bytes relative to the start of the method code.",
+  "applies": "JVM class files and standard bytecode",
+  "detail": "The displacement of each branch takes the tableswitch opcode address as the origin and is interpreted as signed 32 bits.",
+  "boundary": "The starting offset of the entire file may not be congruent with the starting point of the method code; alignment based on the absolute position of the file will result in misreading.",
+  "aliases": [
+    "tableswitch",
+    "default offset",
+    "JVM switch",
+    "Jump table alignment"
+  ],
+  "relevance": "Explanation All targets in the switch table appear to be misaligned by the same bias.",
+  "sources": {
+    "reference": "https://docs.oracle.com/javase/specs/jvms/se21/html/jvms-6.html#jvms-6.5.tableswitch",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "reverse"
+  ]
+}

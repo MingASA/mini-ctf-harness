@@ -1,0 +1,21 @@
+{
+  "title": "DEX insns_size is counted in 16-bit code units",
+  "summary": "The unit of insns_size in code_item is a 16-bit code unit; 10 means that the instruction array covers 20 bytes.",
+  "applies": "Android DEX files and Dalvik instructions",
+  "detail": "Instructions can occupy multiple code units. Units must be unified first when reading the raw instruction array and calculating the program counter.",
+  "boundary": "When an exception table is present and the number of cells is odd, there is alignment padding after the instruction array; this padding does not count toward insns_size.",
+  "aliases": [
+    "insns_size",
+    "code_item",
+    "code unit",
+    "command word"
+  ],
+  "relevance": "Avoid halving the length when restoring method body bounds from DEX records.",
+  "sources": {
+    "reference": "https://source.android.com/docs/core/runtime/dex-format",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "reverse"
+  ]
+}

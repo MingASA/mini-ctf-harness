@@ -1,0 +1,22 @@
+{
+  "title": "Sign bit and byte order of int.from_bytes",
+  "summary": "The byte string 80 00 is interpreted as 32768 in big-endian unsigned format, and -32768 in big-endian signed format.",
+  "applies": "Python 3; standard library or built-in integers",
+  "aliases": [
+    "int.from_bytes",
+    "signed",
+    "Two's complement",
+    "sign bit"
+  ],
+  "detail": "signed=True uses two's complement; when the same string is interpreted according to little endian, the most significant byte becomes 00, and the result is a positive number 128.",
+  "boundary": "signed and byteorder are two independent parameters; reversing bytes is not equivalent to changing the sign.",
+  "sources": {
+    "reference": "https://docs.python.org/3/library/stdtypes.html#int.from_bytes",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "Avoid mistaking endianness errors for overflows when reading negative displacement or sensor data.",
+  "tags": [
+    "reverse",
+    "misc"
+  ]
+}

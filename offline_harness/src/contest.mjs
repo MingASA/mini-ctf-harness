@@ -38,13 +38,12 @@ export function resolveAttachmentPath(source){
  }
 }
 
-function scanAttachments(source,{maxBytes=200*1024*1024,maxFiles=5000}={}){
+function scanAttachments(source,{maxFiles=5000}={}){
  const files=[],directories=[];
  if(!source)return {files,directories};
  const {resolved,info}=resolveAttachmentPath(source);
- let bytes=0;
  const addFile=(src,name,size)=>{
-  if((bytes+=size)>maxBytes||files.length>=maxFiles)throw Error('Attachment import limit exceeded');
+  if(files.length>=maxFiles)throw Error('Attachment import limit exceeded');
   files.push({name,src,sha256:hash(fs.readFileSync(src)),bytes:size});
  };
  const visit=(dir,rel='')=>{
@@ -83,7 +82,7 @@ export class Contest extends EventEmitter {
   fs.writeFileSync(this.lock,JSON.stringify({pid:process.pid}),{flag:'wx',mode:0o600});
   this.source=sourceIdentity();
   fs.mkdirSync(path.join(this.root,'startups'),{recursive:true});atomic(path.join(this.root,'startups',Date.now()+'-'+process.pid+'.json'),this.source);
-  this.sessions=new Map();this.records=new Map();this.enabled=false;this.closing=false;this.busy=false;this.polling=false;this.notice='';this.active=null;this.manualNext=null;this.checkpointRequested=false;this.maintenance=new Map();this.holdResident=false;this.resident=null;this.interruptEpoch=0;
+  this.sessions=new Map();this.records=new Map();this.deleting=new Set();this.enabled=false;this.closing=false;this.busy=false;this.polling=false;this.notice='';this.active=null;this.manualNext=null;this.checkpointRequested=false;this.maintenance=new Map();this.holdResident=false;this.resident=null;this.interruptEpoch=0;
   this.guard=options.guard||assertExperimentIdle;this.queue=new ContestQueue(this.root);
   this.defaultModel={...SESSION_DEFAULTS,...config.model};this.catalog=options.modelCatalog??new ModelCatalog(this.config,{guard:this.guard,fetchFn:options.modelFetch??fetch,executeFn:options.modelExecute});
   const selection=path.join(this.root,'model-selection.json');if(fs.existsSync(selection))Object.assign(this.defaultModel,JSON.parse(fs.readFileSync(selection)).settings);
@@ -149,6 +148,39 @@ export class Contest extends EventEmitter {
   const record={task,title:String(title||id).slice(0,200),target,attachmentDir,attachments,config:{...this.defaultModel,...this.pendingDefaultModel,runDir,sandbox}};
   this.numbers.assign(id);this.records.set(id,record);this.save();const s=this.load(record);s.store.append('attachment_manifest',{files:attachments});this.queue.enqueue(id,'fresh');this.emit('change');return record;
  }
+ async delete(id){
+  id=this.resolveTaskId(id);const record=this.records.get(id);if(!record)throw Error('Unknown task '+id);
+  if(this.deleting.has(id))throw Error('会话正在删除');
+  if(this.modelSwitching||this.offloadingKV)throw Error('模型或 KV 操作进行中，请稍后再删除');
+  if(!this.options.deprovision)throw Error('当前启动方式未配置会话容器删除功能');
+  const runDir=path.resolve(record.config.runDir),tasksDir=path.join(this.root,'tasks');
+  if(runDir!==path.join(tasksDir,id)||fs.realpathSync(tasksDir)!==path.join(fs.realpathSync(this.root),'tasks'))
+   throw Error('会话目录不在受管路径内');
+  if(this.active===id){this.session(id).pause();await this.execution;}
+  if(this.active===id)throw Error('会话仍在运行，无法安全删除');
+  if(this.deleting.has(id))throw Error('会话正在删除');
+  if(this.queue.state.running?.taskId===id)throw Error('会话仍占用推理队列，无法安全删除');
+  const priorItem=structuredClone(this.queue.item(id));
+  const priorLocation=this.queue.state.readyResume.some(x=>x.taskId===id)?'readyResume':this.queue.state.readyFresh.some(x=>x.taskId===id)?'readyFresh':this.queue.state.waiting[id]?'waiting':this.queue.state.parked[id]?'parked':null;
+  this.queue.remove(id);this.queue.save();this.deleting.add(id);
+  if(this.manualNext===id)this.manualNext=null;
+  try{
+   await this.pollPromise?.catch(()=>{});
+   await this.options.deprovision(id,record.config.sandbox);
+  }
+  catch(error){
+   this.queue.remove(id);
+   if(priorLocation==='readyResume'||priorLocation==='readyFresh')this.queue.state[priorLocation].push(priorItem);
+   else if(priorLocation)this.queue.state[priorLocation][id]=priorItem;
+   this.queue.save();throw error;
+  }
+  finally{this.deleting.delete(id);}
+  this.maintenance.delete(id);
+  if(this.resident===id){this.resident=null;this.ramKvResident=null;this.release();}
+  this.sessions.get(id)?.removeAllListeners();this.sessions.delete(id);this.records.delete(id);this.save();
+  fs.rmSync(runDir,{recursive:true,force:true});this.emit('change');
+  return {id,deleted:true};
+ }
  enqueue(id,text){id=this.resolveTaskId(id);const s=this.session(id);const result=s.enqueue(text);const status=this.status(id);if(['awaiting_input','awaiting_judge','awaiting_review','idle','paused'].includes(status))this.queue.enqueue(id,'resume');if(this.holdResident&&!this.enabled){this.manualNext=id;this.start();}this.emit('change');return result;}
  interruptActive(){
   this.modelSwitchController?.abort();this.interruptEpoch++;this.enabled=false;this.holdResident=true;this.manualNext=null;
@@ -210,7 +242,7 @@ export class Contest extends EventEmitter {
    this.notice='托管模型服务已关闭。用 /model 重新加载。';
   }finally{if(this.modelServerStopped||!hadLease)this.release();}
  }
- effort(id,level,budget){const s=this.session(id);return level?s.requestEffort(level,budget):s.generationControls();}
+ effort(id,level,budget,scope='normal'){const s=this.session(id);return level?s.requestEffort(level,budget,scope):s.generationControls(scope);}
  compact(id){id=this.resolveTaskId(id);
   const s=this.session(id),result=s.requestCompact();
   if(this.active!==id&&s.messages().filter(m=>m.role!=='system').length<2){s.store.append('compact_resolved',{request_seq:result.request_seq,status:'no_history'});this.emit('change');return {...result,pending:false,status:'no_history'};}
@@ -275,7 +307,7 @@ export class Contest extends EventEmitter {
  async poll(){
   if(this.pollPromise)return this.pollPromise;
   this.polling=true;
-  this.pollPromise=(async()=>{try{await Promise.all([...this.sessions].map(async([id,s])=>{if(id===this.active||!s.dependencies().length)return;const deps=await s.collect();if(!deps.length&&['waiting_tool','waiting_service'].includes(this.status(id)))this.queue.enqueue(id,'resume',{reason:'dependency_returned'});}));}finally{this.polling=false;this.pollPromise=null;}})();
+  this.pollPromise=(async()=>{try{await Promise.all([...this.sessions].map(async([id,s])=>{if(id===this.active||this.deleting.has(id)||!s.dependencies().length)return;const deps=await s.collect();if(!deps.length&&['waiting_tool','waiting_service'].includes(this.status(id)))this.queue.enqueue(id,'resume',{reason:'dependency_returned'});}));}finally{this.polling=false;this.pollPromise=null;}})();
   return this.pollPromise;
  }
  acquire(){

@@ -1,0 +1,22 @@
+{
+  "title": "ELF category and endianness are given by two independent flags",
+  "summary": "In e_ident, EI_CLASS determines ELF32 or ELF64, and EI_DATA specifies the byte order of file data encoding.",
+  "applies": "ELF file; System V Common ABI",
+  "aliases": [
+    "EI_CLASS",
+    "EI_DATA",
+    "ELFDATA2MSB",
+    "Byte order identifier"
+  ],
+  "detail": "Before reading subsequent multibyte fields, the starting identification byte is used to identify both. 64-bit does not introduce little endian.",
+  "boundary": "e_machine is another field; the same bit width and endianness do not uniquely identify an instruction set.",
+  "sources": {
+    "reference": "https://gabi.xinuos.com/elf/02-eheader.html",
+    "context": "https://ctf-wiki.org/executable/elf/structure/basic-info/"
+  },
+  "relevance": "Explain the phenomenon that the file header magic number is correct but the section table offset reads an abnormally large number.",
+  "tags": [
+    "reverse",
+    "misc"
+  ]
+}

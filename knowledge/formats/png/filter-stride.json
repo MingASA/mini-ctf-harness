@@ -1,0 +1,21 @@
+{
+  "title": "PNG line start filter byte and scan line length",
+  "summary": "Each decompressed scanline of a non-interlaced PNG has 1 byte of filter type followed by pixel data packed by bit depth and channel.",
+  "applies": "PNG specification; stand-alone PNG image",
+  "aliases": [
+    "scanline",
+    "filter byte",
+    "step length",
+    "Pixel misalignment"
+  ],
+  "detail": "A 13-pixel wide 1-bit grayscale line needs to be rounded up to get 2 data bytes, plus 1 filter byte.",
+  "boundary": "Adam7 interlaced images need to calculate the scanning line width of each pass separately.",
+  "sources": {
+    "reference": "https://www.w3.org/TR/png-3/#7Scanline",
+    "context": "https://ctf-wiki.org/misc/picture/png/"
+  },
+  "relevance": "If each row is offset by one byte when reconstructing pixels, check whether the filtered bytes are included in the pixel.",
+  "tags": [
+    "misc"
+  ]
+}

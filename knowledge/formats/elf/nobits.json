@@ -1,0 +1,24 @@
+{
+  "title": "File occupation of SHT_NOBITS section",
+  "summary": "A SHT_NOBITS section can have non-zero sh_size, but its contents occupy no ELF file bytes.",
+  "applies": "ELF section header; sh_type is SHT_NOBITS",
+  "aliases": [
+    "SHT_NOBITS",
+    "sh_size",
+    "sh_offset",
+    ".bss",
+    "Memory size",
+    "file size"
+  ],
+  "detail": "sh_size can describe a non-zero size, but there is no corresponding section content in the file. This section cannot be restored by reading sh_size bytes starting from sh_offset.",
+  "boundary": "Other section types may have actual file content. sh_type should be checked, the section name alone is not sufficient to determine file occupancy.",
+  "sources": {
+    "reference": "https://gabi.xinuos.com/elf/03-sheader.html",
+    "context": "https://ctf-wiki.org/executable/elf/structure/basic-info/"
+  },
+  "relevance": "When looking at the section table of an ELF attachment, this explains why the declared section size may be larger than the number of bytes that can be read from the file.",
+  "tags": [
+    "reverse",
+    "misc"
+  ]
+}

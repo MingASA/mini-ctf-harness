@@ -1,0 +1,22 @@
+{
+  "title": "Binary and hexadecimal output of hash",
+  "summary": "The binary parameter of hash changes the return representation; SHA-256 defaults to 64 hex characters and the original digest is 32 bytes.",
+  "applies": "Data handling for PHP 7.4 and 8.x",
+  "aliases": [
+    "hash",
+    "raw_output",
+    "binary digest",
+    "Summary length"
+  ],
+  "detail": "Base64 encoding the default output will encode the ASCII hexadecimal text, resulting in a different result than the encoded original digest.",
+  "boundary": "The two representations can only be compared byte-by-byte after converting back the same bytes.",
+  "sources": {
+    "reference": "https://www.php.net/manual/en/function.hash.php",
+    "context": "https://ctf-wiki.org/web/php/php/"
+  },
+  "relevance": "When checking the check string, it can locate the situation where the digest algorithm is the same but the serialization method is different.",
+  "tags": [
+    "web",
+    "reverse"
+  ]
+}

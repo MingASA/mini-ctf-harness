@@ -1,0 +1,22 @@
+{
+  "title": "PE's RVA needs to be mapped to file offsets by section",
+  "summary": "RVA relative image base address. For sections with raw data, the file offset is PointerToRawData + (RVA − Section VirtualAddress).",
+  "applies": "PE32/PE32+; Windows image file",
+  "detail": "Make sure that the difference within the section falls within SizeOfRawData before the original file can be read. Trailers whose virtual size exceeds the original size can be zero-filled in the image.",
+  "boundary": "Certain header areas are not treated as normal sections; this conversion does not apply to all data directories.",
+  "aliases": [
+    "RVA",
+    "PointerToRawData",
+    "VirtualSize",
+    "Address conversion"
+  ],
+  "relevance": "Map the relative addresses listed in the disassembly to the actual bytes in the attachment.",
+  "sources": {
+    "reference": "https://learn.microsoft.com/en-us/windows/win32/debug/pe-format",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "reverse",
+    "misc"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "title": "sizeof in function array parameter observes pointer size",
+  "summary": "When the function parameter is declared as T a[N], the parameter type is adjusted to a pointer to T; sizeof a in the function takes the size of the pointer.",
+  "applies": "C11; Offline memory diagnostics and object representation",
+  "detail": "For the same array, use sizeof in the scope where it is declared to get the number of bytes of the complete object. See C11 §6.7.6.3.",
+  "boundary": "Passing in a pointer to the entire array T (*)[N] is another declaration, sizeof *p preserves the array width.",
+  "aliases": [
+    "array parameter",
+    "Array degeneration",
+    "sizeof pointer",
+    "Array parameters"
+  ],
+  "relevance": "Explain why the length in the log changes from tens of bytes to a pointer width after crossing a function boundary.",
+  "sources": {
+    "reference": "https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "pwn",
+    "reverse"
+  ]
+}

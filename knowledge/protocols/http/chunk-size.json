@@ -1,0 +1,22 @@
+{
+  "title": "HTTP/1.1 chunk length is a number of hexadecimal bytes",
+  "summary": "Numbers in chunk-size lines are interpreted in hexadecimal and do not include CRLF after the line, extensions, and data.",
+  "applies": "HTTP representation and offline message parsing",
+  "aliases": [
+    "chunked",
+    "chunk-size",
+    "transfer-encoding",
+    "Hexadecimal length"
+  ],
+  "detail": "The length line a represents 10 data bytes. A zero-length block marks the end of a data block, which may still be followed by a trailer field.",
+  "boundary": "This boundary is a transfer encoding and does not apply the same text syntax from HTTP/2's DATA frame.",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc9112.html#section-7.1",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "Distinguish between actual payload and chunked markers when reconstructing offline response body.",
+  "tags": [
+    "web",
+    "misc"
+  ]
+}

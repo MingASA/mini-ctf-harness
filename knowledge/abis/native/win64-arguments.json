@@ -1,0 +1,23 @@
+{
+  "title": "Windows x64 select integer or floating point register by argument position",
+  "summary": "The first four arguments to a prototyped function use positional register slots, with separate integer and floating-point registers for each slot.",
+  "applies": "64-bit native ABI; interprets types and calls based on build target",
+  "detail": "For example, the three parameters of void f(int,double,int) are usually in ECX, XMM1, R8D. The second parameter occupies position 2 and is therefore not XMM0.",
+  "boundary": "There are additional rules for large aggregates, no prototypes, and variadic arguments; Linux's System V ABI uses different classifications.",
+  "aliases": [
+    "Windows x64",
+    "XMM1",
+    "argument slots",
+    "calling convention",
+    "Mixed parameters"
+  ],
+  "relevance": "Correspond one-to-one values with source-level parameters in the snapshot of the normal function entry.",
+  "sources": {
+    "reference": "https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "pwn",
+    "reverse"
+  ]
+}

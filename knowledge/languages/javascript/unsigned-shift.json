@@ -1,0 +1,22 @@
+{
+  "title": "Unsigned right shift of Number is fixed to 32 bits",
+  "summary": ">>> Treat the left operand as a 32-bit unsigned integer, using only the lower 5 bits for the shift count.",
+  "applies": "ECMAScript; Number, BigInt, and Strings",
+  "aliases": [
+    "unsigned right shift",
+    ">>>",
+    "unsigned right shift",
+    "shift count"
+  ],
+  "detail": "-1 >>> 0 gets 4294967295, 1 >>> 32 is the same as 1 >>> 0.",
+  "boundary": "This operator does not support BigInt; the high-order bits of Numbers larger than 32 bits are lost on conversion.",
+  "sources": {
+    "reference": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Unsigned_right_shift",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "When interpreting bit-mixing transformations in scripts, avoid miscalculations at high bits or at the 32nd shift.",
+  "tags": [
+    "reverse",
+    "web"
+  ]
+}

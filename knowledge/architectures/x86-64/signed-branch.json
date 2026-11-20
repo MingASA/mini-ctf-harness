@@ -1,0 +1,23 @@
+{
+  "title": "The signed and unsigned results of CMP depend on the subsequent Jcc",
+  "summary": "After the same CMP, JL tests signed less-than using SF ≠ OF, while JB tests unsigned below using CF = 1.",
+  "applies": "64-bit mode for x86-64; Intel SDM Volume 1 and Volume 2",
+  "aliases": [
+    "CMP",
+    "JL",
+    "JB",
+    "Jcc",
+    "Signed jump",
+    "unsigned compare"
+  ],
+  "detail": "When the eight-bit 0xff is compared with 1, it is −1<1 if signed and 255>1 if it is unsigned.",
+  "boundary": "It is necessary to confirm the order and width of the left and right operands; the writing order in Intel and AT&T syntax is different.",
+  "sources": {
+    "reference": "https://cdrdv2-public.intel.com/671110/325383-sdm-vol-2abcd.pdf",
+    "context": "https://ctf-wiki.org/executable/elf/structure/basic-info/"
+  },
+  "relevance": "When decompiling missing types, restore the numerical interpretation used by comparisons from conditional jumps.",
+  "tags": [
+    "reverse"
+  ]
+}

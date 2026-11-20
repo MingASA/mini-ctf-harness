@@ -1,0 +1,22 @@
+{
+  "title": "It is possible to still have stack frames that can be expanded if the frame pointer is omitted.",
+  "summary": "With frame-pointer omission, registers such as RBP can be repurposed. An unwinder can reconstruct the call chain from call frame information.",
+  "applies": "Offline stack traceback, symbol matching and debugging information for native programs",
+  "detail": "When interpreting normal calls after compilation, the lack of a fixed frame pointer prologue to a function does not directly indicate that the traceback is broken.",
+  "boundary": "Omission strategies vary by target and function; tracebacks may also be incomplete in the absence of matching unwind information.",
+  "aliases": [
+    "omit-frame-pointer",
+    "RBP",
+    "frame chain",
+    "stack traceback"
+  ],
+  "relevance": "When diagnosing missing frames, priority is given to distinguishing between compilation strategies and insufficient log collection.",
+  "sources": {
+    "reference": "https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html#index-fomit-frame-pointer",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "pwn",
+    "reverse"
+  ]
+}

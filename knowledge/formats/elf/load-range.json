@@ -1,0 +1,23 @@
+{
+  "title": "PT_LOAD can have different lengths in file and memory",
+  "summary": "p_filesz of PT_LOAD is the part carried by the file, and p_memsz is the size in memory; when the latter is larger, the tail is padded with zeros.",
+  "applies": "ELF file; System V Common ABI",
+  "aliases": [
+    "PT_LOAD",
+    "p_filesz",
+    "p_memsz",
+    "virtual address",
+    "zero padding"
+  ],
+  "detail": "The intra-segment offset d is smaller than p_filesz, which corresponds to the file position p_offset+d. If p_filesz ≤ d < p_memsz, the address can still belong to the segment.",
+  "boundary": "For loadable segments, p_filesz must not be larger than p_memsz. The address mapping must also fall in the same segment.",
+  "sources": {
+    "reference": "https://gabi.xinuos.com/elf/07-pheader.html",
+    "context": "https://ctf-wiki.org/executable/elf/structure/basic-info/"
+  },
+  "relevance": "When restoring static addresses to the original file, determine why there are no readable file bytes at certain addresses.",
+  "tags": [
+    "reverse",
+    "misc"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "title": "DWARF's CFA is an unwind basis defined with instruction position",
+  "summary": "The Canonical Frame Address is the logical reference address used by the unwinder to restore the caller's state, calculated from the current register and offset.",
+  "applies": "Native program crash reporting and DWARF debugging metadata",
+  "detail": "Different CFA rules can apply to the prologue, body, and epilogue of the same function. Reading the stack snapshot for an instruction requires finding the rule covering that location.",
+  "boundary": "CFA is not another name for the RBP register, nor does it require that the current stack pointer remains unchanged throughout the function. See DWARF 5 §6.4.",
+  "aliases": [
+    "CFA",
+    "DW_CFA_def_cfa",
+    "canonical frame address",
+    "Expand rules"
+  ],
+  "relevance": "Explain why a build that does not preserve a fixed frame pointer still gives a trusted call chain.",
+  "sources": {
+    "reference": "https://dwarfstd.org/doc/DWARF5.pdf",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "pwn",
+    "reverse"
+  ]
+}

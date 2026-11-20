@@ -1,0 +1,21 @@
+{
+  "title": "Base64url changes the last two digits of the alphabet",
+  "summary": "The + and / of standard Base64 are written as - and _ respectively in Base64url, and the corresponding values are still 62 and 63.",
+  "applies": "RFC 4648; Base64 family encoding",
+  "aliases": [
+    "base64url",
+    "URL-safe",
+    "Alphabet variants"
+  ],
+  "detail": "The first 62 characters are identical in both encodings, and samples containing only these characters often make it impossible to distinguish the variants.",
+  "boundary": "Whether the equal sign padding is omitted is determined by the peripheral protocol, and the alphabet cannot be identified by the presence or absence of the equal sign.",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc4648.html#section-5",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "When comparing two encoding strings, locate whether the difference comes from the alphabet or the original data.",
+  "tags": [
+    "misc",
+    "crypto"
+  ]
+}

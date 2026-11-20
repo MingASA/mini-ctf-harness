@@ -1,0 +1,21 @@
+{
+  "title": "A cookie that omits Domain belongs only to the host that set it",
+  "summary": "The host-only cookie only matches the original host; the legal Domain attribute allows it to match the domain and subdomains.",
+  "applies": "Browser interpretation of URLs, cookies, and origins",
+  "detail": "For example, a cookie set by app.example.test with Domain omitted is not sent with a request to api.example.test.",
+  "boundary": "The sending of cookies is also affected by conditions such as Path, Secure, SameSite, etc.; the same host cannot guarantee sending based on this.",
+  "aliases": [
+    "host-only",
+    "Set-Cookie",
+    "Domain",
+    "Subdomain Cookie"
+  ],
+  "relevance": "Explain from the static request log why the browser saved the cookie but not sent it on another subdomain.",
+  "sources": {
+    "reference": "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "web"
+  ]
+}

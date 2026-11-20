@@ -1,0 +1,22 @@
+{
+  "title": "LR save link return location for AArch64",
+  "summary": "Standard calls use X30 as the link register. A leaf function can return directly through LR without saving the return address to memory.",
+  "applies": "AArch64; general call and register representation of AAPCS64",
+  "detail": "Before making nested calls, the function that needs to return must save its return position in some way.",
+  "boundary": "The specific preface is related to the deployment requirements and optimization strategies of the platform; whether there is a fixed frame record needs to be checked against the actual construction.",
+  "aliases": [
+    "X30",
+    "LR",
+    "link register",
+    "leaf function"
+  ],
+  "relevance": "Understand why the stack slot holding the LR may not be visible when reading the normal ARM call chain.",
+  "sources": {
+    "reference": "https://github.com/ARM-software/abi-aa/blob/main/aapcs64/aapcs64.rst",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "reverse",
+    "pwn"
+  ]
+}

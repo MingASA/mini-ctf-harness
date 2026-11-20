@@ -1,0 +1,21 @@
+{
+  "title": "Byte addition in GF(2^8) is bitwise XOR",
+  "summary": "When representing bytes as binary polynomial coefficients, addition and subtraction are both XORs, with no integer carry.",
+  "applies": "Finite field polynomials and sampling with errors",
+  "detail": "For example, 0x80+0x80 gets field element 0. The multiplication method also requires agreed irreducible polynomials.",
+  "boundary": "This is different from the integer ring Z/256Z, where addition carries as an integer and has non-zero zero factors.",
+  "aliases": [
+    "GF256",
+    "characteristic two",
+    "Binary field",
+    "field addition"
+  ],
+  "relevance": "Distinguish between the two semantics of the question: \"Bytes are used as field elements\" and \"The lower eight bits are retained after integer operations\".",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc5510.html#section-8.1",
+    "context": "https://cryptohack.org/courses/modular/"
+  },
+  "tags": [
+    "crypto"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "title": "Canonically equivalent Unicode text can have different bytes",
+  "summary": "Precomposed é and e followed by a combining acute accent compare equal after NFC normalization, but have different raw UTF-8 bytes.",
+  "applies": "Unicode text and JSON byte records",
+  "aliases": [
+    "NFC",
+    "NFD",
+    "combining mark",
+    "combined accent",
+    "Standardize",
+    "Hash value",
+    "Unicode normalization",
+    "é"
+  ],
+  "detail": "The former is C3 A9 and the latter is 65 CC 81. Hashing their raw bytes produces different digests.",
+  "boundary": "NFKC also handles compatibility equivalence; the original bytes are preserved before normalizing the evidence.",
+  "sources": {
+    "reference": "https://www.unicode.org/reports/tr15/",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "Determine why password prompts, file names, or text that appear to be identical do not compare equal.",
+  "tags": [
+    "misc",
+    "web"
+  ]
+}

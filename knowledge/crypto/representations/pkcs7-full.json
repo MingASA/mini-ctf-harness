@@ -1,0 +1,22 @@
+{
+  "title": "CMS byte padding will fill a complete packet",
+  "summary": "For block size k, append k − (length mod k) bytes, each set to that count. An already aligned length gets a full block of padding.",
+  "applies": "Byte representation and parameter explanation of cryptography questions",
+  "aliases": [
+    "PKCS7",
+    "PKCS#7",
+    "CMS padding",
+    "Whole block filling"
+  ],
+  "detail": "When the block length is 16 and the original text length is 16, 16 0x10s are added. When depadding, each padding byte at the end should be equal to the padding length.",
+  "boundary": "This is a scheme specified by CMS/PKCS#7; records with zero padding or no padding cannot be directly interpreted accordingly.",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc5652.html#section-6.3",
+    "context": "https://cryptohack.org/courses/symmetric/"
+  },
+  "relevance": "When there is a whole block of repeated values at the end after decoding, distinguish between normal padding and attachment content.",
+  "tags": [
+    "crypto",
+    "misc"
+  ]
+}

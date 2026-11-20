@@ -1,0 +1,22 @@
+{
+  "title": "RSA mapping of integers to fixed-length octet strings",
+  "summary": "OS2IP reads a big-endian octet string as a nonnegative integer. I2OSP emits the requested number of octets, with leading zero bytes as needed.",
+  "applies": "Byte representation and parameter explanation of cryptography questions",
+  "aliases": [
+    "OS2IP",
+    "I2OSP",
+    "RSA leading zero",
+    "Big endian zero padding"
+  ],
+  "detail": "00 01 and 01 are both integers 1 via OS2IP; only I2OSP(1,2) will restore 00 01.",
+  "boundary": "Converting to an integer will lose the original length; if the integer does not fit into the given width, I2OSP will report an error.",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc8017.html#section-4",
+    "context": "https://cryptohack.org/courses/symmetric/"
+  },
+  "relevance": "When comparing the same record in integer form and hexadecimal form, the byte width corresponding to the modulus is preserved.",
+  "tags": [
+    "crypto",
+    "misc"
+  ]
+}

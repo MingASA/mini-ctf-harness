@@ -1,0 +1,21 @@
+{
+  "title": "When checking the tar header, the check field is temporarily treated as a space.",
+  "summary": "The chksum of ustar is the unsigned byte sum of the entire 512-byte header, and the eight bytes of the field itself are treated as spaces when calculating.",
+  "applies": "POSIX ustar and pax archives",
+  "aliases": [
+    "tar checksum",
+    "chksum",
+    "Octal check",
+    "ustar header"
+  ],
+  "detail": "If you directly add the octal checksum text stored in the header to the sum, you will get different results.",
+  "boundary": "This verification only covers the header and cannot verify whether the actual data of the member is intact.",
+  "sources": {
+    "reference": "https://pubs.opengroup.org/onlinepubs/9699919799/utilities/pax.html",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "Distinguish between incorrect use of header verification algorithm and actual file data corruption.",
+  "tags": [
+    "misc"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "title": "SQLite column affinity changes conversion on both sides of equal sign",
+  "summary": "Column affinity affects conversion before comparison. Comparing two literals can give a different result from comparing the same values in a column.",
+  "applies": "SQLite query results and crossing dialect boundaries",
+  "detail": "After writing 42 to the ordinary table t(x TEXT), x=42 can be true; the independent expression '42'=42 can be false.",
+  "boundary": "Storage classes, column affinities, and expression affinities should be distinguished, and strict tables cannot eliminate all expression differences.",
+  "aliases": [
+    "affinity",
+    "typeof",
+    "SQLite type affinity",
+    "text comparison"
+  ],
+  "relevance": "Explains why the same displayed value can produce different results in different query expressions.",
+  "sources": {
+    "reference": "https://www.sqlite.org/datatype3.html#type_conversions_prior_to_comparison",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "web",
+    "misc"
+  ]
+}

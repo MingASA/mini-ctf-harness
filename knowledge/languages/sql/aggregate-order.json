@@ -1,0 +1,22 @@
+{
+  "title": "The input order of string aggregations needs to be specified explicitly",
+  "summary": "When SQLite does not specify internal ordering of aggregates, the input order of group_concat is not guaranteed.",
+  "applies": "SQLite query results and crossing dialect boundaries",
+  "detail": "In versions that support ORDER BY within aggregates, specifying a sort on the aggregate inputs determines the splicing order. The outer ORDER BY primarily sorts the result rows.",
+  "boundary": "ORDER BY within aggregate parameters is available since SQLite 3.44.0, older versions do not assume acceptance of this syntax.",
+  "aliases": [
+    "group_concat",
+    "string_agg",
+    "aggregation order",
+    "Splicing order"
+  ],
+  "relevance": "Distinguish data changes and unspecified order when reconstructing the same string of spliced text multiple times.",
+  "sources": {
+    "reference": "https://www.sqlite.org/lang_aggfunc.html",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "web",
+    "misc"
+  ]
+}

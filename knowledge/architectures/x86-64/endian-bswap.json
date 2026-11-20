@@ -1,0 +1,21 @@
+{
+  "title": "BSWAP flips the byte order but does not flip the bits within the byte",
+  "summary": "BSWAPing the 32-bit value 0x12345678 results in 0x78563412.",
+  "applies": "64-bit mode for x86-64; Intel SDM Volume 1 and Volume 2",
+  "aliases": [
+    "BSWAP",
+    "byte swap",
+    "Byte flip",
+    "bit reverse order"
+  ],
+  "detail": "Memory dumps shown as little-endian bytes and register hexadecimal printouts are often in reverse order, so the comparison object should be clarified first.",
+  "boundary": "The bit reverse order of a single byte is another operation. For example, the eight-bit reverse order of 0x01 is 0x80.",
+  "sources": {
+    "reference": "https://cdrdv2-public.intel.com/671110/325383-sdm-vol-2abcd.pdf",
+    "context": "https://ctf-wiki.org/executable/elf/structure/basic-info/"
+  },
+  "relevance": "Determine whether the transformation in the buffer changes the byte order or the bit order of each byte.",
+  "tags": [
+    "reverse"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "title": "A DTMF key corresponds to both a low group and a high group frequency.",
+  "summary": "Standard row frequencies are 697, 770, 852, 941 Hz, and column frequencies are 1209, 1336, 1477, 1633 Hz. The keys arranged by row are 123A, 456B, 789C, *0#D.",
+  "applies": "DTMF Telephone dual tone; frequency unit Hz",
+  "detail": "For example, 770 and 1336 Hz appear simultaneously in a signal, corresponding to the second row and second column, that is, 5.",
+  "boundary": "The silence between keys does not represent the number 0. Keys cannot be uniquely located within the same row or column using a single strongest frequency.",
+  "aliases": [
+    "DTMF",
+    "dual tone",
+    "phone buttons",
+    "dual audio",
+    "dial tone"
+  ],
+  "relevance": "Keystroke sequences are interpreted from pairs of peaks in the WAV spectrum, rather than reading each peak as a number.",
+  "sources": {
+    "reference": "https://www.ti.com/lit/an/spra082/spra082.pdf",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "misc"
+  ]
+}

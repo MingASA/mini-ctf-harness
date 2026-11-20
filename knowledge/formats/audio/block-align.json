@@ -1,0 +1,21 @@
+{
+  "title": "PCM's nBlockAlign is the number of bytes of all channels in a frame",
+  "summary": "nBlockAlign for regular integer PCM = number of channels × bytes per sample container.",
+  "applies": "PCM audio in RIFF/WAVE",
+  "aliases": [
+    "nBlockAlign",
+    "interleaved",
+    "Stereo",
+    "audio frame size"
+  ],
+  "detail": "A 16-bit two-channel frame occupies 4 bytes; multiply the per-channel sample rate by the frame size to get bytes per second.",
+  "boundary": "When there is compression encoding, the interpretation of block align varies depending on the encoding and decoding format; the effective number of bits may also be smaller than the number of container bits.",
+  "sources": {
+    "reference": "https://learn.microsoft.com/en-us/windows/win32/api/mmreg/ns-mmreg-waveformatex",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "When splitting stereo samples into left and right channels, avoid mistaking two consecutive samples as adjacent moments of the same channel.",
+  "tags": [
+    "misc"
+  ]
+}

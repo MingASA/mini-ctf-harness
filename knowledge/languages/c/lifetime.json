@@ -1,0 +1,23 @@
+{
+  "title": "Allocation address reuse does not restore the old object's lifetime",
+  "summary": "After deallocation, another allocation creates a new object even at the same address. Views of the old allocation need a separate validity check.",
+  "applies": "C11; Offline memory diagnostics and object representation",
+  "detail": "When reviewing the tracking log, record the allocation event together with the address as the object identifier; the subview inherits the ownership of the parent view. C11 §6.2.4 and §7.22.3 define objects and allocate storage periods.",
+  "boundary": "The generation number in the log is tracker metadata; plain C pointers themselves don't carry it.",
+  "aliases": [
+    "object lifetime",
+    "generation",
+    "intergenerational",
+    "Address reuse",
+    "suspended view"
+  ],
+  "relevance": "Distinguish between \"the numerical address is still in a piece of live memory\" and \"this access belongs to the original object\".",
+  "sources": {
+    "reference": "https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "pwn",
+    "reverse"
+  ]
+}

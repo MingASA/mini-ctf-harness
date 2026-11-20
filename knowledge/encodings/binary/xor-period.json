@@ -1,0 +1,22 @@
+{
+  "title": "Periodic XOR inverse transform uses the same key bytes and the same phase",
+  "summary": "If y[i] = x[i] XOR key[i mod k], XOR keys with the same phase byte by byte again to restore x[i].",
+  "applies": "Byte-by-byte reversible bit transformation",
+  "detail": "If the intercepted sample starts at offset j from the original sequence, the first sample uses key[j mod k]. Merely knowing the key length cannot determine the phase of the interception point.",
+  "boundary": "This conclusion is for a given byte transformation; status feedback or variable-length encoding will change the index relationship.",
+  "aliases": [
+    "XOR",
+    "periodic key",
+    "Loop XOR",
+    "Phase"
+  ],
+  "relevance": "When reviewing explicit transformations of byte validators, avoid erroneously counting from the beginning of the key after taking a substring.",
+  "sources": {
+    "reference": "https://docs.python.org/3/library/stdtypes.html#bitwise-operations-on-integer-types",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "reverse",
+    "crypto"
+  ]
+}

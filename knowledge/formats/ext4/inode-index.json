@@ -1,0 +1,21 @@
+{
+  "title": "The ext4 inode number starts from 1 and the position within the group starts from 0",
+  "summary": "If there are N inodes in each group, the number ino belongs to group (ino−1)//N, and the index within the group is (ino−1)%N.",
+  "applies": "ext4 file system image; Linux kernel format document",
+  "detail": "The index multiplied by s_inode_size is the byte offset within the corresponding inode table; the inode table location is obtained from the group descriptor.",
+  "boundary": "Inode table layout is affected by file system characteristics, and it cannot be directly assumed that each group places its own table at the same relative block number.",
+  "aliases": [
+    "inode table",
+    "block group",
+    "inode number",
+    "Index within group"
+  ],
+  "relevance": "Avoid misalignment of the entire group when locating inodes just on group boundaries.",
+  "sources": {
+    "reference": "https://www.kernel.org/doc/html/latest/filesystems/ext4/inodes.html",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "misc"
+  ]
+}

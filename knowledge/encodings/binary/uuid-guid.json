@@ -1,0 +1,22 @@
+{
+  "title": "Field order of GUID byte arrays and canonical UUID text",
+  "summary": "The first 4, 2, and 2-byte fields of a traditional Windows COM GUID can be stored in little-endian order, and the last 8 bytes are retained in order.",
+  "applies": "Binary encoding; file and value dumps",
+  "aliases": [
+    "UUID",
+    "GUID",
+    "bytes_le",
+    "Mixed endianness"
+  ],
+  "detail": "The first eight bytes of bytes_le of text 00112233-4455-6677-8899-aabbccddeeff are 33 22 11 00 55 44 77 66.",
+  "boundary": "The network byte order of RFC UUID is another convention; reversing the entire string will not get the above GUID layout.",
+  "sources": {
+    "reference": "https://docs.python.org/3/library/uuid.html#uuid.UUID.bytes_le",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "Corresponds the identifier in the binary metadata to the UUID string in the log.",
+  "tags": [
+    "reverse",
+    "misc"
+  ]
+}

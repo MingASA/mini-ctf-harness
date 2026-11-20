@@ -1,0 +1,21 @@
+{
+  "title": "0 and 1 in SQLite records can be directly represented by type codes",
+  "summary": "Serial types 8 and 9 represent the integer constants 0 and 1, respectively. Both take zero payload bytes.",
+  "applies": "SQLite 3 master database and WAL files",
+  "aliases": [
+    "serial type",
+    "record header",
+    "zero byte",
+    "zero byte integer"
+  ],
+  "detail": "The value is determined by the type code of the record header. The data for subsequent columns follows the previous value that actually occupies space.",
+  "boundary": "Sequence type 0 also consumes zero bytes but represents NULL. 8 and 9 are suitable for database schema format 4.",
+  "sources": {
+    "reference": "https://www.sqlite.org/fileformat.html#record_format",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "When checking the offset of each column of a record, avoid reserving bytes for constants that occupy zero space.",
+  "tags": [
+    "misc"
+  ]
+}

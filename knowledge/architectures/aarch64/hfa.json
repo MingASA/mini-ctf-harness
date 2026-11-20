@@ -1,0 +1,22 @@
+{
+  "title": "AAPCS64 homogeneous floating point aggregates passable via vector registers",
+  "summary": "An HFA has at most four elements and can be passed in multiple floating-point registers when enough are available.",
+  "applies": "AArch64; general call and register representation of AAPCS64",
+  "detail": "A structure composed of three floats can correspond to three consecutive S registers. You cannot judge the structure content by just looking at one X register.",
+  "boundary": "Mixing in integer members generally no longer satisfies the HFA; insufficient parameter registers change the pass location.",
+  "aliases": [
+    "HFA",
+    "homogeneous floating",
+    "floating point aggregation",
+    "S register"
+  ],
+  "relevance": "Identify whether multiple floating point inputs in disassembly come from a source-level structure parameter.",
+  "sources": {
+    "reference": "https://github.com/ARM-software/abi-aa/blob/main/aapcs64/aapcs64.rst",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "reverse",
+    "pwn"
+  ]
+}

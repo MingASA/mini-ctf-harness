@@ -1,0 +1,21 @@
+{
+  "title": "ZIP data descriptor with local header zero length",
+  "summary": "General flag bit 3 indicates that the CRC and size can be given in the data descriptor after the file data.",
+  "applies": "Single volume ZIP; PKWARE APPNOTE",
+  "aliases": [
+    "data descriptor",
+    "bit 3",
+    "local head",
+    "zero length"
+  ],
+  "detail": "When the local header has zero length, the member record can be determined based on the judgment of the corresponding member in the central directory and bit 3.",
+  "boundary": "The descriptor signature 0x08074b50 is optional and the delimitation cannot be determined by this byte string alone.",
+  "sources": {
+    "reference": "https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "Distinguish between a truly empty file and a non-null member that is streamed.",
+  "tags": [
+    "misc"
+  ]
+}

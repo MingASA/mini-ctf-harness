@@ -1,0 +1,21 @@
+{
+  "title": "A DNS TXT record can contain multiple count strings",
+  "summary": "The RDATA of TXT can be composed of multiple character-strings, and the first byte of each segment gives the length of this segment.",
+  "applies": "Offline DNS message byte parsing",
+  "aliases": [
+    "TXT RDATA",
+    "character-string",
+    "segmented text",
+    "length prefix"
+  ],
+  "detail": "Two paragraphs of text in one record are not equal to two independent responses; the original data can be restored by skipping the length bytes one by one.",
+  "boundary": "How to splice segments between segments is agreed upon by the upper layer at the application layer, and the protocol does not automatically insert spaces or newlines.",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc1035.html#section-3.3.14",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "When restoring text from offline DNS records, avoid mixing length bytes or display spaces into the content.",
+  "tags": [
+    "misc"
+  ]
+}

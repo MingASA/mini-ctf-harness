@@ -1,0 +1,23 @@
+{
+  "title": "Location can be a relative reference and should be resolved relative to the current request URI",
+  "summary": "When reconstructing a redirect chain, resolve each Location against the request URI that produced that response.",
+  "applies": "Offline HTTP transactions and partial response logging",
+  "detail": "The same ../done will be resolved to different locations when returned by /a/b/start and /x/start. Successful responses to other requests do not automatically belong to this chain.",
+  "boundary": "Location describes the suggested jump location; whether it actually follows needs to be proven by the next request record.",
+  "aliases": [
+    "Location",
+    "302",
+    "redirect",
+    "jump chain",
+    "relative redirect"
+  ],
+  "relevance": "Attribute multiple interleaved jumps and their receipts in HAR to the correct requests respectively.",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc9110.html#section-10.2.2",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "web",
+    "misc"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "title": "The same source code line can correspond to multiple instruction ranges and identification numbers.",
+  "summary": "The DWARF line number program records the mapping of addresses to source locations; the discriminator is used to distinguish multiple code blocks at the same source code location.",
+  "applies": "Native program crash reporting and DWARF debugging metadata",
+  "detail": "A certain source code line can contain branches or inline expansions, and the same file and line numbers are allowed to appear repeatedly on multiple machine addresses.",
+  "boundary": "Only the line number cannot uniquely restore a certain machine instruction, nor can all events with the same line number be directly counted as one execution. See DWARF 5 §6.2.",
+  "aliases": [
+    "discriminator",
+    "line table",
+    "Line number table",
+    "source line"
+  ],
+  "relevance": "Avoid mistaking different basic blocks for the same location when merging profiling or crash records.",
+  "sources": {
+    "reference": "https://dwarfstd.org/doc/DWARF5.pdf",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "pwn",
+    "reverse"
+  ]
+}

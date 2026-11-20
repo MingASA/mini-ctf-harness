@@ -1,0 +1,22 @@
+{
+  "title": "MINIDUMP's Memory64 data is stored continuously in descriptor order.",
+  "summary": "BaseRva of MINIDUMP_MEMORY64_LIST points to the first raw bytes. The positions of subsequent segments are accumulated from the DataSize of previous segments.",
+  "applies": "Windows MINIDUMP; static interpretation of acquired dump",
+  "detail": "Each descriptor also records the runtime starting address; to locate a byte in this range, its offset relative to the beginning of the segment is also added.",
+  "boundary": "Virtual address ranges may not be contiguous with each other. Do not regard the difference between adjacent virtual addresses directly as the interval between two segments in the file.",
+  "aliases": [
+    "Memory64List",
+    "BaseRva",
+    "DataSize",
+    "memory dump"
+  ],
+  "relevance": "Map a memory range in the dump to real file bytes.",
+  "sources": {
+    "reference": "https://learn.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_memory64_list",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "misc",
+    "pwn"
+  ]
+}

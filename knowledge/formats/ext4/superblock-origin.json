@@ -1,0 +1,22 @@
+{
+  "title": "The primary ext4 superblock is relative to the filesystem start",
+  "summary": "The primary superblock is 1,024 bytes from the start of the filesystem. In a partitioned image, add the starting byte offset of the partition.",
+  "applies": "ext4 filesystem images and the Linux kernel format documentation",
+  "detail": "The magic number field is located inside the superblock at offset 0x38, and the integer 0xef53 is stored in little-endian byte 53 ef.",
+  "boundary": "Backup superblocks follow a separate layout. An arbitrary two-byte match is insufficient evidence of a valid filesystem.",
+  "aliases": [
+    "ext4",
+    "superblock",
+    "0xef53",
+    "Partition starting point",
+    "super block"
+  ],
+  "relevance": "Explains why the header is visible at a fixed offset in a partition image but absent at that same offset in the full disk image.",
+  "sources": {
+    "reference": "https://www.kernel.org/doc/html/latest/filesystems/ext4/super.html",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "misc"
+  ]
+}

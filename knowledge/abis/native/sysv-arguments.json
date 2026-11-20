@@ -1,0 +1,23 @@
+{
+  "title": "System V AMD64 allocates integer class and SSE class parameters separately",
+  "summary": "For ordinary scalar calls with sufficient registers, integer class parameters and SSE class parameters use their own register sequences independently.",
+  "applies": "64-bit native ABI; interprets types and calls based on build target",
+  "detail": "For example, the parameters of void f(int,double,int) are in EDI, XMM0, and ESI in sequence. Floating point parameters do not consume an integer parameter slot.",
+  "boundary": "Aggregates must be sorted first; fallback and stack transfer rules must be followed when there are insufficient registers.",
+  "aliases": [
+    "SysV AMD64",
+    "System V ABI",
+    "EDI",
+    "XMM0",
+    "parameter register"
+  ],
+  "relevance": "Explain why Linux and Windows debug snapshots of the same prototype cannot be read from the same set of slots.",
+  "sources": {
+    "reference": "https://gitlab.com/x86-psABIs/x86-64-ABI/-/jobs/artifacts/master/raw/x86-64-ABI/abi.pdf?job=build",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "pwn",
+    "reverse"
+  ]
+}

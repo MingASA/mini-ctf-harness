@@ -1,0 +1,22 @@
+{
+  "title": "PE’s certificate table directory uses file offset",
+  "summary": "The attribute certificate table is not loaded as a regular image section, and the address field of the Security Directory represents the file location.",
+  "applies": "PE32/PE32+; Windows image file",
+  "detail": "This offset and size can be checked directly in the original file range when parsing the certificate table; mapping it again by RVA would be off target.",
+  "boundary": "This is a directory-specific exception, and the address of an import table or export table cannot be interpreted as a file offset accordingly.",
+  "aliases": [
+    "IMAGE_DIRECTORY_ENTRY_SECURITY",
+    "certificate table",
+    "Certificate form",
+    "file location"
+  ],
+  "relevance": "Determine whether the signature data still belongs to the legal file content when it is located after the last section.",
+  "sources": {
+    "reference": "https://learn.microsoft.com/en-us/windows/win32/debug/pe-format",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "reverse",
+    "misc"
+  ]
+}

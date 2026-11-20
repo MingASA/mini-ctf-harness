@@ -1,0 +1,22 @@
+{
+  "title": "DER INTEGER represents a positive number that may have a leading 00",
+  "summary": "ASN.1 INTEGER uses signed two’s complement. A positive integer whose most significant bit is 1 needs a leading zero byte.",
+  "applies": "Byte representation and parameter explanation of cryptography questions",
+  "aliases": [
+    "DER INTEGER",
+    "ASN.1",
+    "symbol byte",
+    "Leading 00"
+  ],
+  "detail": "The INTEGER content of the positive number 128 is 00 80; after removing 00, 80 is used as a one-byte INTEGER to represent a negative number.",
+  "boundary": "This is the content encoding of the type, and the first byte 00 cannot be regarded as the actual extra significant digits of the integer.",
+  "sources": {
+    "reference": "https://www.itu.int/rec/dologin_pub.asp?id=T-REC-X.690-202102-I%21%21PDF-E&lang=e&type=items",
+    "context": "https://cryptohack.org/courses/symmetric/"
+  },
+  "relevance": "Check why the public key parameter differs by one byte from the original unsigned integer dump.",
+  "tags": [
+    "crypto",
+    "misc"
+  ]
+}

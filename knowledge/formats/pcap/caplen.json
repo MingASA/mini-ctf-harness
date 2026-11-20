@@ -1,0 +1,22 @@
+{
+  "title": "The capture length of pcap and the original packet length can be different",
+  "summary": "The caplen field gives the number of captured bytes that follow. The original length can include bytes omitted due to capture limits.",
+  "applies": "Legacy libpcap format; single interface capture",
+  "aliases": [
+    "incl_len",
+    "orig_len",
+    "snaplen",
+    "intercept packet",
+    "captured length"
+  ],
+  "detail": "When incl_len is 64 and orig_len is 1514, only 64 bytes must be spanned from this data area to the next record.",
+  "boundary": "There is no way to tell about data corruption on the line just from the missing trailer, nor can you recover the uncaught bytes from the length field.",
+  "sources": {
+    "reference": "https://man7.org/linux/man-pages/man5/pcap-savefile.5.html",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "Troubleshoot the problem of missing end of the payload and misreading of the next header.",
+  "tags": [
+    "misc"
+  ]
+}

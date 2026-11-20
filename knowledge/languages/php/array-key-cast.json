@@ -1,0 +1,22 @@
+{
+  "title": "decimal string key for array",
+  "summary": "Legal decimal integer string keys can be converted to integer keys, leading plus signs or non-canonical leading zeros will change the result.",
+  "applies": "Data handling for PHP 7.4 and 8.x",
+  "aliases": [
+    "array key",
+    "leading zero",
+    "array key",
+    "Leading zeros"
+  ],
+  "detail": "The string key \"8\" and the integer key 8 share the slot, and the value assigned later overwrites the previous value; \"08\" and \"+8\" are each retained as a string key.",
+  "boundary": "Decimal strings outside the native integer range are not treated as representable integer keys according to the same rules.",
+  "sources": {
+    "reference": "https://www.php.net/manual/en/language.types.array.php",
+    "context": "https://ctf-wiki.org/web/php/php/"
+  },
+  "relevance": "Explain why the map generated from the text is missing one item, or retains two seemingly identical numbers.",
+  "tags": [
+    "web",
+    "reverse"
+  ]
+}

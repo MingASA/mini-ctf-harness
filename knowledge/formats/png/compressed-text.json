@@ -1,0 +1,21 @@
+{
+  "title": "PNG zTXt stores keywords and compressed text separately",
+  "summary": "The zTXt data is keywords, zero-separated, compression method bytes, and compressed text. The text portion of method 0 is a zlib stream.",
+  "applies": "PNG text attachment block",
+  "detail": "Keywords are not compressed. Determine zero separation and method before decompressing subsequent data; text is interpreted as Latin-1.",
+  "boundary": "iTXt is another structure that also contains language tags, translation keywords, and UTF-8 text; the same set of offsets cannot be reused.",
+  "aliases": [
+    "zTXt",
+    "PNG metadata",
+    "Compress text",
+    "keywords"
+  ],
+  "relevance": "When viewing attachment metadata, avoid handing keywords and method bytes to the decompressor.",
+  "sources": {
+    "reference": "https://www.w3.org/TR/png-3/#11zTXt",
+    "context": "https://ctf-wiki.org/misc/picture/png/"
+  },
+  "tags": [
+    "misc"
+  ]
+}

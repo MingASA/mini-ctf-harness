@@ -1,0 +1,25 @@
+{
+  "title": "JavaScript string length in UTF-16 units",
+  "summary": "Supplementary-plane characters typically take two UTF-16 code units. For example, \"😀\".length is 2.",
+  "applies": "ECMAScript; Number, BigInt, and Strings",
+  "aliases": [
+    "charCodeAt",
+    "codePointAt",
+    "surrogate",
+    "surrogate pair",
+    "emoji",
+    "UTF-16",
+    "String.length"
+  ],
+  "detail": "charCodeAt(0) gives only the high surrogate; codePointAt(0) returns the full code point for the character.",
+  "boundary": "A grapheme cluster can be composed of multiple code points; traversing by code point is not guaranteed to equal the number of characters on the screen.",
+  "sources": {
+    "reference": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/length",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "When mapping indices exported by the browser back into the original text, account for the extra code unit used by supplementary-plane characters.",
+  "tags": [
+    "reverse",
+    "web"
+  ]
+}

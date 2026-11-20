@@ -1,0 +1,22 @@
+{
+  "title": "SHA-224 uses independent initialization",
+  "summary": "SHA-224 uses the same family of compression operations as SHA-256 and a different initial hash value.",
+  "applies": "Byte representation and parameter explanation of cryptography questions",
+  "aliases": [
+    "SHA-224",
+    "SHA224",
+    "truncated digest",
+    "Summary truncation"
+  ],
+  "detail": "Trimming the hex output of SHA-256 to 56 characters usually does not result in SHA-224. Algorithm identification and truncation conventions should be checked.",
+  "boundary": "The 28-byte output length may also result from other digests or explicit truncation, and the algorithm cannot be determined from the length alone.",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc3874.html#section-2",
+    "context": "https://cryptohack.org/courses/symmetric/"
+  },
+  "relevance": "Explains cases where records marked 224-bit and truncated by SHA-256 still fail to match.",
+  "tags": [
+    "crypto",
+    "misc"
+  ]
+}

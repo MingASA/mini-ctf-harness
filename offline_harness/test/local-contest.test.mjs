@@ -10,3 +10,9 @@ test('interactive queue retries locally twice then continues other tasks without
 test('terminal restart requeues an interrupted running session only when local recovery is enabled',async t=>{
  const f=fixture(t);let c=new Contest(f.cfg,f.options);await c.add({id:'broken',objective:'Synthetic interruption'});c.queue.take();await c.close();c=new Contest(f.cfg,f.options);try{assert.equal(c.status('broken'),'ready_resume');assert.equal(c.session('broken').store.events.filter(e=>e.type==='local_session_recovery').length,1);}finally{await c.close();}
 });
+test('attachment imports ignore legacy byte caps but retain file count caps',async t=>{
+ const f=fixture(t),source=path.join(f.root,'attachment.txt');fs.writeFileSync(source,'more than one byte');
+ const c=new Contest({...f.cfg,importLimits:{maxBytes:1,maxFiles:1}},f.options);
+ try{await c.add({id:'imported',objective:'Import fixture',attachmentDir:source});assert.equal(c.records.get('imported').attachments.length,1);}
+ finally{await c.close();}
+});

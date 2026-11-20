@@ -1,0 +1,20 @@
+{
+  "title": "The pixel value of the index color is the palette number",
+  "summary": "Color type 3 samples are indexed into the PLTE, and each entry is three 8-bit RGB components.",
+  "applies": "PNG specification; stand-alone PNG image",
+  "aliases": [
+    "PLTE",
+    "indexed color",
+    "palette index"
+  ],
+  "detail": "Low bit depth images will pack multiple indices into a single byte, unpacking first and then looking up the color.",
+  "boundary": "Table item colors do not have to be unique. The same display color cannot uniquely deduce the original index.",
+  "sources": {
+    "reference": "https://www.w3.org/TR/png-3/#11PLTE",
+    "context": "https://ctf-wiki.org/misc/picture/png/"
+  },
+  "relevance": "When analyzing two identical looking images, be able to differentiate between index data changes and palette changes.",
+  "tags": [
+    "misc"
+  ]
+}

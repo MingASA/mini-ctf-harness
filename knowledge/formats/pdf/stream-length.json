@@ -1,0 +1,21 @@
+{
+  "title": "The Length of the PDF stream refers to the number of bytes of the encoded data",
+  "summary": "The Length field defines the stream data carried in the file, and the length may change after applying Filter decoding.",
+  "applies": "PDF 1.7; ISO 32000-1 Chapter 7",
+  "aliases": [
+    "endstream",
+    "FlateDecode",
+    "stream length",
+    "indirect length"
+  ],
+  "detail": "Lengths may be given via indirect objects; newlines and stream/endstream keywords should not be fully included in the data.",
+  "boundary": "Endstream byte strings may happen to appear in compressed data, and simply searching for keywords is not a reliable binary boundary.",
+  "sources": {
+    "reference": "https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/PDF32000_2008.pdf",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "Distinguish between compressed length and decoded length when extracting images or text streams from documents.",
+  "tags": [
+    "misc"
+  ]
+}

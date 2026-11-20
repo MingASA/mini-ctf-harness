@@ -1,0 +1,22 @@
+{
+  "title": "White space and nibbles in bytes.fromhex",
+  "summary": "Each output byte requires a pair of hexadecimal digits; starting with Python 3.7, all ASCII whitespace is skipped between bytes.",
+  "applies": "Python 3; standard library or built-in integers",
+  "aliases": [
+    "bytes.fromhex",
+    "non-hexadecimal",
+    "hexadecimal blank",
+    "nibble"
+  ],
+  "detail": "41 followed by a newline and then 42 solves AB; only the end of a digit cannot form a new byte.",
+  "boundary": "Delimiter colons, 0x prefixes, and spaces between nibbles are not considered interbyte spaces.",
+  "sources": {
+    "reference": "https://docs.python.org/3/library/stdtypes.html#bytes.fromhex",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "Distinguish between delimiters and real data in hex export text.",
+  "tags": [
+    "reverse",
+    "misc"
+  ]
+}

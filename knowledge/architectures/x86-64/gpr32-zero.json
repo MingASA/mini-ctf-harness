@@ -1,0 +1,21 @@
+{
+  "title": "A 32-bit write to a general-purpose register clears the upper half",
+  "summary": "Writing EAX clears the upper 32 bits of RAX. Writing AX or AL leaves higher bits unchanged.",
+  "applies": "64-bit mode for x86-64; Intel SDM Volume 1 and Volume 2",
+  "aliases": [
+    "EAX",
+    "RAX",
+    "partial register",
+    "Clear high bit"
+  ],
+  "detail": "If RAX is originally all 1, RAX will be 1 after executing mov eax,1; after executing mov ax,1 with the same initial value, RAX will be ffffffffffff0001.",
+  "boundary": "This rule specifies integer general-purpose register destination operands; the analogy does not apply to all vector register writes.",
+  "sources": {
+    "reference": "https://cdrdv2-public.intel.com/843827/253665-sdm-vol-1-dec-24.pdf",
+    "context": "https://ctf-wiki.org/executable/elf/structure/basic-info/"
+  },
+  "relevance": "When reconstructing a register snapshot, distinguish between zero extension and partial coverage after narrow writes.",
+  "tags": [
+    "reverse"
+  ]
+}

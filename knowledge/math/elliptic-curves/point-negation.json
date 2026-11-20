@@ -1,0 +1,21 @@
+{
+  "title": "Point inverse of short Weierstrass curve",
+  "summary": "The negative point of P=(x,y) on the prime field is (x,−y mod p), and the point at infinity is the additive identity element.",
+  "applies": "Nonsingular short Weierstrass curves over primes; characteristic > 3",
+  "detail": "For example, when p=17 and y=1, the ordinate of the negative point is 16. Adding P and −P gives us the point at infinity.",
+  "boundary": "When y=0, the non-infinity point can be equal to its own negative point, and the doubled point is the infinity point. Different curve models have different coordinate formulas.",
+  "aliases": [
+    "elliptic curve",
+    "point negation",
+    "point at infinity",
+    "Opposite point"
+  ],
+  "relevance": "When there are two candidates for processing the ordinate, identify their relationship in the point group.",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc6090.html#section-3",
+    "context": "https://cryptohack.org/courses/elliptic/"
+  },
+  "tags": [
+    "crypto"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "title": "strict parameter of base64_decode",
+  "summary": "When strict is turned off, invalid letters may be discarded; when turned on, input containing characters outside the alphabet may return false.",
+  "applies": "Data handling for PHP 7.4 and 8.x",
+  "aliases": [
+    "base64_decode",
+    "strict",
+    "Invalid character",
+    "Relaxed decoding"
+  ],
+  "detail": "Taking SGV!sbG8= as an example, the relaxed mode still solves Hello, but the strict mode reports failure.",
+  "boundary": "The return value of strict may also be a legal empty string. If the check fails, the empty string should be distinguished from false.",
+  "sources": {
+    "reference": "https://www.php.net/manual/en/function.base64-decode.php",
+    "context": "https://ctf-wiki.org/web/php/php/"
+  },
+  "relevance": "Distinguish between attachments that really contain exclamation marks and decoders that silently ignore exclamation marks.",
+  "tags": [
+    "web",
+    "reverse"
+  ]
+}

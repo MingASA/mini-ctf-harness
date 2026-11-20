@@ -1,0 +1,20 @@
+{
+  "title": "The TCP acknowledgment number is the next expected sequence number",
+  "summary": "A cumulative ACK of X acknowledges all sequence numbers before X as received in order. It does not acknowledge X itself.",
+  "applies": "Packet capture and reconstruction; TCP sequence space",
+  "aliases": [
+    "cumulative ACK",
+    "What to look forward to next",
+    "receive boundary"
+  ],
+  "detail": "Do not compare absolute sequence numbers across directions to infer order. Each direction has its own sequence space.",
+  "boundary": "Delayed ACKs and retransmissions mean segments and ACKs need not correspond one to one.",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc9293.html#section-3.4",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "Explain situations where the same ACK appears repeatedly in the packet capture timeline or when an ACK spans multiple segments at a time.",
+  "tags": [
+    "misc"
+  ]
+}

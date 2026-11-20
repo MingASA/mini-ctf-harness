@@ -1,0 +1,24 @@
+{
+  "title": "The width of the bit rotation determines which bits are wrapped",
+  "summary": "Circularly shift 0x81 to the left by one bit according to the eight-bit width to get 0x03; after ordinary left shift truncation, only 0x02 is obtained.",
+  "applies": "64-bit mode for x86-64; Intel SDM Volume 1 and Volume 2",
+  "aliases": [
+    "ROL",
+    "ROR",
+    "rotate left",
+    "circular shift",
+    "Rewind",
+    "High level rolls back to low level",
+    "Shift left bitwise"
+  ],
+  "detail": "ROL/ROR moves the moved bits back to the other end. If the same initial value is circularly shifted to the left by 32 bits, 0x00000102 is obtained.",
+  "boundary": "RCL/RCR also incorporates the carry flag into the rotation and cannot be directly replaced by the result of ROL/ROR.",
+  "sources": {
+    "reference": "https://cdrdv2-public.intel.com/671110/325383-sdm-vol-2abcd.pdf",
+    "context": "https://ctf-wiki.org/executable/elf/structure/basic-info/"
+  },
+  "relevance": "Avoid using native integer width rotations when recalculating byte-wise encoding transformations.",
+  "tags": [
+    "reverse"
+  ]
+}

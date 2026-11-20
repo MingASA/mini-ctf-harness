@@ -1,0 +1,22 @@
+{
+  "title": "Values at k distinct inputs determine a polynomial of degree less than k",
+  "summary": "Over the same field, each Lagrange denominator is a difference of input coordinates. It is invertible when the coordinates are distinct.",
+  "applies": "Finite field polynomials and sampling with errors",
+  "detail": "Restoring f(0) in the prime domain allows the interpolation basis function to be evaluated directly at 0 without first converting to real numbers.",
+  "boundary": "Repeating the abscissa does not add an independent constraint; if the points may be damaged, randomly selecting k points cannot guarantee that the original polynomial can be obtained.",
+  "aliases": [
+    "Lagrange",
+    "Shamir",
+    "Sharding",
+    "interpolation",
+    "constant term"
+  ],
+  "relevance": "Polynomial slicing explains which value of the secret is to be recovered.",
+  "sources": {
+    "reference": "https://web.mit.edu/6.857/OldStuff/Fall03/ref/Shamir-HowToShareASecret.pdf",
+    "context": "https://cryptohack.org/courses/modular/"
+  },
+  "tags": [
+    "crypto"
+  ]
+}

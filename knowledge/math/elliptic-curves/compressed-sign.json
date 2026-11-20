@@ -1,0 +1,22 @@
+{
+  "title": "SEC 1 Prime field compression point prefix selects vertical coordinate parity",
+  "summary": "On a short Weierstrass curve over a prime field, a compressed point is a 02 or 03 prefix followed by fixed-width x. The prefix encodes even or odd y.",
+  "applies": "Nonsingular short Weierstrass curves over primes; characteristic > 3",
+  "detail": "The same x may correspond to two square roots. After restoring and choosing y, the curve equation must still be satisfied.",
+  "boundary": "The prefix 04 indicates another uncompressed encoding; the Edwards point format does not follow this prefix convention.",
+  "aliases": [
+    "SEC1",
+    "compressed point",
+    "02 03",
+    "compression point",
+    "Parity bit"
+  ],
+  "relevance": "Explain the reason why the two public key codes only have different prefixes but different recovery points.",
+  "sources": {
+    "reference": "https://www.secg.org/sec1-v2.pdf",
+    "context": "https://cryptohack.org/courses/elliptic/"
+  },
+  "tags": [
+    "crypto"
+  ]
+}

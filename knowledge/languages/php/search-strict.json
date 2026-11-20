@@ -1,0 +1,21 @@
+{
+  "title": "array_search returns the type of key",
+  "summary": "array_search returns the first matching key. The integer key 0 and false if the search fails need to be distinguished by ===.",
+  "applies": "Data handling for PHP 7.4 and 8.x",
+  "aliases": [
+    "array_search",
+    "first matching key",
+    "Find return key"
+  ],
+  "detail": "The third parameter true requires both value and type to match. Searching for the string \"7\" may hit different slots than searching for the integer 7.",
+  "boundary": "When the same value appears multiple times, a single search will only give the first match.",
+  "sources": {
+    "reference": "https://www.php.net/manual/en/function.array-search.php",
+    "context": "https://ctf-wiki.org/web/php/php/"
+  },
+  "relevance": "When restoring the mapping table selection results, the zeroth hit item can easily be regarded as missing.",
+  "tags": [
+    "web",
+    "reverse"
+  ]
+}

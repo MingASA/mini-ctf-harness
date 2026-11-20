@@ -1,0 +1,21 @@
+{
+  "title": "The ISIZE at the end of gzip is the length modulo 2^32",
+  "summary": "The CRC32 at the end of each member checks the decompressed bytes, and ISIZE records the lower 32 bits of its byte number. Both are little endian.",
+  "applies": "gzip member; RFC 1952",
+  "aliases": [
+    "ISIZE",
+    "gzip crc",
+    "trailer",
+    "original size"
+  ],
+  "detail": "ISIZE can be 0 when the member is decompressed to 2^32 bytes; this is the same as the length field of a truly empty member.",
+  "boundary": "The tail value only describes the current member; the last four bytes cannot represent the complete decompression amount of the multi-member file.",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc1952.html#section-2",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "Avoid treating the surrounding four-byte value as an exact total when determining attachment length.",
+  "tags": [
+    "misc"
+  ]
+}

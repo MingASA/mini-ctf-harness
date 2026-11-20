@@ -2,7 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {TuiAltScreen,ProcessTerminal,Editor,Input,Text,VStack,HStack,ScrollView,SelectList,Container,matchesKey,CombinedAutocompleteProvider} from '@earendil-works/pi-tui';
 import {outputRoot} from './tool-output.mjs';
-import {sessionUsage,contextLine,usageLine,budgetText} from './session-usage.mjs';
+import {sessionUsage,contextLine,usageLine,budgetText,backendSlotText} from './session-usage.mjs';
+import {windowSettings} from './session-window.mjs';
+import {backendUsageText} from './backend-usage.mjs';
 import {safeText,toolResultText,transcriptText} from './transcript-display.mjs';
 import {atomic} from './store.mjs';
 import {AttachmentInputError,resolveAttachmentPath} from './contest.mjs';
@@ -15,8 +17,10 @@ const theme={borderColor:s=>'\x1b[36m'+s+'\x1b[0m',selectList:selectTheme};
 export {safeText};
 const stringify=v=>safeText(typeof v==='string'?v:JSON.stringify(v,null,2));
 const HELP=`Ctrl+N 创建题目 · Ctrl+L 切换查看 · Ctrl+P 暂停当前题推理 · Ctrl+R 恢复 · Ctrl+C 中断生成并保留缓存
-/start 启动调度   /queue 题目队列   /review 确认答案   /view [题号]   /priority [数值]   /switch [题号]（保存进度并切题）
-/env [环境] 选择新题环境\n/model [编号或ID] 选择模型 · /close-server 关闭模型服务\n/compact 本轮结束后压缩 · /effort [强度] [思考tokens|-1] 选择思考设置\n/pause  /resume [题号]  /offloadKV 暂停并保存驻留题的 KV 到 RAM\n/offloadKV config [参数=MiB …] 查看或修改 RAM KV 余量及总上限\n/cancel 命令ID  /checkpoint  /feedback 候选ID correct|incorrect|pending 说明
+/start 启动调度   /queue 题目队列   /review 确认答案   /view [题号]   /delete [题号]   /priority [数值]   /switch [题号]（保存进度并切题）
+/env [环境] 选择新题环境\n/model [编号或ID] 选择模型 · /close-server 关闭模型服务\n/compact 本轮结束后压缩 · /effort [normal|compact] [强度] [思考tokens|-1] 选择思考设置\n/pause  /resume [题号]  /offloadKV 暂停并保存驻留题的 KV 到 RAM\n/offloadKV config [参数=MiB …] 查看或修改 RAM KV 余量及总上限\n/cancel 命令ID  /checkpoint  /feedback 候选ID correct|incorrect|pending 说明
+/context [窗口 软压缩线] 调整当前会话，例如 /context 64K 48K
+/knowledge [on|off] 查看或开关当前题的离线知识库，设置会保存；运行中在完整轮次结束后生效
 /tab [面板]  /tool 序号 查看工具输出  /read 文件路径  /archive 消息ID
 /skills [检索词] 查看技能元数据 · /use-skill NAME 将读取请求加入本题消息队列\n/new 创建题目（题意可多行粘贴） /discard 清空当前草稿  /quit 保存退出
 直接输入补充消息；Enter 发送，Shift+Enter 换行；已送达表示服务已接受包含该消息的请求。`;
@@ -26,12 +30,14 @@ export class CompetitionTerminal {
   this.file=path.join(contest.root,'ui-state.json');const saved=fs.existsSync(this.file)?JSON.parse(fs.readFileSync(this.file)):{};
   this.selected=contest.records.has(saved.selected)?saved.selected:contest.records.keys().next().value;this.drafts=saved.drafts||{};this.wizard=saved.wizard||null;this.bound=this.selected;this.tab='output';this.live=new Map();this.notice='';this.detail=null;
   this.header=new Text('',1,0);this.sidebar=new Text('',1,0);this.content=new Text('',1,0);this.footer=new Text('',1,0);this.binding=new Text('',1,0);
+  this.slotBar=new Text('',1,0);
   this.editor=new Editor(this.tui,theme);this.editor.setAutocompleteProvider(new CombinedAutocompleteProvider(slashCommands,contest.root));
   this.editor.onChange=()=>{if(!this.bound&&!this.wizard)this.bound=this.selected;this.persistDraft();this.render();};
   this.editor.onSubmit=text=>{if(this.submitting)return;this.submitting=true;this.editor.disableSubmit=true;this.submit(text).catch(e=>{this.notice=e.message;this.render();}).finally(()=>{this.submitting=false;this.editor.disableSubmit=false;});};
   this.scroll=new ScrollView(this.content,{follow:'end',primary:true,scrollbar:'auto'});
   this.tui.setLayoutRoot(new VStack([
    {component:this.header,basis:2,shrink:0},
+   {component:this.slotBar,basis:'auto',minSize:1,maxSize:9,shrink:0},
    {component:new HStack([{component:new ScrollView(this.sidebar,{follow:'none'}),basis:30,minSize:16,maxSize:40},{component:this.scroll,grow:1,minSize:10}],{gap:1}),grow:1,minSize:3},
    {component:this.binding,basis:2,shrink:0},{component:this.editor,basis:'auto',maxSize:9,minSize:3,shrink:0},{component:this.footer,basis:2,shrink:0}
   ]));
@@ -124,6 +130,12 @@ export class CompetitionTerminal {
     this.notice=this.contest.notice;
    }
    else if(cmd==='/help'){this.detail=HELP;}
+   else if(cmd==='/knowledge'){
+    if(args.length>1||(args.length&&!['on','off'].includes(args[0])))throw Error('用法：/knowledge [on|off]');
+    const s=this.contest.session(this.requireTask());
+    const state=args.length?s.requestKnowledge(args[0]==='on'):s.knowledgeControls();
+    this.notice='当前题离线知识库：'+(state.enabled?'开启':'关闭')+(state.pending===undefined?'':'；本轮完成后'+(state.pending?'开启':'关闭'))+'。/knowledge on|off 切换';
+   }
    else if(cmd==='/skills'){
     const k=this.contest.session(this.requireTask()).knowledge;
     this.detail=stringify(args.length?k.search(args.join(' ')):k.docs.map(({name,description,filePath})=>({name,description,filePath})));
@@ -138,6 +150,17 @@ export class CompetitionTerminal {
    else if(cmd==='/queue'){this.tab='queue';this.detail=null;}
    else if(cmd==='/review')await this.review();
    else if(cmd==='/view'){if(args.length>1)throw Error('用法：/view [题号]');if(args[0])this.setView(args[0]);else await this.chooseTask();}
+   else if(cmd==='/delete'){
+    if(args.length>1)throw Error('用法：/delete [题号]');
+    const target=args[0]??await this.pickTask('选择要删除的会话');
+    if(target){
+     const resolved=this.contest.resolveTaskId(target),label=this.contest.taskLabel(resolved),title=this.contest.taskTitle(resolved);
+     await this.contest.delete(resolved);delete this.drafts[resolved];this.live.delete(resolved);
+     if(this.bound===resolved){this.bound=undefined;this.editor.setText('');}
+     if(this.selected===resolved){this.selected=this.contest.records.keys().next().value;this.bound=this.selected;this.editor.setText(this.drafts[this.selected]||'');}
+     this.tab='output';this.detail=null;this.notice='已删除 '+label+' · '+title;this.persist();
+    }
+   }
    else if(cmd==='/priority'){
     if(args.length>1)throw Error('用法：/priority [数值]');
     const task=this.requireTask(),current=this.contest.queue.item(task)?.priority??0;
@@ -187,6 +210,7 @@ export class CompetitionTerminal {
      .catch(error=>{this.notice='模型切换未完成：'+error.message;this.render();});
    }
    else if(cmd==='/compact'){this.contest.compact(this.requireTask());this.notice='Compact 已排队，将在完整轮次边界执行。';}
+   else if(cmd==='/context')await this.chooseContext(this.requireTask(),args);
    else if(cmd==='/effort')await this.chooseEffort(this.requireTask(),args);
    else if(cmd==='/cancel'){
     if(args.length>1)throw Error('用法：/cancel [命令ID]');
@@ -220,19 +244,49 @@ export class CompetitionTerminal {
   }
   if(this.bound)delete this.drafts[this.bound];this.editor.setText('');this.bound=this.selected;this.editor.setText(this.drafts[this.bound]||'');this.persist();this.render();
  }
+ async chooseContext(id,args){
+  const session=this.contest.session(id);
+  if(!args.length){
+   const usage=sessionUsage(session.store,session.config,session.sessionWindow);
+   const title=`会话窗口 ${usage.total} · 软线 ${usage.soft} · 后端容量 ${session.config.contextTokens}`;
+   const raw=await this.inputValue(title,'输入窗口和软线，例如 64K 48K',value=>{
+    const fields=value.split(/\s+/);
+    if(fields.length!==2)return '请输入窗口和软压缩线两个数值';
+    try{windowSettings(session.config,...fields);return null;}catch(error){return error.message;}
+   });
+   if(raw===undefined)return;
+   args=raw.split(/\s+/);
+  }
+  if(args.length!==2)throw Error('用法：/context [窗口 软压缩线]，例如 /context 64K 48K');
+  const result=session.requestWindow(...args);
+  this.tab='budget';this.detail=null;
+  this.notice=result.pending?'已保存请求，将在下一次轮次边界校验并应用':'已保存当前会话的窗口和软压缩线';
+ }
  async chooseEffort(id,args){
-  if(args.length>2)throw Error('用法：/effort [强度] [思考tokens|-1]');
+  let scope='normal';
+  if(!args.length){
+   const options=[{value:'normal',label:'正常推理'},{value:'compact',label:'Compact 压缩'}];
+   for(const item of options){
+    const {current,pending}=this.contest.session(id).generationControls(item.value);
+    item.description=current.thinking?current.reasoningEffort:'关闭';
+    if(pending)item.description+=' · 待生效 '+(pending.thinking?pending.reasoningEffort:'关闭');
+   }
+   const choice=await this.select('选择要调整的思考设置',options,'normal');
+   if(!choice)return;
+   scope=choice.value;
+  }else if(['normal','compact'].includes(args[0]))[scope,...args]=args;
+  if(args.length>2)throw Error('用法：/effort [normal|compact] [off|low|medium|high|xhigh] [思考tokens|-1]');
+  const label=scope==='compact'?'Compact 压缩':'正常推理';
   let [level,budget]=args;
   if(!level){
-   const {current,pending}=this.contest.effort(id);
+   const {current,pending,limit}=this.contest.session(id).generationControls(scope);
    const selected=pending??current;
    const describe=settings=>settings.thinking?settings.reasoningEffort+' · '+budgetLabel(settings.reasoningTokens):'off';
-   const choice=await this.select('思考模式 · 当前 '+describe(current)+(pending?' · 待生效 '+describe(pending):''),
+   const choice=await this.select(label+'思考模式 · 当前 '+describe(current)+(pending?' · 待生效 '+describe(pending):''),
     effortOptions,selected.thinking?selected.reasoningEffort:'off');
    if(!choice)return;
    level=choice.value;
    if(level!=='off'){
-    const limit=this.contest.session(id).config.generationTokens;
     const preset=await this.select('思考预算 · '+level,effortBudgetOptions(selected.reasoningTokens,limit));
     if(!preset)return;
     if(preset.value==='custom'){
@@ -242,10 +296,10 @@ export class CompetitionTerminal {
     }else if(preset.value!=='keep')budget=preset.value;
    }
   }
-  const {settings,pending}=this.contest.effort(id,level,budget);
+  const {settings,pending}=this.contest.effort(id,level,budget,scope);
   const summary=settings.thinking?settings.reasoningEffort+' · '+budgetLabel(settings.reasoningTokens):'关闭';
   this.tab='output';this.detail=null;this.scroll.scrollToEnd();
-  this.notice='思考设置 '+summary+(pending?' · 下一次模型请求生效':' · 已保存');
+  this.notice=label+'思考 '+summary+(pending?' · 下一轮生效':' · 已保存');
  }
  async chooseModel(id){
   const models=await this.contest.models(id);
@@ -411,6 +465,9 @@ export class CompetitionTerminal {
  renderNow(){
   const c=this.contest,s=this.selected?c.sessions.get(this.selected):null;
   this.header.setText(safeText(`CTF 比赛终端 · ${c.source?.commit?.slice(0,8)??'未知版本'}${c.source?.dirty?'*':''} · ${c.booting?'准备中':c.enabled?'调度开启':'调度停止'} · 模型 ${s?.config.model??c.defaultModel?.model??'未选择'} · 环境 ${c.environmentName??'默认'}\n推理 ${c.taskLabel(c.active)||'空闲'} · 查看 ${c.taskLabel(this.selected)||'无'} · 恢复 ${c.queue.state.readyResume.length} | 新题 ${c.queue.state.readyFresh.length} | 工具等待 ${Object.keys(c.queue.state.waiting).length} | 待确认 ${c.queueRows().reduce((n,r)=>n+r.reviews.length,0)} · /queue`));
+  const origin=this.slotOrigin();
+  this.slotBar.setText(safeText(!origin?'后端 slot：未配置模型服务':
+   this.slotStatus?.origin===origin?this.slotStatus.text:'等待后端 slot 状态'));
   this.sidebar.setText([...c.records.values()].map(r=>`${r.task.id===this.selected?'▶':' '} ${c.taskTitle(r.task.id)}\n${c.taskLabel(r.task.id)}\n${c.status(r.task.id)} · 优先级 ${c.queue.item(r.task.id)?.priority??0}`).map(safeText).join('\n\n')||'Ctrl+N 创建第一题');
   let content=this.detail;
   if(content===null){
@@ -426,11 +483,37 @@ export class CompetitionTerminal {
    else content=stringify({pending:s.pendingControl('compact')?.seq??null,lastResult:s.store.events.findLast(e=>e.type==='compact_resolved')?.data,summary:s.store.events.findLast(e=>e.type==='compact_commit')?.data.checkpoint?.summary??'尚无 Compact 摘要',partial:s.store.events.findLast(e=>e.type==='model_auxiliary_interrupted')?.data});
   }
   if(content!==null)this.content.setText(safeText(content).slice(-160000));
-  const usage=s?sessionUsage(s.store,s.config):null;
+  const usage=s?sessionUsage(s.store,s.config,s.sessionWindow):null;
   this.binding.setText(safeText(this.wizard?`创建 ${this.wizard.step+1}/4：${['题目标题','粘贴题意（支持多行）','附件：文件或目录路径 · /browse 选择 · - 跳过','内网目标 URL 或 - 跳过'][this.wizard.step]} · /back 上一步 · /cancel 取消`:`输入绑定 → ${c.taskLabel(this.bound||this.selected)||'无题目'} · 面板 ${this.tab}${usage?' · '+usageLine(usage)+'\n'+contextLine(usage):''}`));
   this.footer.setText(safeText((this.notice||c.notice||'Ctrl+C 中断生成 · Ctrl+R 恢复 · /compact 压缩 · /effort 调整思考 · /quit 退出')+'\n'+(c.notice&&this.notice?c.notice:'暂停推理保留命令运行；/cancel 命令ID 单独取消。')));
   this.tui.requestRender();
  }
- start(){this.tui.start();this.render();}
- async close(){if(this.closed)return;this.closed=true;this.persistDraft();this.notice='正在保存并停止推理…';this.render();try{await this.contest.close();}finally{this.contest.off('auxiliary',this.auxiliaryEvent);this.contest.off('change',this.changed);this.contest.off('agent',this.agentEvent);clearTimeout(this.renderTimer);this.tui.stop();this.onClose();}}
+ slotOrigin(){
+  const {active,resident,sessions,defaultModel}=this.contest;
+  return sessions.get(active??resident)?.config.baseUrl??defaultModel?.baseUrl;
+ }
+ async refreshSlotStatus(){
+  if(this.closed||this.slotRequest)return;
+  const origin=this.slotOrigin();
+  if(!origin)return;
+  const controller=new AbortController();this.slotRequest=controller;
+  let status;
+  try{
+   try {
+    const snapshot=await this.contest.catalog.json(origin,'/kv-cache',{signal:controller.signal,timeout:1500});
+    status=backendUsageText(snapshot);
+   }catch(error){
+    controller.signal.throwIfAborted();
+    const slots=await this.contest.catalog.json(origin,'/slots',{signal:controller.signal,timeout:1500});
+    status=backendSlotText(slots);
+   }
+  }catch(error){status='后端 slot 状态不可用：'+error.message;}
+  finally{this.slotRequest=null;}
+  if(this.closed||this.slotOrigin()!==origin||
+     (this.slotStatus?.origin===origin&&this.slotStatus.text===status))return;
+  this.slotStatus={origin,text:status};
+  this.render();
+ }
+ start(){this.tui.start();this.render();this.refreshSlotStatus();this.slotTimer=setInterval(()=>this.refreshSlotStatus(),2000);this.slotTimer.unref();}
+ async close(){if(this.closed)return;this.closed=true;clearInterval(this.slotTimer);this.slotRequest?.abort();this.persistDraft();this.notice='正在保存并停止推理…';this.render();try{await this.contest.close();}finally{this.contest.off('auxiliary',this.auxiliaryEvent);this.contest.off('change',this.changed);this.contest.off('agent',this.agentEvent);clearTimeout(this.renderTimer);this.tui.stop();this.onClose();}}
 }

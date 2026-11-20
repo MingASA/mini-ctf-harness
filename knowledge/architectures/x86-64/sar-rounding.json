@@ -1,0 +1,21 @@
+{
+  "title": "SAR is different from negative number rounding for signed IDIV",
+  "summary": "SAR preserves the sign bit. Shifting one bit right divides by two and rounds down. IDIV truncates the quotient toward zero.",
+  "applies": "64-bit mode for x86-64; Intel SDM Volume 1 and Volume 2",
+  "aliases": [
+    "SAR",
+    "IDIV",
+    "Shift negative numbers right",
+    "truncate toward zero"
+  ],
+  "detail": "Arithmetically shifting −3 to the right by one position gives −2, and the quotient of the signed integer −3 divided by 2 is −1.",
+  "boundary": "If the disassembly biases negative values before SAR, the entire instruction sequence may be truncated toward zero.",
+  "sources": {
+    "reference": "https://cdrdv2-public.intel.com/671110/325383-sdm-vol-2abcd.pdf",
+    "context": "https://ctf-wiki.org/executable/elf/structure/basic-info/"
+  },
+  "relevance": "When translating the disassembly into a high-level language, negative odd numbers are the smallest example that distinguishes the two types of rounding.",
+  "tags": [
+    "reverse"
+  ]
+}

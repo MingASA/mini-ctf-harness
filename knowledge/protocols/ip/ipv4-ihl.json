@@ -1,0 +1,21 @@
+{
+  "title": "The unit of IPv4 IHL is a 32-bit word",
+  "summary": "An IHL of 5 represents a 20-byte header, and an IHL of 6 represents 24 bytes; Total Length counts header and data.",
+  "applies": "Offline IPv4 and IPv6 packet analysis",
+  "aliases": [
+    "IHL",
+    "IP options",
+    "head length",
+    "total length"
+  ],
+  "detail": "The lower four digits of IHL are the unit number and the first four digits are the version. When encountering IP options, it is still fixed to skip 20 bytes and read the wrong upper port.",
+  "boundary": "The actual number of captured bytes may be less than Total Length due to packet capture truncation.",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc791.html#section-3.1",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "Correctly locate payloads in offline messages that contain options or are truncated.",
+  "tags": [
+    "misc"
+  ]
+}

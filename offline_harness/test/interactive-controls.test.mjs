@@ -34,6 +34,67 @@ async function fixture(script,{template='changed'}={}){
 const done=(b,f,r,text='Ready')=>{f({content:text},'stop',{prompt_tokens:tokens(b),completion_tokens:10});r.end('data: [DONE]\n\n');};
 const generations=p=>p.requests.filter(r=>r.route==='/v1/chat/completions').map(r=>r.body);
 
+test('knowledge toggle preserves the in-flight turn, removes schema and guidance next slice, and survives reopening',async()=>{
+ const root=temp(),ready=deferred(),gate=deferred();
+ const p=await fixture(async(n,b,f,res)=>{if(n===1){ready.resolve();await gate.promise;}done(b,f,res);});
+ try{
+  const cfg=config(root,p.url),task={id:'knowledge-toggle',objective:'Check reference availability'};
+  let s=new InteractiveSession(task,cfg,opts);
+  const work=s.runSlice();await ready.promise;
+  assert.equal(s.requestKnowledge(false).pending,false);
+  assert.ok(s.tools().some(t=>t.name==='knowledge'));
+  s.enqueue('Continue');gate.resolve();assert.equal((await work).status,'ready');
+  assert.equal(s.knowledgeControls().enabled,false);assert.equal(s.knowledgeControls().pending,undefined);
+  assert.ok(!s.tools().some(t=>t.name==='knowledge'));assert.doesNotMatch(s.systemPrompt(),/Consult knowledge/);
+  s=new InteractiveSession(task,cfg,opts);assert.equal(s.knowledgeControls().enabled,false);
+  await s.runSlice();assert.ok(generations(p)[0].tools.some(t=>t.function.name==='knowledge'));
+  assert.ok(!generations(p)[1].tools.some(t=>t.function.name==='knowledge'));
+  s.requestKnowledge(true);s.enqueue('Check again');await s.runSlice();
+  assert.ok(generations(p)[2].tools.some(t=>t.function.name==='knowledge'));
+  assert.equal(new InteractiveSession(task,cfg,opts).knowledgeControls().enabled,true);
+ }finally{gate.resolve();await p.close();fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('a per-session window changes at a turn boundary on the same backend and survives reopening',async()=>{
+ const root=temp(),ready=deferred(),gate=deferred();
+ const p=await fixture(async(n,b,f,res)=>{if(n===1){ready.resolve();await gate.promise;}done(b,f,res);});
+ try{
+  const cfg=config(root,p.url),task={id:'window',objective:'Record the text sample'};
+  let s=new InteractiveSession(task,cfg,opts);
+  assert.throws(()=>s.requestWindow('32K','12K'),/超过后端/);
+  assert.throws(()=>s.requestWindow('16K','16K'),/预留/);
+  assert.equal(s.requestWindow('16k','10K').pending,false);
+  const work=s.runSlice();await ready.promise;
+  s.requestWindow('20K','14K');s.requestWindow('24K','16K');
+  assert.equal(s.sessionWindow.contextTokens,16384);
+  s.enqueue('Read the next sample');gate.resolve();await work;
+  const budgets=s.store.events.filter(e=>e.type==='context_budget').map(e=>e.data);
+  assert.deepEqual(budgets.map(b=>[b.engine_context,b.session_context,b.soft_limit]),[[30000,16384,10240],[30000,24576,16384]]);
+  assert.equal(p.requests.filter(r=>r.route==='/props').length,1);
+  s=new InteractiveSession(task,cfg,opts);
+  assert.equal(s.config.contextTokens,30000);assert.equal(s.sessionWindow.contextTokens,24576);
+  s.selectModel({...cfg,contextTokens:27000},{});
+  assert.equal(new InteractiveSession(task,cfg,opts).sessionWindow,null);
+ }finally{gate.resolve();await p.close();fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('shrinking compacts using the prior window and rejects an unusable target without committing a new checkpoint',async()=>{
+ const root=temp(),p=await fixture(async(n,b,f,res)=>done(b,f,res,b.response_format?summary():'OK'));
+ try{
+  const cfg=config(root,p.url),s=new InteractiveSession({id:'shrink',objective:'Summarize a sample'},cfg,opts);
+  await s.runSlice();
+  s.store.append('message',{role:'assistant',content:[{type:'text',text:'sample '.repeat(6000)}],timestamp:Date.now()});
+  s.requestWindow('9K','4K');await s.runSlice({maintenanceOnly:true});
+  assert.equal(s.sessionWindow?.contextTokens,9216);
+  assert.equal(s.store.events.filter(e=>e.type==='compact_commit').length,1);
+  s.store.append('message',{role:'assistant',content:[{type:'text',text:'sample'}],timestamp:Date.now()});
+  s.requestWindow('8K','256');await s.runSlice({maintenanceOnly:true});
+  assert.equal(s.sessionWindow.contextTokens,9216);
+  assert.equal(s.store.events.filter(e=>e.type==='compact_commit').length,1);
+  assert.ok(s.store.events.some(e=>e.type==='window_failed'));
+ }finally{await p.close();fs.rmSync(root,{recursive:true,force:true});}
+});
+
 test('operator interrupt retains exact reasoning, text and raw tool drafts across restart; resume never replays drafts',async()=>{
  const root=temp(),ready=deferred();let commands=0;
  const p=await fixture(async(n,b,f,res)=>{if(n===1){f({reasoning_content:'先核对 A，再验证 B。',content:'已得到的部分结论',tool_calls:[{index:0,id:'draft',function:{name:'run_command',arguments:'{"command":"must not execute"'}}]});ready.resolve();await new Promise(r=>res.once('close',r));}else done(b,f,res);});
@@ -60,6 +121,38 @@ test('effort changes are durable before history, wait for the next request durin
   s.requestCompact();assert.equal((await s.runSlice({maintenanceOnly:true})).status,'awaiting_input');const compact=generations(p).at(-1);assert.equal(compact.chat_template_kwargs.reasoning_effort,'xhigh');assert.equal(compact.chat_template_kwargs.enable_thinking,true);assert.equal(compact.reasoning_budget_tokens,256);assert.equal(s.store.events.filter(e=>e.type==='compact_commit').length,1);
   const reopened=new InteractiveSession(task,cfg,opts);assert.equal(reopened.config.thinking,false);assert.equal(reopened.config.reasoningTokens,-1);assert.throws(()=>s.requestEffort('high','1024'),/total response/);
  }finally{gate.resolve();await p.close();fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('compact thinking is independent and changes at request boundaries for manual and automatic compression',async()=>{
+ const root=temp(),started=deferred(),release=deferred();
+ const p=await fixture(async(n,b,f,res)=>{
+  if(n===1){started.resolve();await release.promise;}
+  done(b,f,res,b.response_format?summary():'Ready');
+ });
+ try{
+  const cfg={...config(root,p.url),compactThinking:false,compactTokens:768};
+  const task={id:'compact-effort',objective:'Summarize the reading notes'};
+  let s=new InteractiveSession(task,cfg,opts);
+  assert.equal(s.generationControls('compact').current.thinking,false);
+  assert.throws(()=>s.requestEffort('high',768,'compact'),/total response limit/);
+  const work=s.runSlice();await started.promise;
+  s.requestEffort('low',128,'compact');s.requestEffort('high',384,'compact');s.requestCompact();
+  assert.equal(s.generationControls('compact').current.thinking,false);
+  release.resolve();await work;
+  const [normal,compact]=generations(p);
+  assert.deepEqual(normal.chat_template_kwargs,{enable_thinking:true,reasoning_effort:'medium'});
+  assert.deepEqual(compact.chat_template_kwargs,{enable_thinking:true,reasoning_effort:'high'});
+  assert.equal(compact.reasoning_budget_tokens,384);
+  s=new InteractiveSession(task,cfg,opts);
+  assert.deepEqual(s.generationControls('compact').current,{thinking:true,reasoningEffort:'high',reasoningTokens:384});
+  s.requestEffort('off',undefined,'compact');
+  s.store.append('message',{role:'assistant',content:[{type:'text',text:'sample '.repeat(9000)}],timestamp:Date.now()});
+  s.enqueue('Continue with a short summary');await s.runSlice();
+  const [automatic,next]=generations(p).slice(-2);
+  assert.ok(automatic.response_format);assert.equal(automatic.chat_template_kwargs.enable_thinking,false);
+  assert.deepEqual(next.chat_template_kwargs,normal.chat_template_kwargs);
+  assert.equal(next.reasoning_budget_tokens,normal.reasoning_budget_tokens);
+ }finally{release.resolve();await p.close();fs.rmSync(root,{recursive:true,force:true});}
 });
 
 for(const template of ['same','changed','unsupported'])test('actual rendered token identity handles '+template+' templates without resetting slots',async()=>{
@@ -165,6 +258,15 @@ test('offload pauses the resident task, keeps its transcript and restores its RA
 test('RAM admission distinguishes projector workspace, transfer cost and unsupported KV geometry',t=>{
  const directory=temp();t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
  const spec=ramKvProfile('qwen3.8-27b-iq4xs', 'q8_0',14252845984,55296);
+ const large=ramKvProfile('qwen3.8-27b-q4kxl','q8_0',17659407264,131072,1);
+ assert.equal(large.bytesPerToken,34816+4096);
+ const small=ramKvProfile('qwen3.5-9b-ctf-web-q8-vision','q8_0',9786060032,131072,2);
+ assert.equal(small.bytesPerToken,17408+4096);
+ assert.ok(estimateRamKv(large,22421)>1344356992);
+ assert.ok(estimateRamKv(small,23451)>610926164);
+ assert.equal(ramKvProfile('qwen3.8-27b-q4kxl','q8_0',17659407264,131073,1),null);
+ assert.equal(ramKvProfile('qwen3.8-27b-q4kxl','q8_0',17659407263,131072,1),null);
+ assert.equal(ramKvProfile('qwen3.8-27b-iq4xs','q8_0',14252845984,-1),null);
  assert.equal(ramKvProfile('qwen3.8-27b-iq4xs','q4_0',14252845984,55296),null);
  const bytes=estimateRamKv(spec,55296);
  const timings={roundTripMiBps:70,prefillTokensPerSecond:400,sharedTokens:2048};

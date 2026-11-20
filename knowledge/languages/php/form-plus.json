@@ -1,0 +1,22 @@
+{
+  "title": "How urldecode and rawurldecode handle the plus sign",
+  "summary": "urldecode converts the literal plus sign to a space, rawurldecode preserves it.",
+  "applies": "Data handling for PHP 7.4 and 8.x",
+  "aliases": [
+    "urldecode",
+    "rawurldecode",
+    "form plus sign",
+    "percent decoding"
+  ],
+  "detail": "When you enter A+B%2BC, you get A B+C and A+B+C respectively. The percent-encoded plus sign in the former still resolves to a plus sign.",
+  "boundary": "Fields that have already been parsed by the form layer may have lost the original plus sign, and repeated decoding cannot determine the original bytes.",
+  "sources": {
+    "reference": "https://www.php.net/manual/en/function.urldecode.php",
+    "context": "https://ctf-wiki.org/web/php/php/"
+  },
+  "relevance": "Explain why plus signs and spaces in request records are interchanged when reconstructing the text.",
+  "tags": [
+    "web",
+    "reverse"
+  ]
+}

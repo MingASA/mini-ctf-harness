@@ -1,0 +1,21 @@
+{
+  "title": "An equivalent integer lattice basis uses integer coefficients and determinant ±1",
+  "summary": "When using rows as a basis, left multiplication by an integer invertible matrix U with det U=±1 can preserve the generated integer lattice.",
+  "applies": "Integer lattice; convention for row vectors as bases",
+  "detail": "Add one row to an integer multiple of another row to get the same grid. Multiplying a row by 2 usually results in only the cells of the original cell.",
+  "boundary": "The two bases span the same real vector space and cannot be derived to generate the same integer grid.",
+  "aliases": [
+    "unimodular",
+    "Unitary transformation",
+    "integer lattice basis",
+    "Determinant"
+  ],
+  "relevance": "Verify whether the lattice basis reduction output only changes a set of basis, rather than changing the set of candidate points.",
+  "sources": {
+    "reference": "https://doc.sagemath.org/html/en/reference/matrices/sage/matrix/matrix_integer_dense.html",
+    "context": "https://cryptohack.org/challenges/maths/"
+  },
+  "tags": [
+    "crypto"
+  ]
+}

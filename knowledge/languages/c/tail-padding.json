@@ -1,0 +1,27 @@
+{
+  "title": "Structure array element stride includes end padding",
+  "summary": "The element addresses of consecutive structure arrays differ by sizeof (element type), and the end of the member may not be the starting point of the next element.",
+  "applies": "C11; Offline memory diagnostics and object representation",
+  "detail": "In a common ABI where int is 4 bytes and aligned by 4, the size of struct { int n; char c; } is typically 8, with the second element starting at offset 8. See C11 §6.7.2.1, §6.5.3.4.",
+  "boundary": "The packed file format may otherwise specify tight packing; in this case its declared record step size shall be used.",
+  "aliases": [
+    "sizeof",
+    "offsetof",
+    "tail padding",
+    "tail padding",
+    "array stride",
+    "Structure array",
+    "member byte",
+    "Structure from",
+    "sizeof struct"
+  ],
+  "relevance": "Check why the second record in the memory and the second record in the serialized file are misaligned.",
+  "sources": {
+    "reference": "https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "pwn",
+    "reverse"
+  ]
+}

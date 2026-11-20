@@ -1,0 +1,22 @@
+{
+  "title": "Incremental updates preserve PDF old object bytes",
+  "summary": "PDF can append changed objects and cross-references. The final startxref locates the current cross-reference, and Prev links to earlier ones.",
+  "applies": "PDF 1.7; ISO 32000-1 Chapter 7",
+  "aliases": [
+    "startxref",
+    "Prev",
+    "incremental update",
+    "incremental save",
+    "old version"
+  ],
+  "detail": "Searching for a text directly in the original bytes may find a copy that has been replaced by a new version of the object; interpreting the current page depends on the current cross-reference.",
+  "boundary": "Cross-references can be carried by traditional tables or cross-reference streams; looking only for literal xrefs misses the latter.",
+  "sources": {
+    "reference": "https://opensource.adobe.com/dc-acrobat-sdk-docs/pdfstandards/PDF32000_2008.pdf",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "Distinguish between the historical content in the attachment and the current document actually displayed by the reader.",
+  "tags": [
+    "misc"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "title": "JSON can encode a supplementary-plane character as a surrogate pair",
+  "summary": "A JSON \\u escape takes four hexadecimal digits. A supplementary-plane character can be written as a UTF-16 surrogate pair.",
+  "applies": "Unicode text and JSON byte records",
+  "aliases": [
+    "surrogate",
+    "JSON escape",
+    "agent pair",
+    "backslashu"
+  ],
+  "detail": "For example, U+1D11E can be expressed as two consecutive escapes, high surrogate D834 and low surrogate DD1E. The number of parsed code points is different from the number of escape segments.",
+  "boundary": "The surrogates alone do not form a legal Unicode scalar, and implementations may handle such input differently.",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc8259.html#section-7",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "Compare the original JSON file length to the decoded visible string length.",
+  "tags": [
+    "misc",
+    "web"
+  ]
+}

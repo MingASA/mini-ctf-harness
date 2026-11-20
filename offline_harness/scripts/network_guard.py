@@ -191,6 +191,30 @@ def plan_install(policy, text):
     return commands
 
 
+def plan_remove(policy, text):
+    """Remove exactly one frozen policy and shared hooks only when now unused."""
+    expected = expected_rules(policy)
+    rules, policies = parse_saved_rules(text)
+    chain = expected['chain']
+    if chain not in rules:
+        require(normalize_rule(expected['dispatch']) not in rules.get(DISPATCH, []), 'Orphaned solver dispatch rule')
+        require(normalize_rule(expected['input']) not in rules.get(HOST_INPUT, []), 'Orphaned solver input rule')
+        return []
+    verify_saved_rules(policy, text)
+    commands = [
+        ['-D', DISPATCH, *expected['dispatch']],
+        ['-D', HOST_INPUT, *expected['input']],
+        ['-F', chain], ['-X', chain],
+    ]
+    if len(rules[DISPATCH]) == 1:
+        require(len(rules[HOST_INPUT]) == 1, 'Shared guard chains have inconsistent policy counts')
+        commands += [
+            ['-D', 'DOCKER-USER', '-j', DISPATCH], ['-F', DISPATCH], ['-X', DISPATCH],
+            ['-D', 'INPUT', '-j', HOST_INPUT], ['-F', HOST_INPUT], ['-X', HOST_INPUT],
+        ]
+    return commands
+
+
 def actual_host_ips(addresses):
     return sorted({item['local'] for interface in addresses for item in interface.get('addr_info', []) if item.get('family') == 'inet'})
 
@@ -235,10 +259,11 @@ def load_policy(filename, expected_sha=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['plan', 'apply', 'verify'], nargs='?', default='plan')
+    parser.add_argument('action', choices=['plan', 'apply', 'verify', 'remove'], nargs='?', default='plan')
     parser.add_argument('--policy', required=True)
     parser.add_argument('--expect-sha256')
     parser.add_argument('--apply', action='store_true', help='Required in addition to the apply subcommand')
+    parser.add_argument('--remove', action='store_true', help='Required in addition to the remove subcommand')
     parser.add_argument('--docker', default='docker')
     parser.add_argument('--docker-host', default='unix:///var/run/docker.sock')
     parser.add_argument('--iptables', default='iptables')
@@ -248,6 +273,8 @@ def main():
     require(args.docker_host.startswith('unix:///'), 'Only a local Linux Docker socket is supported')
     require(args.action != 'apply' or args.apply, 'Applying requires both apply and --apply')
     require(args.action == 'apply' or not args.apply, '--apply is valid only with the apply subcommand')
+    require(args.action != 'remove' or args.remove, 'Removing requires both remove and --remove')
+    require(args.action == 'remove' or not args.remove, '--remove is valid only with the remove subcommand')
     if args.action == 'plan':
         expected = expected_rules(policy)
         print(json.dumps({'policySha256': sha, 'scope': policy, 'chain': expected['chain'],
@@ -271,8 +298,18 @@ def main():
         for rule in plan_install(policy, snapshot):
             call([args.iptables, '-w', '5', *rule])
         snapshot = call([args.iptables_save, '-t', 'filter']); applied = True
-    verified = verify_saved_rules(policy, snapshot)
-    print(json.dumps({'verified': True, 'applied': applied, 'policySha256': sha,
+    removed = False
+    if args.action == 'remove':
+        require(container.get('State', {}).get('Status') in ('created', 'exited', 'dead'),
+                'The solver must be stopped before removing its egress guard')
+        for rule in plan_remove(policy, snapshot):
+            call([args.iptables, '-w', '5', *rule])
+        snapshot = call([args.iptables_save, '-t', 'filter']); removed = True
+        require(plan_remove(policy, snapshot) == [], 'Policy removal did not converge')
+        verified = {'chain': expected_rules(policy)['chain'], 'rulesSha256': hashlib.sha256(snapshot.encode()).hexdigest()}
+    else:
+        verified = verify_saved_rules(policy, snapshot)
+    print(json.dumps({'verified': True, 'applied': applied, 'removed': removed, 'policySha256': sha,
                       'containerId': policy['containerId'], 'networkId': policy['networkId'],
                       'sourceIp': policy['sourceIp'], 'bridge': policy['bridge'], **verified,
                       'checkedAt': dt.datetime.now(dt.timezone.utc).isoformat()}))

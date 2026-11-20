@@ -1,0 +1,21 @@
+{
+  "title": "ZIP64 uses extra fields to carry overflow size or offset",
+  "summary": "When a traditional field takes an upper limit mark such as 0xffffffff, the large value must be interpreted from the corresponding ZIP64 extended structure.",
+  "applies": "Single volume ZIP; PKWARE APPNOTE",
+  "aliases": [
+    "ZIP64",
+    "0x0001",
+    "ffffffff",
+    "Four-byte upper limit"
+  ],
+  "detail": "0x0001 Extra fields give the values in the original record that need to be extended in the specified order; not every file lists all possible fields.",
+  "boundary": "Reading the member size of ZIP64 and reading the total number of members for the entire archive involve different records.",
+  "sources": {
+    "reference": "https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "Avoid interpreting extension field placeholder values as actual four-GiB members.",
+  "tags": [
+    "misc"
+  ]
+}

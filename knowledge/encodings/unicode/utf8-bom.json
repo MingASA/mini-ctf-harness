@@ -1,0 +1,22 @@
+{
+  "title": "EF BB BF starting with UTF-8 is an optional signature",
+  "summary": "UTF-8 has no endian selection. The starting EF BB BF represents U+FEFF, which can be used as a text signature.",
+  "applies": "Unicode text and JSON byte records",
+  "aliases": [
+    "UTF-8 BOM",
+    "EF BB BF",
+    "first character",
+    "byte order mark"
+  ],
+  "detail": "Some decoders strip off the leading signature, others keep U+FEFF, so displaying the same text may have different first characters or digests.",
+  "boundary": "The same bytes in the middle of the file should not be unconditionally deleted based on the file's starting signature.",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc3629.html#section-6",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "Explain the situation where the field names in the first column appear to be consistent, but the comparison fails.",
+  "tags": [
+    "misc",
+    "web"
+  ]
+}

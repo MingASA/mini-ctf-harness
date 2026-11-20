@@ -1,16 +1,22 @@
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {hash} from './store.mjs';
 import {validateNetworkPolicy,verifyEgress} from './network-policy.mjs';
 const exec = promisify(execFile);
+const JOB_STORAGE_PREFLIGHT_COMMAND='printf offline-harness-job-storage-preflight';
+const JOB_STORAGE_PREFLIGHT_OUTPUT='offline-harness-job-storage-preflight';
+
+const errorText=error=>[error?.stderr,error?.message].filter(value=>typeof value==='string').join('\n');
+const jobStorageFailure=error=>errorText(error).match(/Job storage unavailable:\s*([^\r\n]+)/)?.[1];
 
 export function validateSandbox(container, networks, config) {
   const h=container.HostConfig || {};
   if(container.Id!==config.containerId || container.Image!==config.imageId || !container.State?.Running) throw Error('Sandbox identity or state changed');
   if(h.Privileged || h.PidMode==='host' || h.IpcMode==='host' || h.NetworkMode==='host' || h.CapAdd?.length || h.Devices?.length || h.DeviceRequests?.length) throw Error('Privileged sandbox denied');
   if(!h.CapDrop?.some(x=>x.toUpperCase()==='ALL') || !h.SecurityOpt?.some(x=>x.startsWith('no-new-privileges'))) throw Error('Missing sandbox privilege restrictions');
-  if(!h.Memory || h.Memory>1536*1024*1024 || !h.PidsLimit || h.PidsLimit>256) throw Error('Missing sandbox resource limits');
+  if(!h.Memory || h.Memory>4096*1024*1024 || !h.PidsLimit || h.PidsLimit>256) throw Error('Missing sandbox resource limits');
   if(!h.ReadonlyRootfs) throw Error('Sandbox root filesystem must be read-only');
   if(container.Mounts.length!==1 || container.Mounts[0].Destination!=='/work' || container.Mounts[0].Source!==config.workDir || container.Mounts[0].Type!=='bind') throw Error('Unexpected sandbox mount');
   validateNetworkPolicy(container,networks,config);
@@ -60,27 +66,22 @@ def job_root(jid,work):
  return pathlib.Path(work)/'.offline-jobs'/jid
 `;
 const WORKER = CONTROL+String.raw`
-import subprocess,resource,threading,base64
+import subprocess,threading,base64
 root=pathlib.Path(sys.argv[1]);command=base64.b64decode(sys.argv[2],validate=True).decode('utf-8');seconds=int(sys.argv[3]);work=sys.argv[4]
-# Legitimate task files may exceed the independent8MiB-per-stream log allowance.
-resource.setrlimit(resource.RLIMIT_FSIZE,(1024*1024*1024,1024*1024*1024))
-log_limit=8*1024*1024;log_seen={'stdout':0,'stderr':0};readers=[]
+readers=[]
 def capture(pipe,output,name):
- kept=0
  try:
   while True:
    data=pipe.read(65536)
    if not data:break
-   log_seen[name]+=len(data)
-   accepted=data[:max(0,log_limit-kept)]
-   if accepted:output.write(accepted);output.flush();kept+=len(accepted)
+   output.write(data);output.flush()
  finally:pipe.close()
 def finished_record(value):
  for reader in readers:reader.join(timeout=1)
  for name in ['stdout','stderr']:
-  value[name+'_capture_limit_bytes']=log_limit
-  value[name+'_discarded_bytes']=max(0,log_seen[name]-log_limit)
-  value[name+'_capture_truncated']=log_seen[name]>log_limit
+  value[name+'_capture_limit_bytes']=None
+  value[name+'_discarded_bytes']=0
+  value[name+'_capture_truncated']=False
  return value
 supervisor=identity(os.getpid());started=time.time();child=None;stop_reason=None;stop_at=None
 with (root/'stdout').open('wb') as out,(root/'stderr').open('wb') as err:
@@ -123,12 +124,16 @@ const START = CONTROL+String.raw`
 import subprocess,hashlib,base64
 jid,encoded,seconds=sys.argv[1],sys.argv[2],int(sys.argv[3]);work=sys.argv[4] if len(sys.argv)>4 else '/work'
 command=base64.b64decode(encoded,validate=True).decode('utf-8')
-root=job_root(jid,work);root.parent.mkdir(exist_ok=True)
-if root.exists():
- if (root/'command.sha256').read_text()!=hashlib.sha256(command.encode()).hexdigest():raise ValueError('Job command changed')
- print(json.dumps({'job_id':jid,'existing':True}));sys.exit(0)
-root.mkdir();(root/'command.sha256').write_text(hashlib.sha256(command.encode()).hexdigest())
-atomic(root,'status.json',{'status':'starting','job_id':jid})
+root=job_root(jid,work)
+try:
+ root.parent.mkdir(exist_ok=True)
+ if root.exists():
+  if (root/'command.sha256').read_text()!=hashlib.sha256(command.encode()).hexdigest():raise ValueError('Job command changed')
+  print(json.dumps({'job_id':jid,'existing':True}));sys.exit(0)
+ root.mkdir();(root/'command.sha256').write_text(hashlib.sha256(command.encode()).hexdigest())
+ atomic(root,'status.json',{'status':'starting','job_id':jid})
+except OSError as error:
+ raise RuntimeError('Job storage unavailable: '+str(error)) from error
 `+'\nworker='+JSON.stringify(WORKER)+String.raw`
 p=subprocess.Popen(['python3','-c',worker,str(root),encoded,str(seconds),work],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
 atomic(root,'launcher.json',{'supervisor':identity(p.pid)})
@@ -136,7 +141,11 @@ print(json.dumps({'job_id':jid,'supervisor_pid':p.pid}))
 `;
 const READ = CONTROL+String.raw`
 root=job_root(sys.argv[1],sys.argv[2] if len(sys.argv)>2 else '/work')
+if not root.is_dir() or not (root/'status.json').is_file():
+ print(json.dumps({'status':'job_missing','error':'No retained job record exists'}));sys.exit(0)
 if len(sys.argv)>6 and sys.argv[6]:
+ if not (root/'command.sha256').is_file():
+  print(json.dumps({'status':'job_missing','error':'No retained job record exists'}));sys.exit(0)
  if (root/'command.sha256').read_text()!=sys.argv[6]:raise ValueError('Retained command identity changed')
 wait=int(sys.argv[5]) if len(sys.argv)>5 else 0
 if not 0<=wait<=120:raise ValueError('Wait must be 0..120 seconds')
@@ -198,6 +207,7 @@ export const JOB_SCRIPTS = Object.freeze({start:START,read:READ,cancel:CANCEL,wo
 export class DockerBroker {
   constructor(config, store, execute=exec) {
     this.config=config;this.store=store;this.execute=execute;
+    this.jobStoragePreflight=undefined;
     if(!config.workDir.includes('/offline-harness/work/') || config.workDir.includes('/benchmarks/')) throw Error('Development sandbox must use its own offline-harness/work directory');
     if(fs.realpathSync(config.workDir)!==config.workDir) throw Error('Work directory must be canonical');
   }
@@ -220,20 +230,37 @@ if not p.startswith('/work/'):raise ValueError('File must be inside /work')
 fd=os.open(p,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
 try:
  info=os.fstat(fd)
- if not stat.S_ISREG(info.st_mode) or info.st_size>8*1024*1024:raise ValueError('Read requires a regular file within 8 MiB')
+ if not stat.S_ISREG(info.st_mode):raise ValueError('Read requires a regular file')
  if not os.path.realpath('/proc/self/fd/'+str(fd)).startswith('/work/'):raise ValueError('File escaped /work')
- with os.fdopen(fd,'rb',closefd=False) as stream:raw=stream.read(8*1024*1024+1)
- if len(raw)>8*1024*1024:raise ValueError('File exceeds 8 MiB')
+ with os.fdopen(fd,'rb',closefd=False) as stream:raw=stream.read()
  print(base64.b64encode(raw).decode())
 finally:os.close(fd)
 `;
-    return Buffer.from((await this.docker(['exec',this.config.containerId,'python3','-c',script,filename])).trim(),'base64');
+    return Buffer.from((await this.docker(['exec',this.config.containerId,'python3','-c',script,filename],{maxBuffer:Infinity})).trim(),'base64');
   }
   async validate() {
     const c=JSON.parse(await this.docker(['inspect',this.config.containerId]))[0];
     const networks=c.HostConfig.NetworkMode==='none'?[]:await Promise.all(Object.keys(c.NetworkSettings.Networks).map(async name=>JSON.parse(await this.docker(['network','inspect',name]))[0]));
     validateSandbox(c,networks,this.config);
     if(this.config.egress?.mode==='lan' && c.HostConfig.NetworkMode!=='none' && !networks.every(n=>n.Internal)) await verifyEgress(this.config,this.execute);
+    await this.validateJobStorage();
+  }
+  async validateJobStorage() {
+    if(this.jobStoragePreflight)return this.jobStoragePreflight;
+    const preflight=(async()=>{
+      const id=crypto.randomUUID().replaceAll('-',''),command=JOB_STORAGE_PREFLIGHT_COMMAND,encoded=Buffer.from(command,'utf8').toString('base64');
+      try {
+        const started=JSON.parse(await this.docker(['exec',this.config.containerId,'python3','-c',START,id,encoded,'5']));
+        if(started.job_id!==id)throw Error('Job storage preflight returned an unexpected job identity');
+        const observed=JSON.parse(await this.docker(['exec',this.config.containerId,'python3','-c',READ,id,'/work','0','0','5',hash(command)],{timeout:25000}));
+        if(observed.status!=='finished'||observed.exit_code!==0||observed.stdout!==JOB_STORAGE_PREFLIGHT_OUTPUT)throw Error('Job storage preflight could not observe its command output and exit status');
+      }catch(error) {
+        const detail=jobStorageFailure(error);
+        throw Error(detail?`Sandbox job-storage preflight failed: ${detail}`:'Sandbox job-storage preflight failed. The solver must be able to create and observe jobs under /work/.offline-jobs.');
+      }
+    })();
+    this.jobStoragePreflight=preflight;
+    try{return await preflight;}catch(error){if(this.jobStoragePreflight===preflight)this.jobStoragePreflight=undefined;throw error;}
   }
   checkCommand(command, seconds) {
     if(typeof command!=='string' || command.length>16000 || !command.trim() || !Number.isInteger(seconds) || seconds<1 || seconds>3600) throw Error('Invalid command or runtime budget');
@@ -268,14 +295,24 @@ finally:os.close(fd)
     let response;
     try{response={...JSON.parse(await this.docker(['exec',this.config.containerId,'python3','-c',START,job.storage_id,encoded,String(seconds)])),job_id:id};}
     catch(error){
+      const storageError=jobStorageFailure(error);
+      if(storageError){
+        this.store.append('job_launch_failed',{job_id:id,error_kind:'job_storage_unavailable'});
+        return {job_id:id,status:'launch_failed',exit_code:null,execution_confirmed:false,error:'Job storage is unavailable; the command was not started.',note:'Repair the writable /work job storage before running another command.'};
+      }
       // Observe this exact allocated job. A lost acknowledgement is never
       // permission to invoke START a second time.
-      this.store.append('job_launch_ack_lost',{job_id:id,error_kind:error.name});
       try{
         const retained=await this.read(id,waitSeconds,{},signal);
+        if(retained.status==='job_missing'){
+          this.store.append('job_launch_record_missing',{job_id:id,error_kind:error.name});
+          return {...retained,status:'job_record_missing',execution_confirmed:false,error:'No retained job record exists after the launch acknowledgement failed.',note:'Do not keep waiting for this job; its state cannot be observed.'};
+        }
+        this.store.append('job_launch_ack_lost',{job_id:id,error_kind:error.name});
         this.store.append('job_launch_observed',{job_id:id,status:retained.status});
         return {...retained,launch_ack_lost:true,command_replayed:false};
       }catch(observationError){
+        this.store.append('job_launch_ack_lost',{job_id:id,error_kind:error.name});
         this.store.append('job_launch_observation_failed',{job_id:id,error_kind:observationError.name});
         return {job_id:id,status:'unknown_launch',exit_code:null,execution_confirmed:false,error:'Local launch acknowledgement unavailable',note:'The command was not replayed. Observe this job with wait_job before assuming its effects.'};
       }
@@ -316,15 +353,16 @@ finally:os.close(fd)
     const code=String.raw`
 import pathlib,sys,json,base64,hashlib
 from PIL import Image
+Image.MAX_IMAGE_PIXELS=None
 p=pathlib.Path('/work')/sys.argv[1];p=p.resolve(strict=True)
-assert p.is_relative_to('/work') and p.is_file() and p.stat().st_size<=8*1024*1024
+assert p.is_relative_to('/work') and p.is_file()
 with Image.open(p) as im:
- assert im.format in ('PNG','JPEG') and im.width*im.height<=16*1024*1024
+ assert im.format in ('PNG','JPEG')
  fmt=im.format;im.verify()
 data=p.read_bytes()
 print(json.dumps({'path':str(p),'mimeType':'image/png' if fmt=='PNG' else 'image/jpeg','sha256':hashlib.sha256(data).hexdigest(),'data':base64.b64encode(data).decode()}))
 `;
-    const image=JSON.parse(await this.docker(['exec',this.config.containerId,'python3','-c',code,filename]));
+    const image=JSON.parse(await this.docker(['exec',this.config.containerId,'python3','-c',code,filename],{maxBuffer:Infinity}));
     if(hash(Buffer.from(image.data,'base64'))!==image.sha256) throw Error('Task image identity changed');
     return image;
   }

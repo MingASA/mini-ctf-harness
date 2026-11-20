@@ -1,0 +1,22 @@
+{
+  "title": "The end of the HTTP byte range is included in the result",
+  "summary": "bytes=0-499 specifies the first 500 bytes; bytes=-500 indicates up to 500 bytes at the end.",
+  "applies": "HTTP representation and offline message parsing",
+  "aliases": [
+    "Content-Range",
+    "206",
+    "inclusive",
+    "Resume upload from breakpoint"
+  ],
+  "detail": "When calculating the length of the partial response, use the returned last-first+1; the unknown total length and the length of the segment are two quantities.",
+  "boundary": "The server MAY ignore the Range and return a full 200 response, and should check the status and actual Content-Range before reassembly.",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc9110.html#section-14.1.2",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "When restoring multiple download records to a single file, avoid losing a single byte at the join.",
+  "tags": [
+    "web",
+    "misc"
+  ]
+}

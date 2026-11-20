@@ -74,9 +74,45 @@ de632c79cb58be69c4685967e114a329fd819ba6fb9e87c1c79843dc7a2e73bd
 
 在终端选择视觉型号时，可选 CPU（使用系统内存）或 GPU（使用显存）。也可以直接指定 `/model qwen3.5-9b-ctf-web-q8-vision gpu`，或在启动命令中传入 `--model qwen3.5-9b-ctf-web-q8-vision --projector-device gpu`。启动时省略此参数会使用已保存的选择，首次使用默认 CPU。视觉配置也接受 `"projectorDevice": "cpu"` 或 `"gpu"`。
 
-默认是 16 GB 显存配置：55,296 上下文、Q8 KV、单槽、无 MTP；普通生成 medium、总输出 8K；40K 软 Compact，Compact 使用 xhigh、4K 思考与 8K 总输出。硬件不同可修改数据目录的 `config.json` 中 `contextTokens`、`compactSoftTokens`、`gpuLayers`、`kvType` 等参数。两套权重和 projector 约 26 GB；连同引擎、下载缓存、工具镜像和可增长的 ext4 工作区，建议数据盘至少预留 55 GB。
+默认是 16 GB 显存配置：55,296 上下文、Q8 KV、单槽、无 MTP；普通生成 medium、总输出 8K；40K 软 Compact，Compact 默认关闭思考，单次总输出上限为 8K。硬件不同可修改数据目录的 `config.json` 中 `contextTokens`、`compactSoftTokens`、`gpuLayers`、`kvType` 等参数。两套权重和 projector 约 26 GB；连同引擎、下载缓存、工具镜像和可增长的 ext4 工作区，建议数据盘至少预留 55 GB。
 
 Thinking 采样 `temperature=1.0, top_p=0.95, top_k=20`；Non-thinking 为 `0.7, 0.80, 20`。内置 15 个原始 SKILL.md 与 32 个 References；Pi 直接发现 `.agents/skills/`，按需使用通用 `read` 读取。
+
+## 主会话离线知识库
+
+运行 `./mini-ctf` 后，比赛会话中的模型自动获得 `knowledge` 工具。工具提供 `search`、`browse` 和 `get`，查询和结果直接留在当前任务对话及日志里。后台运行入口 `./mini-ctf run` 也使用相同工具。
+
+`/knowledge` 查看当前题的开关，`/knowledge off` 关闭，`/knowledge on` 开启。开关按题目保存并在重启后恢复；运行中的修改在完整轮次结束后生效，避免更换已经发给模型的工具契约。关闭后撤下工具及其使用提示，之前读取的资料仍保留在历史中。新题默认开启，可在模型配置中设置 `"knowledgeEnabled": false` 改变默认值。此开关控制仓库自带的离线卡片，不控制独立的 `rag_search` 服务。
+
+模型先用已有知识和题目证据推进。当关键事实不确定、观测与理解矛盾，或连续尝试无进展且需要核对事实假设时，由模型选择查询知识库。明确的知识缺口可立即触发求助。查询先看摘要，仍缺条件或细节时再读单卡，随后回到题目验证。这个时机由提示词引导和模型判断，程序提供工具并执行其调用。
+
+例如模型需要核对 PNG 的 IDAT 行为时，可以先调用 `{"op":"search","query":"IDAT"}` 得到摘要，再按返回 ID 调用 `{"op":"get","id":"formats/png/idat-stream"}` 读取完整卡片及引用。搜索默认每页 3 条，目录默认 5 条；`limit` 可设置任意正整数。两者均支持 `scope`、题型 `tag` 和分页 `offset`。搜索额外返回匹配总数 `total`；下一页保持查询和过滤条件不变，将 `offset` 设为上一页的 `nextOffset`，该值为 `null` 时结束。`get` 只接受一个已登记 ID。
+
+检索保留完整技术标识符，支持常见写法、英文词形和部分中英术语映射。未覆盖的标识符不会因为“怎么使用”等通用词而匹配其他主题；同一技术目录中的相关卡片仍可能作为候选出现，需核对摘要和边界。查询、卡片文件、字段长度和别名数量没有固定上限；工具展示仍使用现有的输出分页机制。
+
+启动提示词包含固定的工具使用说明，具体卡片通过工具结果按需进入上下文。知识文件随仓库分发，首次查询在本进程建立索引；断网时可用。更新卡片后重启前端以加载新的内容。检索结果沿用工具日志与恢复机制，重新打开任务时可继续使用此前已读的结果。
+
+知识库有 157 张卡、44 个技术对象。同一张卡可服务多种题型，ID 只保留一份。
+
+| 题型标签 | 卡数（含交叉标签） | 可以查的具体问题 |
+|---|---:|---|
+| web | 35 | HTTP 跳转与部分响应、Cookie 范围、Flask 会话与重复参数、SQLite 类型和 NULL、PHP 版本差异 |
+| reverse | 60 | x86-64 与 AArch64 语义、SysV 和 Windows 调用约定、PE、ELF、DEX、JVM、Wasm 与定宽运算 |
+| pwn | 20 | C 对象边界与生命周期、结构体布局、栈帧展开、调试符号、故障地址和转储判读 |
+| crypto | 25 | 模运算、椭圆曲线群律与压缩点、有限域、带错分片、整数格与 LLL、密码数据表示 |
+| misc | 89 | ext4、Windows minidump、图像元数据、电话双音、压缩归档、PDF、SQLite 和抓包 |
+
+人工核对内容时也可直接运行 `./mini-ctf knowledge search "问题" --limit 3 --offset 0`、`./mini-ctf knowledge browse --tag pwn` 或 `./mini-ctf knowledge get ID`。这些命令不请求模型。
+
+独立查阅器支持 `ask --model MODEL_ID` 和 `ask --text-only --model MODEL_ID`。必须通过 `MINI_CTF_KNOWLEDGE_MODEL_URL` 指定独立模型服务，并提供比赛配置 `MINI_CTF_CONFIG`（安装后的启动器自动传入）。查阅器检查实验进程及模型租约，拒绝使用配置中的比赛服务，即使该服务当前空闲也不会占用其驻留 KV。`--text-only` 保留整张卡片的正文、适用边界和来源。查阅轮数及工具批次没有固定上限，按 Ctrl+C 可取消请求并释放租约。
+
+检索测试包含每卡一个问法、20 个额外改写，以及对应十道离线附件的十个知识问题（每个题型两个）。这些测试检查知识命中，单题最终答案与模型答题正确率需另外评估。
+
+每个 `knowledge/<分类>/<技术对象>/*.json` 文件描述一个可验证的判断。文件名和分类组成稳定 ID。新增卡片时，在 `summary` 给出结论，在 `applies`、`detail` 和 `boundary` 说明版本、前提、反例；`sources.reference` 链到定义该行为的规范或手册，`sources.context` 与 `relevance` 说明它与题目的关系。为新知识添加真实的查询问法和期望命中 ID，并用 `node --test offline_harness/test/knowledge.test.mjs` 验证。PHP 示例另可在已加载 JSON 扩展的 64 位 PHP 7.4 或 8.x 环境下执行 `php -d zend.assertions=1 -d assert.exception=0 -d assert.warning=0 offline_harness/test/fixtures/knowledge-php.php`。
+
+在 `offline_harness` 下运行 `node scripts/evaluate-knowledge.mjs` 可评估额外的开发查询集；运行 `node scripts/evaluate-knowledge.mjs src/knowledge/catalog.mjs test/fixtures/knowledge-validation.json` 可评估另一组查询。脚本首个可选参数也可指向原版检索模块，便于对比。两组共 49 条已覆盖查询和 41 条未覆盖查询，最终都参与过问题诊断和修正，应视为回归集，不能据此宣称盲测或比赛解题准确率。具体结果见 [验证记录](offline_harness/evaluation/knowledge-validation.json)。
+
+模型接口实测使用 `node scripts/smoke-knowledge.mjs 独立服务URL 比赛配置路径 输出JSON路径`，服务模型别名为 `knowledge-smoke-9b`。脚本验证真实模型的搜索→读卡→引用、搜索分页和未覆盖主题三条流程。脚本中的轮数、生成长度及超时是实测预算，不是查阅器或知识工具的产品限制。
 
 ## 交互
 
@@ -84,12 +120,14 @@ Thinking 采样 `temperature=1.0, top_p=0.95, top_k=20`；Non-thinking 为 `0.7,
 Ctrl+N       新建题目，粘贴题意、选择附件、填写目标地址
 /queue       查看所有题目、后台任务、待人工确认的答案
 /view 02     直接查看第 02 题的输出
+/delete 02   删除指定会话、解题容器和工作目录；省略题号时弹出会话选择
 /resume 02   恢复第 02 题；/resume 可先选题
 /review      选择候选并记录平台通过或错误
 /model       选择模型；/model 编号或ID 直接切换
-/effort      选择思考模式和预算；/effort xhigh 4096 直接修改
+/effort      选择正常推理或 Compact 压缩，分别设置思考开关、强度和 token 预算
 /env         选择新题环境；/tab 选择面板
 /compact     当前完整轮次结束后压缩
+/context     输入当前会话的窗口和软压缩线，也可直接输入 /context 64K 48K
 /tool 3      查看当前题的第 3 条工具结果；/tab output 返回对话
 /close-server 停止托管模型服务并保留界面与会话；用 /model 重新加载
 Ctrl+C       停止生成，保留内容、后台命令及驻留模型；输入消息或 /resume 继续
@@ -101,6 +139,19 @@ Ctrl+C       停止生成，保留内容、后台命令及驻留模型；输入�
 新建题目第 3 步可输入单个文件或目录的绝对路径。WSL 支持直接粘贴 Windows 盘符路径（如 C:\Users\me\Downloads\sample.zip），也支持 Linux 路径。目录按原层级递归复制到题目的 /work/attachments，单个文件只复制该文件。也可用 /browse 选择，或输入 - 跳过。
 
 题号从 `01`、`02`、`03` 递增；已有会话使用同样的短编号，原始记录保持完整。状态栏累计显示模型调用次数与已生成 tokens，并显示当前上下文、软压缩线及总窗口刻度。上下文使用最近一次原生计数和该次生成量，Compact 后使用重建后的计数。
+
+`/context 64K 48K` 将当前会话窗口设为 65,536 tokens，自动压缩线设为 49,152 tokens。窗口上限取自后端启动配置。已有对话在下一个轮次边界按实际 token 数校验，必要时先在原窗口压缩。输入 `/tab budget` 可以查看当前值、待应用值或失败原因。设置随会话保存，切换模型后使用所选模型的预算。
+
+后端资源状态常驻在终端顶部，每两秒刷新。带观测补丁的后端通过 `/kv-cache` 在模型执行线程上读取实际 cell，分别显示正在生成、预填充和仍有 KV 的 slot 数，以及主模型和 MTP 的注意力池占用、空闲、共享、独占 cell。有效 KV 载荷按实际 cell 和各层张量行大小计算，循环状态单独显示。接口同时提供每个序列的归属、张量大小和后端缓冲区分配量。原版后端显示 `/slots` 提供的请求状态和提示 token 数，并标注 cell 统计可用性。
+
+Linux CUDA 用户可用以下命令构建固定 b12144 的观测后端。需要 Git、CMake、Ninja、C++ 编译器和 CUDA Toolkit，脚本可接受第三个参数指定 Toolkit 目录。
+
+```sh
+git clone --depth 1 --branch b12144 https://github.com/ggml-org/llama.cpp.git /path/to/llama.cpp
+sh offline_harness/scripts/build-kv-backend.sh /path/to/llama.cpp /path/to/build
+```
+
+在本机 `config.json` 的 `modelRuntime` 中，将 `exe` 指向生成的 `bin/llama-server`，`platform` 设为 `linux`，并使用独立的 `runDir` 保存该后端的进程回执。动态库目录可通过 `libraryDirs` 指定。源码补丁位于 `offline_harness/patches/`。直接验证真实序列复制和释放的 C++ 程序位于 `offline_harness/test/backend/kv-cells.cpp`，编译时链接补丁后的 libllama 和 libggml-base，并传入本地 Qwen3.5 9B GGUF 路径运行。
 
 工具接口保持简短：
 
@@ -121,7 +172,7 @@ submit_flag({"candidate":"flag{...}"})
 
 启用后，`/offloadKV` 暂停驻留题并把 KV 快照放到本机 `/dev/shm`。成功后用 `/resume 题号` 选择要跑的题。恢复原题时，后端用快照匹配文本和图片前缀，并处理未命中的后缀。快照在成功回读后释放，重启系统或关闭 WSL 后也会随 tmpfs 消失。原对话仍可恢复。
 
-在 `config.json` 的 `modelRuntime` 下添加 `"ramKv": {}`，再启动托管引擎。支持内置 27B 和 9B、54K 以内的 Q8 KV。Windows 引擎在数据盘临时序列化，每次操作结束后删除中转文件。默认中转位置是引擎运行目录下的 `slot-staging`，可通过 `ramKv.stagingRoot` 指定其他 Windows 数据盘位置。原生 Linux 直接写 tmpfs。
+在 `config.json` 的 `modelRuntime` 下添加 `"ramKv": {}`，再启动托管引擎。支持内置 27B IQ4_XS、27B Q4_K_XL 和 9B，以及 128K 以内的 Q8 KV；启用 MTP 时同时保存和恢复 draft 状态，内存预算计入其默认 F16 K/V 缓存。Windows 引擎在数据盘临时序列化，每次操作结束后删除中转文件。默认中转位置是引擎运行目录下的 `slot-staging`，可通过 `ramKv.stagingRoot` 指定其他 Windows 数据盘位置。原生 Linux 直接写 tmpfs。
 
 RAM 检查取 Windows 和 WSL 可用内存中较低的一项，并检查 tmpfs 的实际空间。默认保留系统内存 `reserveMiB: 2048`，CPU projector 额外保留 `cpuProjectorReserveMiB: 1280`，另留 512 MiB 给序列化。`maxCacheMiB` 限制该安装中所有快照的总量。实际可缓存量随 Windows、WSL 和 tmpfs 当时的余量变化。WSL 的内存上限可在 WSL Settings 中调整。 [Microsoft WSL 配置](https://learn.microsoft.com/en-us/windows/wsl/wsl-config)
 
@@ -171,6 +222,22 @@ RAM 检查取 Windows 和 WSL 可用内存中较低的一项，并检查 tmpfs �
 
 Compose 描述的是独立运行的题目服务，例如一个 HTTP 应用和它的数据库。普通附件题由工具容器执行命令，不需要 Compose。给工具容器增加通用依赖时，在 `docker/Dockerfile` 中维护系统包，在 `docker/requirements.txt` 中固定 Python 包版本，然后在联网准备阶段构建新版镜像。运行中的离线容器继续使用创建时指定的镜像。
 
+工具镜像包含 cpio、7z、xz、zstd 等归档工具，以及 binwalk、foremost、exiftool、steghide、zsteg、YARA、ImageMagick、FFmpeg、PDF 和 Office 分析工具。取证工具包括 Volatility 3 和 Sleuth Kit。二进制分析和兼容工具包括 gdb-multiarch、radare2、Ghidra headless、jadx、QEMU user、MinGW、apktool 和 Wine 32/64。系统工具优先使用 Debian Bookworm 官方包，其余上游发布包固定版本和 SHA256。Wine 状态保存在题目工作目录的 `.wine` 中。
+
+解题容器默认内存上限为 2048 MiB，可在 `config.json` 的 `solver.memoryMiB` 中设置为 128–4096 MiB；复杂分析和多个并发题目会相应占用更多内存。容器以工作目录所属用户运行，保留只读根文件系统、能力丢弃和网络隔离。
+
+构建后可以在受限容器中检查基础工具和归档往返（将 `IMAGE` 替换为待检查的镜像 ID）：
+
+```sh
+smoke_work=$(mktemp -d)
+docker run --rm -i --pull=never --network none --read-only --cap-drop ALL \
+  --security-opt no-new-privileges --user "$(id -u):$(id -g)" --memory 2g --pids-limit 128 \
+  --tmpfs /tmp:rw,nosuid,nodev,size=128m --mount "type=bind,src=$smoke_work,dst=/work" \
+  IMAGE sh -s < docker/smoke-test.sh
+```
+
+测试结束后可删除 `smoke_work` 指向的临时目录；Wine 初始化文件保存在该目录中。
+
 ## 验证范围
 
 Windows + WSL 的真实 27B 加载、工具执行、候选提交与人工确认流程已验收。原生 Linux 已通过自动测试和真实进程启动/替换测试；Linux CUDA 推理尚未做 GPU 实机验收。
@@ -186,3 +253,37 @@ python3 -m unittest discover -s ../installer/test
 `offline_harness/src/` 是运行时，`prompts/` 是普通解题和 Compact 提示词，`installer/` 管理安装及校验，`docker/` 定义工具环境。模型权重、运行记录、用户配置和依赖目录保存在本机并由 Git 忽略。
 
 依赖 Pi、llama.cpp、Docker、Node.js 和模型各自的上游许可；下载的模型权重遵循模型发布方的许可。
+
+## 斜杠命令速查
+
+输入 `/` 可浏览命令，按 Enter 确认，Esc 取消。下表中方括号表示可选参数。
+
+| 命令 | 用途 |
+| --- | --- |
+| `/new` | 新建会话，依次填写标题、题意、附件和可选目标。 |
+| `/view [题号]` | 查看指定会话。省略题号时从列表选择。 |
+| `/delete [题号或 ID]` | 删除所选会话、容器和工作目录。 |
+| `/queue` | 查看队列、题目状态和待确认答案。 |
+| `/start` | 启动题目调度。 |
+| `/priority [数值]` | 调整当前题的队列优先级，范围为 −1000 到 1000。 |
+| `/switch [题号]` | 在轮次边界保存当前进度并切换推理题目。 |
+| `/pause`、`/resume [题号]` | 暂停当前题或选择要恢复的题目。 |
+| `/model [编号或 ID] [cpu 或 gpu]` | 选择模型。视觉型号可指定 projector 的运行设备。 |
+| `/env [环境名]` | 选择新题的运行环境。 |
+| `/effort` | 先选「正常推理」或「Compact 压缩」，再选关闭或思考强度。启用思考后可设置 token 预算。 |
+| `/context [窗口 软压缩线]` | 设置会话窗口和自动压缩线，例如 `/context 64K 48K`。 |
+| `/compact` | 请求在完整轮次结束后压缩上下文。 |
+| `/checkpoint` | 请求在轮次边界保存当前驻留题的进度。 |
+| `/offloadKV` | 暂停并尝试把驻留题的 KV 快照保存到内存。`/offloadKV config` 查看或设置内存余量和快照总上限。 |
+| `/tab [面板]` | 切换面板，例如 `/tab budget` 查看窗口、用量和两套思考设置。 |
+| `/tool [序号]`、`/read [路径]` | 展开一次工具输出，或读取当前题的文件。 |
+| `/cancel [命令 ID]` | 取消当前题的一个后台命令。 |
+| `/archive [消息 ID]` | 归档当前题的一条补充消息。 |
+| `/review`、`/feedback [候选 ID] [结果] [说明]` | 选择待确认答案，或给当前题的候选记录 `correct`、`incorrect`、`pending`。 |
+| `/skills [检索词]`、`/use-skill 名称` | 浏览或搜索已安装技能，或将指定技能的读取请求加入当前题。 |
+| `/discard` | 清空当前输入草稿。 |
+| `/help`、`/quit` | 查看快捷键和帮助，或保存并退出终端。 |
+
+`/effort high 2048` 设置正常推理，`/effort compact low 1024` 开启 Compact 思考，`/effort compact off` 关闭它。两套设置分别保存在当前会话中。正在生成时，修改在轮次边界生效。
+
+新建向导中，`/back` 返回上一步，`/browse [路径]` 在附件步骤打开选择器，`/cancel` 退出向导，`/view [题号]` 可暂时查看已有会话。

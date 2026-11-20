@@ -1,0 +1,22 @@
+{
+  "title": "Wasm's LEB128 stores the lowest seven bits first",
+  "summary": "The highest bit of the byte is 1, indicating that there is another group behind it. Unsigned e5 8e 26 represents 624485.",
+  "applies": "WebAssembly core binary format",
+  "aliases": [
+    "LEB128",
+    "varuint",
+    "varint32",
+    "seven digit code"
+  ],
+  "detail": "Signed encodings check the last valid group of sign bits for extension. For example, 7f is −1 in sLEB and 127 in uLEB.",
+  "boundary": "Wasm limits the maximum encoding length and the last group of unused bits for each bitwidth; arbitrarily long variants cannot be considered legal fields.",
+  "sources": {
+    "reference": "https://webassembly.github.io/spec/core/binary/values.html",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "When reading immediate values or section lengths from modules, avoid interpreting signed constants as huge positive numbers.",
+  "tags": [
+    "reverse",
+    "misc"
+  ]
+}

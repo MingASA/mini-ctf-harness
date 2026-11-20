@@ -1,0 +1,22 @@
+{
+  "title": "memcpy and memmove have different contracts for overlapping areas",
+  "summary": "memmove behaves as if it copies via a temporary buffer. Overlapping source and destination ranges make memcpy undefined.",
+  "applies": "C11; Offline memory diagnostics and object representation",
+  "detail": "For ABCDE, move the first three bytes to the right by one space, and the canonical memmove result is AABCE. C11 §7.24.2.",
+  "boundary": "Undefined behavior has no reliable fixed output. The presence of a reasonable string in a single run is not enough to establish cross-version expectations.",
+  "aliases": [
+    "memmove",
+    "memcpy",
+    "overlap",
+    "overlap area"
+  ],
+  "relevance": "Determine the definite result of an in-situ move in the memory log.",
+  "sources": {
+    "reference": "https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "pwn",
+    "reverse"
+  ]
+}

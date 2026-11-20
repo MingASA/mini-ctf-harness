@@ -1,0 +1,21 @@
+{
+  "title": "The HTTP request target does not contain a fragment of the URL",
+  "summary": "After the browser parses the URL, the fragment starting with # is processed by the client and is not sent to the server along with the request target.",
+  "applies": "Browser interpretation of URLs, cookies, and origins",
+  "detail": "When two history URLs differ only in fragments, it is possible to see the exact same path and query in the server access log.",
+  "boundary": "The percent-encoded %23 is data within the corresponding URL component; it should be determined during the correct parsing phase.",
+  "aliases": [
+    "fragment",
+    "hash",
+    "anchor point",
+    "pound sign"
+  ],
+  "relevance": "Compare the address bar, HAR, and access logs to determine which piece of information is only visible on the client.",
+  "sources": {
+    "reference": "https://developer.mozilla.org/en-US/docs/Web/URI/Reference/Fragment",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "web"
+  ]
+}

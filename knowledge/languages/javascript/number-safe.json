@@ -1,0 +1,22 @@
+{
+  "title": "The contiguous safe integer range of Number",
+  "summary": "2^53−1 is the largest safe integer, and 2^53 and 2^53+1 are equal when expressed as Numbers.",
+  "applies": "ECMAScript; Number, BigInt, and Strings",
+  "aliases": [
+    "MAX_SAFE_INTEGER",
+    "BigInt",
+    "floating point precision",
+    "large integer"
+  ],
+  "detail": "When you need to retain the original text of a decimal big integer, you can directly construct a BigInt from a string; converting it to Number first will lose information.",
+  "boundary": "There are still some integers that can be accurately represented beyond the safe range. The problem is that all adjacent integers cannot be distinguished.",
+  "sources": {
+    "reference": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number/MAX_SAFE_INTEGER",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "Ability to distinguish between data collisions and display rounding when comparing long IDs in script logs.",
+  "tags": [
+    "reverse",
+    "web"
+  ]
+}

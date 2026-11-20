@@ -1,0 +1,22 @@
+{
+  "title": "Python bitwise negation does not have a fixed word length",
+  "summary": "Bitwise operations on Python integers are interpreted as infinite sign extension, ~0x12 is -19.",
+  "applies": "Python 3; standard library or built-in integers",
+  "aliases": [
+    "bitwise not",
+    "Bitwise negation",
+    "infinite precision",
+    "mask"
+  ],
+  "detail": "When simulating an 8-bit result, limiting the output to the lower 8 bits results in 0xed; you cannot see this byte when printing negative numbers directly.",
+  "boundary": "Select how many bits should come from the original attachment's field definition; a fixed mask only retains information within that width.",
+  "sources": {
+    "reference": "https://docs.python.org/3/library/stdtypes.html#bitwise-operations-on-integer-types",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "Determines whether intermediate values need to be truncated when translating fixed-width bitwise operations on the machine into Python.",
+  "tags": [
+    "reverse",
+    "misc"
+  ]
+}

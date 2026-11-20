@@ -1,0 +1,21 @@
+{
+  "title": "tar member loads are 512-byte record aligned",
+  "summary": "The normal ustar header occupies 512 bytes, and padding after the file data pushes the next header to the entire 512-byte record boundary.",
+  "applies": "POSIX ustar and pax archives",
+  "aliases": [
+    "ustar",
+    "tar padding",
+    "512 bytes",
+    "block alignment"
+  ],
+  "detail": "When the ordinary file size is 513, the data area occupies two records; the content is only 513 bytes.",
+  "boundary": "Padding bytes are not included in the file size, and the pax extension header itself also consumes archive records.",
+  "sources": {
+    "reference": "https://pubs.opengroup.org/onlinepubs/9699919799/utilities/pax.html",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "When locating the second file from a continuous archive stream, avoid treating the padding area as a file header.",
+  "tags": [
+    "misc"
+  ]
+}

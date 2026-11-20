@@ -1,0 +1,21 @@
+{
+  "title": "Last byte of SQLite nine-byte varint contributes 8 bits",
+  "summary": "The first eight bytes each contribute the lower 7 bits, and the ninth byte, if present, contributes the full 8 bits.",
+  "applies": "SQLite 3 master database and WAL files",
+  "aliases": [
+    "SQLite varint",
+    "rowid",
+    "nine bytes",
+    "LEB128"
+  ],
+  "detail": "The previous data groups are combined in big-endian order. The highest bit of the last byte belongs to the numerical value.",
+  "boundary": "Different from the common little endian LEB128; applying the latter will cause miscalculation on multi-byte lengths or rowids.",
+  "sources": {
+    "reference": "https://www.sqlite.org/fileformat.html#varint",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "When reading the record length in the database page, reading one more or one less bit will cause the entire record to be misaligned.",
+  "tags": [
+    "misc"
+  ]
+}

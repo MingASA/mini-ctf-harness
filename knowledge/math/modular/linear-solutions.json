@@ -1,0 +1,21 @@
+{
+  "title": "Solvable conditions for linear congruence ax ≡ b",
+  "summary": "Let d=gcd(a,m). An equation has a solution modulo m if and only if d divides b; there are exactly d distinct remainders.",
+  "applies": "Integer modulo arithmetic; modulus greater than 1",
+  "aliases": [
+    "linear congruence",
+    "gcd",
+    "linear congruence",
+    "multiple remainders"
+  ],
+  "detail": "6x ≡ 4 (mod 8) is approximately 3x ≡ 2 (mod 4), so x is 2 or 6 mod 8.",
+  "boundary": "When removing the common factors, the module must be removed at the same time. Keeping the original module will miss the solution.",
+  "sources": {
+    "reference": "https://cp-algorithms.com/algebra/linear_congruence_equation.html",
+    "context": "https://cryptohack.org/courses/modular/"
+  },
+  "relevance": "When restoring affine integer transformations, avoid mistaking multi-solution equations for permutations that can be directly inverted.",
+  "tags": [
+    "crypto"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "title": "The trailing equal sign of Base64 reveals the last set of valid bytes",
+  "summary": "The presence of == at the end of the four-character group means that the last group contains only one original byte, and the occurrence of = means that it contains two.",
+  "applies": "RFC 4648; Base64 family encoding",
+  "aliases": [
+    "pad bits",
+    "trailing padding",
+    "equal sign at the end",
+    "remainder"
+  ],
+  "detail": "Normalized encoding requires that the last valid character does not carry the low-order zeros of the original text; therefore, the same after loose decoding does not mean that the original text is exactly the same.",
+  "boundary": "In the unpadded format, the number of characters modulo 4 is 1, which cannot form legal and complete Base64 data.",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc4648.html#section-3.5",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "Distinguish between missing outer padding and truly missing data when judging truncation or representation differences.",
+  "tags": [
+    "misc",
+    "crypto"
+  ]
+}

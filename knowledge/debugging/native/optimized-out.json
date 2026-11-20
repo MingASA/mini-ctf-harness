@@ -1,0 +1,22 @@
+{
+  "title": "Optimized local variables are not recoverable at certain instruction locations",
+  "summary": "Variables can exist in registers, constants, or within a range of locations, or they can be eliminated; the debugger will report optimized out.",
+  "applies": "Offline stack traceback, symbol matching and debugging information for native programs",
+  "detail": "Even if there is debugging information, the same local quantity can be displayed in the previous section but not in the next section.",
+  "boundary": "Reporting unrecoverability does not prove that variables were zero at runtime; nor does recompiling variable locations replace old dumps.",
+  "aliases": [
+    "optimized out",
+    "variable location",
+    "local variables",
+    "Variables are optimized"
+  ],
+  "relevance": "Distinguish between missing source-level variables and anomalies in actual program values.",
+  "sources": {
+    "reference": "https://sourceware.org/gdb/current/onlinedocs/gdb/Optimized-Code.html",
+    "context": "https://primer.picoctf.org/"
+  },
+  "tags": [
+    "pwn",
+    "reverse"
+  ]
+}

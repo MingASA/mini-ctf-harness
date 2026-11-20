@@ -1,0 +1,21 @@
+{
+  "title": "The multiplicative order determines the period of the power sequence",
+  "summary": "When gcd(a,m)=1, the multiplicative order of a is the smallest positive integer k such that a^k≡1 (mod m).",
+  "applies": "Integer modulo arithmetic; modulus greater than 1",
+  "aliases": [
+    "n_order",
+    "multiplicative order",
+    "multiplicative order",
+    "Power period"
+  ],
+  "detail": "Modulo 7, 2 has order 3, so two terms with exponents different by 3 have the same remainder.",
+  "boundary": "You cannot conclude from two equal remainders alone that the difference in their exponents is the minimum period; smaller periods may also divide the difference.",
+  "sources": {
+    "reference": "https://docs.sympy.org/latest/modules/ntheory.html#sympy.ntheory.residue_ntheory.n_order",
+    "context": "https://cryptohack.org/courses/modular/"
+  },
+  "relevance": "Explain why repeated modular exponentiation observations are insufficient to uniquely determine the original exponent.",
+  "tags": [
+    "crypto"
+  ]
+}

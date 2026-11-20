@@ -1,0 +1,21 @@
+{
+  "title": "Floor roots and exact powers of integer square roots",
+  "summary": "integer_nthroot returns the floored integer root and a flag indicating whether the input is an exact power.",
+  "applies": "Integer modulo arithmetic; modulus greater than 1",
+  "aliases": [
+    "integer_nthroot",
+    "perfect power",
+    "Integer square root",
+    "exact power"
+  ],
+  "detail": "80 has a fourth integer root of 2 and is exactly marked as false; 81 returns 3 and is marked as true.",
+  "boundary": "Converting a large integer to a floating point and then taking the square root may result in incorrect selection of adjacent integers due to rounding. Candidates can be directly back-substituted using integer powers.",
+  "sources": {
+    "reference": "https://docs.sympy.org/latest/modules/core.html#sympy.core.intfunc.integer_nthroot",
+    "context": "https://cryptohack.org/courses/modular/"
+  },
+  "relevance": "When recovering integers from higher power data, distinguish between approximate candidates and values that strictly satisfy the equation.",
+  "tags": [
+    "crypto"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "title": "ZIP's EOCD can be annotated",
+  "summary": "The fixed part of a classic EOCD is 22 bytes, and can be followed by up to 65535 bytes of comments at the end.",
+  "applies": "Single volume ZIP; PKWARE APPNOTE",
+  "aliases": [
+    "EOCD",
+    "central directory",
+    "zip comment",
+    "Tail comments"
+  ],
+  "detail": "Checking for signatures only at exactly 22 bytes from the end of the file will miss annotated archives; the length of comments for candidate records should match the actual boundaries.",
+  "boundary": "The annotation itself can contain signature bytes. A single magic number is not sufficient to prove that true EOCD has been found.",
+  "sources": {
+    "reference": "https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "When judging whether the directory is complete from the end of the attachment, comments and missing records can be distinguished.",
+  "tags": [
+    "misc"
+  ]
+}

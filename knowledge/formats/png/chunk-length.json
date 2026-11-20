@@ -1,0 +1,23 @@
+{
+  "title": "Count range for PNG block length field",
+  "summary": "The Length of PNG only counts Data, and a complete block occupies a total of Length + 12 bytes.",
+  "applies": "PNG data stream; calculated from valid chunk starting point",
+  "aliases": [
+    "IHDR",
+    "IEND",
+    "chunk length",
+    "chunk boundary",
+    "block boundary",
+    "Data block length"
+  ],
+  "detail": "The four fields are 4-byte length, 4-byte type, variable-length data, and 4-byte CRC. The length is stored in big-endian order. The data length of IEND is zero, and the entire block still occupies 12 bytes.",
+  "boundary": "The length field can only give the position of the claimed next block. This location may exceed the actual data when the file is truncated or the fields are corrupted.",
+  "sources": {
+    "reference": "https://www.w3.org/TR/png-3/#5Chunk-layout",
+    "context": "https://ctf-wiki.org/misc/picture/png/"
+  },
+  "relevance": "When checking the block boundaries of PNG attachments, counting the type or CRC into the length will cause misalignment from the second block onwards.",
+  "tags": [
+    "misc"
+  ]
+}

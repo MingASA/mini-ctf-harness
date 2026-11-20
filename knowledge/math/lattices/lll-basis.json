@@ -1,0 +1,21 @@
+{
+  "title": "LLL outputs the reduction base, and the first vector is not guaranteed to be the global shortest",
+  "summary": "LLL returns a basis that satisfies the reduction conditions. Different implementations or parameters can yield different reduced bases of the same lattice.",
+  "applies": "Integer lattice; convention for row vectors as bases",
+  "detail": "When checking a candidate short vector, you should also check its integer coefficient combination relationship, norm and original problem conditions.",
+  "boundary": "Seeing that the shorter first line does not assert that the shortest vector problem has been solved exactly by the name of LLL alone.",
+  "aliases": [
+    "LLL",
+    "reduced basis",
+    "short vector",
+    "SVP"
+  ],
+  "relevance": "Avoid taking the first line returned by the reducer as the only answer to the question.",
+  "sources": {
+    "reference": "https://doc.sagemath.org/html/en/reference/matrices/sage/matrix/matrix_integer_dense.html#sage.matrix.matrix_integer_dense.Matrix_integer_dense.LLL",
+    "context": "https://cryptohack.org/challenges/maths/"
+  },
+  "tags": [
+    "crypto"
+  ]
+}

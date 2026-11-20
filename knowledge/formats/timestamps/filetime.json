@@ -1,0 +1,21 @@
+{
+  "title": "Epoch and counting units for Windows FILETIME",
+  "summary": "FILETIME is the number of 100 nanosecond intervals since UTC 1601-01-01, consisting of two 32-bit words, high and low.",
+  "applies": "Units and epochs of common timestamp fields",
+  "aliases": [
+    "FILETIME",
+    "1601",
+    "100ns",
+    "Windows timestamp"
+  ],
+  "detail": "The Unix epoch corresponds to FILETIME 116444736000000000. When converting, first subtract the epoch difference and then divide by 10000000 to avoid mistaking the field for milliseconds.",
+  "boundary": "The field unit is not equal to the actual record accuracy of the file system; the splicing of the upper and lower DWORDs must also comply with the structural layout.",
+  "sources": {
+    "reference": "https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-filetime",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "Put Windows file metadata on the same timeline as Unix logs.",
+  "tags": [
+    "misc"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "title": "The number of key bits in AES does not change the packet width",
+  "summary": "AES-128, AES-192, and AES-256 all operate on 128-bit (16-byte) blocks.",
+  "applies": "Byte representation and parameter explanation of cryptography questions",
+  "aliases": [
+    "AES-256",
+    "AES block size",
+    "Group width",
+    "Key length"
+  ],
+  "detail": "The 128, 192, and 256 in the algorithm name refer to the number of key bits. Breaking the AES-256 ciphertext into 32-byte chunks merges adjacent chunks.",
+  "boundary": "Grouping width cannot directly deduce the entire file length; mode, padding, and outer fields all affect storage length.",
+  "sources": {
+    "reference": "https://csrc.nist.gov/pubs/fips/197/final",
+    "context": "https://cryptohack.org/courses/symmetric/"
+  },
+  "relevance": "Avoid using the key length as the block length when checking ciphertext chunking, IV bytes, and file slicing.",
+  "tags": [
+    "crypto",
+    "misc"
+  ]
+}

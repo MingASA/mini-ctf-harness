@@ -1,0 +1,21 @@
+{
+  "title": "IPv4 fragmentation offset in eight bytes",
+  "summary": "Fragment Offset is the offset relative to the original data area. The field value 3 indicates that the data area is offset by 24 bytes.",
+  "applies": "Offline IPv4 and IPv6 packet analysis",
+  "aliases": [
+    "Fragment Offset",
+    "MF",
+    "IPv4 fragmentation",
+    "eight bytes"
+  ],
+  "detail": "The offset does not contain the original IP header. Determine the last piece combined with MF; a piece with an offset of zero may just be the first piece.",
+  "boundary": "Different datagrams cannot be spliced based on offset or arrival order alone.",
+  "sources": {
+    "reference": "https://www.rfc-editor.org/rfc/rfc791.html#section-3.1",
+    "context": "https://primer.picoctf.org/"
+  },
+  "relevance": "When reconstructing fragmented data in offline captures by byte range, avoid reducing the offset by eight times.",
+  "tags": [
+    "misc"
+  ]
+}

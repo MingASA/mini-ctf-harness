@@ -5,10 +5,18 @@ import os from 'node:os';
 import path from 'node:path';
 import {Contest} from '../src/contest.mjs';
 import {TaskNumbers} from '../src/task-numbers.mjs';
-import {sessionUsage,contextLine,usageLine} from '../src/session-usage.mjs';
+import {sessionUsage,contextLine,usageLine,backendSlotText} from '../src/session-usage.mjs';
 import {toolText} from '../src/tool-display.mjs';
 import {Store} from '../src/store.mjs';
 import {buildTools} from '../src/tools.mjs';
+test('slot display distinguishes in-flight requests, idle prompt history and unavailable cell counts',()=>{
+ const text=backendSlotText([{id:0,is_processing:true,n_prompt_tokens:600},{id:1,is_processing:false,n_prompt_tokens:500},{id:2,is_processing:false}]);
+ assert.match(text,/处理请求（含预填充）1 · 记录有提示 tokens 的 slot 2/);
+ assert.match(text,/slot 1 · 空闲 · 提示 tokens 500/);
+ assert.match(text,/slot 2 · 空闲 · 提示 tokens 未报告/);
+ assert.match(text,/KV cell.*未提供/);
+ assert.throws(()=>backendSlotText([{id:0}]),/无效/);
+});
 const setup=t=>{const root=fs.mkdtempSync(path.join(os.tmpdir(),'session-ui-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));return root;};
 const options=root=>({testMode:true,guard:()=>{throw Error('No model requests in presentation tests');},provision:async id=>{const workDir=path.join(root,id);fs.mkdirSync(workDir,{recursive:true});return {containerId:id,workDir};},sessionOptions:()=>({broker:{validate:async()=>{}},knowledge:{docs:[]}})});
 test('new tasks use 01, 02 and continue after restart',async t=>{

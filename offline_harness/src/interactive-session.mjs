@@ -5,7 +5,7 @@ import {outputLimitContinuation} from './truncation.mjs';
 import {EventEmitter} from 'node:events';
 import {Agent} from '@earendil-works/pi-agent-core';
 import {createInitialSystemMessage} from '@earendil-works/pi-ai';
-import {generationSettings,effortSettings} from './generation-controls.mjs';
+import {generationSettings,effortSettings,compactFields,compactOutputLimit} from './generation-controls.mjs';
 import {Store,hash} from './store.mjs';
 import {TaskInbox} from './inbox.mjs';
 import {NativeClient,assertExperimentIdle} from './native.mjs';
@@ -15,6 +15,7 @@ import {buildTools} from './tools.mjs';
 import {presentMessages,commandOutput,boundedText,recordCursor} from './tool-output.mjs';
 import {systemPrompt,validateTask} from './runner.mjs';
 import {groups} from './context.mjs';
+import {lastWindowEvent,windowSettings} from './session-window.mjs';
 import {recoverInterruptedTools} from './resume-tools.mjs';
 import {LocalModelRecovery} from './local-model.mjs';
 
@@ -22,6 +23,7 @@ export const SESSION_DEFAULTS={runtimeProtocol:'native-read-compact-v3',mode:'me
 export class InteractiveSession extends EventEmitter {
  constructor(task,config,options={}){
   super();validateTask(task);this.task=task;this.config={...SESSION_DEFAULTS,...config};this.options=options;
+  if(this.config.knowledgeEnabled!==undefined&&typeof this.config.knowledgeEnabled!=='boolean')throw Error('knowledgeEnabled must be boolean');
   for(const k of ['contextTokens','promptTokens','generationTokens','maxTurns','maxGeneratedTokens','maxSeconds'])if(!Number.isInteger(this.config[k])||this.config[k]<1)throw Error('Invalid budget '+k);
   if(!Number.isInteger(this.config.reasoningTokens)||(this.config.reasoningTokens!==-1&&this.config.reasoningTokens<1))throw Error('Invalid budget reasoningTokens');
   if(this.config.promptTokens+this.config.generationTokens+64>this.config.contextTokens||this.config.reasoningTokens>=this.config.generationTokens)throw Error('Invalid context/output reserve');
@@ -30,8 +32,10 @@ export class InteractiveSession extends EventEmitter {
   const frozen={task,config:this.config};
   if(existing&&existing.data.sha256!==hash(JSON.stringify(frozen)))throw Error('Task/config differs from durable session');
   if(!existing)this.store.append('interactive_task',{...frozen,sha256:hash(JSON.stringify(frozen))});
-  this.compactProfile={compactReasoningEffort:this.config.compactReasoningEffort??this.config.reasoningEffort??'medium',compactReasoningTokens:this.config.compactReasoningTokens??4096};
-  this.applyEffort();this.replayModel();
+  Object.assign(this.config,compactFields(generationSettings(this.config,'compact')));
+  this.applyEffort();this.replayModel();this.applyKnowledge();
+  const applied=this.store.events.findLast(e=>e.type==='window_applied'||e.type==='model_changed');
+  this.sessionWindow=applied?.type==='window_applied'?applied.data.settings:null;
   this.broker=options.broker||new DockerBroker(this.config.sandbox,this.store);
   this.knowledge=options.knowledge||new Skills(this.config.skillsDir);
   this.remote=options.remote||{};this.status='idle';this.agent=null;this.pauseRequested=false;this.yieldRequested=false;
@@ -71,29 +75,82 @@ export class InteractiveSession extends EventEmitter {
  selectModel(settings,receipt){
   if(this.running)throw Error('Wait for the interrupted round to finish before switching models');
   this.store.append('model_changed',{from:{model:this.config.model,baseUrl:this.config.baseUrl},settings,receipt});Object.assign(this.config,settings);
+  this.sessionWindow=null;
   this.localModel=this.config.localRecovery?new LocalModelRecovery(this.config.localRecovery,this.store):null;this.emit('change');
  }
- generationControls(){return {current:generationSettings(this.config),pending:this.pendingControl('effort')?.data.settings,compact:this.pendingControl('compact')?.seq??null};}
- pendingControl(kind){return this.store.events.findLast(e=>e.type===kind+'_requested'&&!this.store.events.some(x=>x.type===kind+'_resolved'&&x.data.request_seq===e.seq));}
- requestEffort(level,budget){
-  const settings=effortSettings(level,budget,this.pendingControl('effort')?.data.settings??generationSettings(this.config),this.config);
-  const request=this.store.append('effort_requested',{settings});if(!this.running)this.applyEffort();this.emit('change');return {settings,pending:this.running,request_seq:request.seq};
+ windowRequest(){
+  const last=lastWindowEvent(this.store);
+  return last?.type==='window_requested'?last:null;
  }
- applyEffort(){
-  // Replay the latest settings without changing the frozen interactive_task configuration.
-  const last=this.store.events.findLast(e=>e.type==='effort_requested');if(last)Object.assign(this.config,last.data.settings);
-  for(const e of this.store.events.filter(e=>e.type==='effort_requested'&&!this.store.events.some(x=>x.type==='effort_resolved'&&x.data.request_seq===e.seq)))this.store.append('effort_resolved',{request_seq:e.seq,status:e===last?'applied':'superseded'});
+ requestWindow(window,soft){
+  const settings=windowSettings(this.config,window,soft);
+  const unused=!this.running&&!this.store.events.some(e=>e.type==='message'||e.type==='model_request');
+  if(unused){this.store.append('window_applied',{settings});this.sessionWindow=settings;}
+  else this.store.append('window_requested',{settings});
+  this.emit('change');return {settings,pending:!unused};
+ }
+ async applyWindow(client,messages){
+  const request=this.windowRequest();
+  if(!request||this.pauseRequested)return;
+  const settings=request.data.settings;
+  try{
+   await client.fitWindow(messages,settings,this.config.generationTokens,this.requestSignal,()=>this.windowRequest()===request);
+   this.requestSignal?.throwIfAborted();
+  }catch(error){
+   if(this.requestSignal?.aborted)throw error;
+   if(this.windowRequest()===request)this.store.append('window_failed',{request_seq:request.seq,error:error.message});
+   this.emit('change');return;
+  }
+  if(this.windowRequest()!==request)return;
+  this.store.append('window_applied',{request_seq:request.seq,settings});
+  this.sessionWindow=settings;Object.assign(client.config,settings,{compactHardTokens:null});this.emit('change');
+ }
+ generationControls(scope='normal'){
+  return {current:generationSettings(this.config,scope),pending:this.pendingControl(scope==='compact'?'compact_effort':'effort')?.data.settings,
+   limit:scope==='compact'?compactOutputLimit(this.config):this.config.generationTokens,compact:this.pendingControl('compact')?.seq??null};
+ }
+ pendingControl(kind){return this.store.events.findLast(e=>e.type===kind+'_requested'&&!this.store.events.some(x=>x.type===kind+'_resolved'&&x.data.request_seq===e.seq));}
+ requestEffort(level,budget,scope='normal'){
+  const {current,pending,limit}=this.generationControls(scope);
+  const settings=effortSettings(level,budget,pending??current,limit);
+  const request=this.store.append(scope==='compact'?'compact_effort_requested':'effort_requested',{settings});
+  if(!this.running)this.applyEffort();this.emit('change');return {settings,pending:this.running,request_seq:request.seq};
+ }
+ applyEffort(clientConfig){
+  for(const kind of ['effort','compact_effort']){
+   const last=this.store.events.findLast(e=>e.type===kind+'_requested');if(!last)continue;
+   Object.assign(this.config,kind==='effort'?last.data.settings:compactFields(last.data.settings));
+   for(const e of this.store.events.filter(e=>e.type===kind+'_requested'&&!this.store.events.some(x=>x.type===kind+'_resolved'&&x.data.request_seq===e.seq)))
+    this.store.append(kind+'_resolved',{request_seq:e.seq,status:e===last?'applied':'superseded'});
+  }
+  if(clientConfig)Object.assign(clientConfig,generationSettings(this.config),compactFields(generationSettings(this.config,'compact')));
  }
  requestCompact(){const prior=this.pendingControl('compact');const request=prior??this.store.append('compact_requested',{});this.emit('change');return {request_seq:request.seq,pending:true};}
  async compactRequested(client,messages,signal){
   const request=this.pendingControl('compact');if(!request||this.pauseRequested)return;
-  this.applyEffort();Object.assign(client.config,generationSettings(this.config));
+  this.applyEffort(client.config);
   this.emit('auxiliary',{kind:'compact',status:'running'});
   try {const result=await client.compactNow(messages,signal);this.store.append('compact_resolved',{request_seq:request.seq,status:result.status});return result;}
   catch(error){this.store.append('compact_resolved',{request_seq:request.seq,status:signal?.aborted?'interrupted':'failed',error:error.message});if(signal?.aborted)throw error;return {status:'failed',error:error.message};}
   finally{this.emit('auxiliary',{kind:'compact',status:'idle'});this.emit('change');}
  }
- systemPrompt(){return systemPrompt(this.config.mode,this.knowledge)+'\nThis is a persistent interactive competition session. A normal final response waits for the operator. Human corrections remain pinned until the operator archives them. submit_flag saves a candidate for the operator to submit. The frontend shows awaiting_review until the operator records correct or incorrect feedback.';}
+ knowledgeControls(){
+  return {enabled:this.store.events.findLast(e=>e.type==='knowledge_applied')?.data.enabled??(this.config.knowledgeEnabled!==false),
+   pending:this.pendingControl('knowledge')?.data.enabled};
+ }
+ requestKnowledge(enabled){
+  if(typeof enabled!=='boolean')throw Error('knowledgeEnabled must be boolean');
+  this.store.append('knowledge_requested',{enabled});
+  if(!this.running)this.applyKnowledge();
+  this.emit('change');return this.knowledgeControls();
+ }
+ applyKnowledge(){
+  const last=this.pendingControl('knowledge');if(!last)return;
+  this.store.append('knowledge_applied',{enabled:last.data.enabled});
+  for(const e of this.store.events.filter(e=>e.type==='knowledge_requested'&&!this.store.events.some(x=>x.type==='knowledge_resolved'&&x.data.request_seq===e.seq)))
+   this.store.append('knowledge_resolved',{request_seq:e.seq,status:e===last?'applied':'superseded'});
+ }
+ systemPrompt(){return systemPrompt(this.config.mode,this.knowledge,{knowledgeEnabled:this.knowledgeControls().enabled})+'\nThis is a persistent interactive competition session. A normal final response waits for the operator. Human corrections remain pinned until the operator archives them. submit_flag saves a candidate for the operator to submit. The frontend shows awaiting_review until the operator records correct or incorrect feedback.';}
 
  requestYield(){this.yieldRequested=true;}
  async cancelCommand(id){
@@ -106,12 +163,12 @@ export class InteractiveSession extends EventEmitter {
    if(!old)this.store.append('candidate',{id,taskId:this.task.id,candidate});
    return {submission_id:id,review_id:this.candidates().find(x=>x.id===id).review_id,status:'awaiting_review',message:'Saved for operator review in /queue.'};
   }};
-  const tools=buildTools(this.store,this.broker,this.knowledge,verdict,()=>{}, {manualReview:true,nativeImages:this.config.nativeImages,remainingMs:()=>this.budget().millisecondsRemaining,signal:()=>this.requestSignal});
+  const tools=buildTools(this.store,this.broker,this.knowledge,verdict,()=>{}, {manualReview:true,knowledgeEnabled:this.knowledgeControls().enabled,nativeImages:this.config.nativeImages,remainingMs:()=>this.budget().millisecondsRemaining,signal:()=>this.requestSignal});
   const wrap=tools.map(tool=>({...tool,execute:async(id,args,...rest)=>{
    const result=await tool.execute(id,args,...rest);
    if(['run_command','wait_job'].includes(tool.name)){
     const job=result.details;
-    if(!['finished','cancelled','unknown_exit'].includes(job?.job_status)){
+    if(!['finished','cancelled','unknown_exit','job_missing','job_record_missing','launch_failed'].includes(job?.job_status)){
      const id=job?.job_id||this.store.events.findLast(e=>e.type==='job_started')?.data.job_id;
      if(id&&tool.name==='run_command')this.trackDependency('command',id);
     }else{const dep=this.dependencies().find(x=>x.kind==='command'&&x.id===job.job_id);if(dep)this.store.append('dependency_done',{...dep,result_status:job.job_status,observed:true});}
@@ -169,7 +226,7 @@ export class InteractiveSession extends EventEmitter {
   this.solveTimer=null;
   try{return await this.runActiveSlice({maintenanceOnly});}
   catch(error){if(this.budgetTimedOut){this.status='budget_exhausted';return {status:'budget_exhausted',dependencies:this.dependencies(),budget:this.budget()};}if(!this.operatorController.signal.aborted)throw error;this.status='paused';return {status:'paused',dependencies:this.dependencies(),budget:this.budget()};}
-  finally{clearTimeout(this.solveTimer);this.running=false;this.agent=null;this.operatorController=null;if(!this.dependencies().length)this.stopSolveClock(this.pauseRequested?'paused':this.status);this.emit('change');}
+  finally{clearTimeout(this.solveTimer);this.running=false;this.agent=null;this.operatorController=null;this.applyKnowledge();if(!this.dependencies().length)this.stopSolveClock(this.pauseRequested?'paused':this.status);this.emit('change');}
  }
  async runActiveSlice({maintenanceOnly}){
   if(this.agent)throw Error('Session already running');
@@ -191,7 +248,8 @@ export class InteractiveSession extends EventEmitter {
   taskClock(this.store,this.config,{start:true});
   const b=this.budget();if(!b.tokensRemaining||!b.turnsRemaining||b.millisecondsRemaining<=stopReserveMs(this.config))return {status:'budget_exhausted'};
   await this.broker.validate();this.operatorController.signal.throwIfAborted();this.applyEffort();
-  const cfg={...this.config,...this.compactProfile,nativeSlot:this.config.kv?.slot??this.config.nativeSlot??0};
+  const cfg={...this.config,...this.sessionWindow,engineContextTokens:this.config.contextTokens,nativeSlot:this.config.kv?.slot??this.config.nativeSlot??0};
+  if(this.sessionWindow)cfg.compactHardTokens=null;
   const client=new NativeClient(cfg,this.store,{fetchFn:this.options.fetchFn||fetch,localRecovery:this.localModel,operatorSignal:this.operatorController.signal,requestSignal:this.requestSignal,onAuxiliary:event=>this.emit('auxiliary',event),onAccepted:e=>this.inbox.accepted(e),guard:({activeRequestId}={})=>{
    this.guard();if(this.pauseRequested)throw Error('Inference paused');
    const budget=this.budget(activeRequestId);if(!budget.turnsRemaining||!budget.tokensRemaining||budget.millisecondsRemaining<=stopReserveMs(this.config))throw Error('Run budget exhausted');
@@ -206,6 +264,7 @@ export class InteractiveSession extends EventEmitter {
   this.solveSegment=beginSolve(this.store,this.config);if(this.solveSegment&&!this.solveHeartbeat)this.solveHeartbeat=setInterval(()=>checkpointSolve(this.store,this.config,this.solveSegment),1000);if(this.solveHeartbeat)this.solveHeartbeat.unref();
   this.solveTimer=setTimeout(()=>{this.budgetTimedOut=true;this.pauseRequested=true;this.budgetController.abort();this.agent?.abort();},Math.max(0,this.budget().millisecondsRemaining-stopReserveMs(this.config)));
   await this.compactRequested(client,messages,this.requestSignal);
+  await this.applyWindow(client,messages);
   if(maintenanceOnly){const result={status:'awaiting_input',dependencies:this.dependencies(),budget:this.budget()};this.status=result.status;return result;}
   if(messages.at(-1)?.harnessOperatorInterrupted){const lastEvent=this.store.events.findLast(e=>e.type==='message'&&e.data.harnessOperatorInterrupted);this.enqueue('Continue from the saved interrupted response. Its tool drafts were not executed. Inspect existing tool receipts before issuing a fresh call.',{id:'interrupt-'+lastEvent.seq,kind:'observation'});messages=this.inbox.mount(messages);}
   const last=messages.at(-1);
@@ -214,13 +273,20 @@ export class InteractiveSession extends EventEmitter {
   const model={id:cfg.model,name:cfg.model,api:'openai-completions',provider:'local-qwen',baseUrl:cfg.baseUrl,reasoning:true,input:cfg.nativeImages?['text','image']:['text'],contextWindow:cfg.contextTokens,maxTokens:cfg.generationTokens,cost:{input:0,output:0,cacheRead:0,cacheWrite:0}};
   let outcome='ready';
   const agent=new Agent({initialState:{systemPrompt:this.systemPrompt(),model,tools:this.tools(),messages,thinkingLevel:cfg.reasoningEffort??'medium'},identity:{attribution:null},toolExecution:'sequential',streamFn:client.stream,
-   prepareRequest:async({context})=>{this.applyEffort();Object.assign(cfg,generationSettings(this.config));return {context:{...context,messages:this.inbox.mount(context.messages)}};},
+   prepareRequest:async({context})=>{
+    this.applyEffort(cfg);
+    const mounted=this.inbox.mount(context.messages);await this.applyWindow(client,mounted);
+    model.contextWindow=cfg.contextTokens;
+    return {context:{...context,messages:mounted}};
+   },
    beforeToolCall:()=>this.pauseRequested?{block:true,terminate:true,reason:'Operator paused inference; tool was not executed'}:this.store.pending().length?{block:true,terminate:true,reason:'Earlier tool outcome is uncertain'}:undefined,
    finishTurn:async({message,context})=>{
     if(this.pauseRequested){outcome=this.candidates().some(x=>x.feedback?.status==='correct')?'correct':this.budgetTimedOut?'budget_exhausted':'paused';return {action:'end'};}
     if(['error','aborted'].includes(message.stopReason)||this.store.pending().length){outcome='needs_review';return {action:'end'};}
-    this.applyEffort();
+    if(this.pendingControl('knowledge')){outcome='ready';return {action:'end'};}
+    this.applyEffort(cfg);
     await this.compactRequested(client,context.messages,this.requestSignal);
+    await this.applyWindow(client,context.messages);
     if(this.pauseRequested){outcome=this.budgetTimedOut?'budget_exhausted':'paused';return {action:'end'};}
     const remaining=this.budget();if(!remaining.tokensRemaining||!remaining.turnsRemaining){outcome='budget_exhausted';return {action:'end'};}
     if(this.yieldRequested){outcome='ready';return {action:'end'};}

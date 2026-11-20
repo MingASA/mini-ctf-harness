@@ -121,7 +121,7 @@ export class ContextManager {
   if(!Number.isInteger(compactInputTokens)||compactInputTokens<1)throw Error('Invalid native compact token count');
   const maxTokens=this.config.mode==='baseline'?this.config.generationTokens:Math.min(this.config.generationTokens,this.config.contextTokens-output-margin-compactInputTokens-continuationReserve);
   if(maxTokens<1)throw Error('Full-prefix Compact capacity exhausted before generation; history retained');
-  this.store.append('context_budget',{input_tokens:tokens,output_tokens:this.config.generationTokens,safety_tokens:margin,engine_context:this.config.contextTokens,hard_limit:null,soft_limit:soft,compact_input_tokens:compactInputTokens,compact_output_tokens:output,continuation_reserve_tokens:continuationReserve,max_tokens:maxTokens,removed_groups:checkpoint?.cut-1||0,all_history_retained:true});
+  this.store.append('context_budget',{input_tokens:tokens,output_tokens:this.config.generationTokens,safety_tokens:margin,engine_context:this.config.engineContextTokens??this.config.contextTokens,session_context:this.config.contextTokens,hard_limit:null,soft_limit:soft,compact_input_tokens:compactInputTokens,compact_output_tokens:output,continuation_reserve_tokens:continuationReserve,max_tokens:maxTokens,removed_groups:checkpoint?.cut-1||0,all_history_retained:true});
   return {messages:candidate,tokens,removed:checkpoint?.cut-1||0,maxTokens,capacityLimited:maxTokens<this.config.generationTokens};
  }
  compactInput(system,ordinary,previous){
@@ -139,7 +139,7 @@ export class ContextManager {
    non_human_user_message_indexes:provenance.flatMap((p,i)=>['harness_memory','harness_observation','tool_images'].includes(p.kind)?[i]:[])};
   return {cut,keep,all,oldCut,prefix,request:{...prefix,messages:[...prefix.messages,{role:'user',content:compactPrompt(previous)+'\n\n'+JSON.stringify(payload)}],tool_choice:'none'}};
  }
- async compact(system,ordinary,counter,complete){
+ async compact(system,ordinary,counter,complete,validateCheckpoint){
   const start=this.store.append('compact_start',{mode:'single_pass'});let status='failed';
   try {
   const previous=this.checkpoint(),oldCut=previous?.cut??1;
@@ -151,7 +151,7 @@ export class ContextManager {
   const inputTokens=await counter(request,{kind:'compact',maxTokens:output});
   if(!Number.isInteger(inputTokens)||inputTokens<1)throw Error('Invalid native compact token count');
   if(keep>=all.length||cut<=oldCut||inputTokens>cap){
-   this.store.append('compact_capacity_exceeded',{input_tokens:inputTokens,output_tokens:output,safety_tokens:margin,engine_context:this.config.contextTokens,full_prefix_messages:prefix.messages.length,history_retained:true});
+   this.store.append('compact_capacity_exceeded',{input_tokens:inputTokens,output_tokens:output,safety_tokens:margin,engine_context:this.config.engineContextTokens??this.config.contextTokens,session_context:this.config.contextTokens,full_prefix_messages:prefix.messages.length,history_retained:true});
    throw Error('Full-prefix Compact exceeds exact capacity; no history trimmed; history retained');
   }
   const last=ordinary[cut-1];
@@ -163,6 +163,7 @@ export class ContextManager {
   let restored=this.assemble(system,ordinary,checkpoint),restoredTokens=await counter(wire(restored));
 
   if(restoredTokens+this.config.generationTokens+margin>this.config.contextTokens||restoredTokens>=this.limits().soft)throw Error('Compact did not restore sufficient context headroom');
+  if(validateCheckpoint)await validateCheckpoint(checkpoint,restoredTokens);
   // A single journal event commits the validated checkpoint; failures above keep the previous one.
   this.store.append('compact_commit',{checkpoint,restored_tokens:restoredTokens,mode:'single_pass_prefix_v3',prompt_kind:previous?'update':'initial',input_tokens:inputTokens,prefix_messages:prefix.messages.length,tools_retained:prefix.tools.length,covered_messages:cut-oldCut,model_calls:1});
   this.store.snapshot('compact-checkpoint',checkpoint);
