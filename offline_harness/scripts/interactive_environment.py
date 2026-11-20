@@ -79,7 +79,7 @@ class Environment:
             if not source:raise RuntimeError('LAN solver subnet has no free address')
         elif kind!='offline':raise ValueError('Unknown environment type')
         limits=self.c.get('solver',{});memory=int(limits.get('memoryMiB',2048));pids=int(limits.get('pids',128));tmp=int(limits.get('tmpMiB',128))
-        if not 128<=memory<=4096 or not 32<=pids<=256 or not 16<=tmp<=512:raise ValueError('Solver resource configuration is out of range')
+        if not 128<=memory<=6144 or not 32<=pids<=256 or not 16<=tmp<=512:raise ValueError('Solver resource configuration is out of range')
         # The task root is the solver's mutable workspace.  Public inputs may
         # remain read-only below it, but the owner must be able to create job
         # records and analysis artifacts at the root.

@@ -35,6 +35,18 @@ with tempfile.TemporaryDirectory() as tmp:
     assert '--read-only' in args and args[args.index('--cap-drop') + 1] == 'ALL'
     assert args[args.index('--memory') + 1] == '2048m'
 
+    events.clear()
+    config['solver'] = {'memoryMiB': 6144, 'cpus': 6}
+    with patch.object(interactive, 'call', return_value='ext4'), \
+         patch.object(interactive.Environment, 'docker', docker), \
+         patch.object(interactive.os, 'chown'):
+        interactive.Environment(config).provision('fixture', str(work), 'offline', '')
+    args = next(value for kind, value in events if kind == 'docker' and value[0] == 'create')
+    assert args[args.index('--memory') + 1] == '6144m'
+    assert args[args.index('--memory-swap') + 1] == '6144m'
+    assert args[args.index('--cpus') + 1] == '6'
+    assert '--memory-reservation' not in args and '--cpuset-cpus' not in args
+
     class Result:
         stdout = ''
     def run(args, **kwargs):
