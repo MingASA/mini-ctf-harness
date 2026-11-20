@@ -10,6 +10,17 @@ import {buildIndex} from '../src/rag/index.mjs';
 const example=new URL('../examples/rag-retrieval/manifest.json',import.meta.url).pathname;
 async function server(t,handler){const s=http.createServer(handler);s.listen(0,'127.0.0.1');await once(s,'listening');t.after(()=>new Promise(resolve=>{s.close(resolve);s.closeAllConnections();}));return 'http://127.0.0.1:'+s.address().port;}
 async function until(check){for(let i=0;i<100;i++){const value=await check();if(value)return value;await delay(5);}throw Error('Timed out waiting for test state');}
+test('queue accepts operator settings beyond former ceilings and preserves concurrency',async t=>{
+ let started=0;const queue=new JobQueue(()=>{started++;return new Promise(()=>{});},{concurrency:32,maxJobs:10000,timeoutMs:600000});
+ t.after(()=>queue.close());const jobs=Array.from({length:33},()=>queue.submit({}));
+ await until(()=>started===32);assert.equal(queue.status(jobs[32].jobId).status,'queued');
+});
+test('long deadlines do not overflow Node timers and a smaller configured queue still applies',async t=>{
+ const queue=new JobQueue(()=>new Promise(()=>{}),{concurrency:32,maxJobs:1,timeoutMs:2147483648});
+ t.after(()=>queue.close());const job=queue.submit({});
+ assert.throws(()=>queue.submit({}),error=>error.code==='QUEUE_FULL');
+ await delay(20);assert.equal(queue.status(job.jobId).status,'running');
+});
 test('queue distinguishes queued/running and preserves FIFO under concurrency one',async t=>{const releases=[];const starts=[];const queue=new JobQueue(request=>new Promise(resolve=>{starts.push(request);releases.push(resolve);}),{concurrency:1});t.after(()=>queue.close());const first=queue.submit('first'),second=queue.submit('second');assert.equal(second.status,'queued');await until(()=>releases.length===1);assert.equal(queue.status(first.jobId).status,'running');assert.equal(queue.status(second.jobId).queuePosition,1);releases[0]('one');await until(()=>releases.length===2);assert.deepEqual(starts,['first','second']);releases[1]('two');await until(()=>queue.status(second.jobId).status==='completed');assert.equal(queue.result(first.jobId).result,'one');});
 test('queue cancellation drops late result and queued cancellation does not execute',async t=>{let release;let started=0;const queue=new JobQueue(()=>{started++;return new Promise(resolve=>{release=resolve;});},{concurrency:1});t.after(()=>queue.close());const a=queue.submit({}),b=queue.submit({});await until(()=>started===1);queue.cancel(b.jobId);queue.cancel(a.jobId);release('late');await delay(10);assert.equal(queue.result(a.jobId).status,'cancelled');assert.equal('result' in queue.result(a.jobId),false);assert.equal(started,1);});
 test('deadline includes queue wait and fails with TIMEOUT; backpressure is bounded',async t=>{const queue=new JobQueue(()=>new Promise(()=>{}),{concurrency:1,maxJobs:2,timeoutMs:15});t.after(()=>queue.close());const a=queue.submit({}),b=queue.submit({});assert.throws(()=>queue.submit({}),error=>error.code==='QUEUE_FULL');await delay(35);for(const job of [a,b]){assert.equal(queue.status(job.jobId).status,'failed');assert.equal(queue.status(job.jobId).error.code,'TIMEOUT');}});

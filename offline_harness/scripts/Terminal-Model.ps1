@@ -82,17 +82,6 @@ try{
   $port=([Uri]$c.baseUrl).Port
   if(Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue){throw 'Selected model port is occupied'}
   if(!(Test-Path -LiteralPath $c.exe)){throw 'Model runtime executable is missing'}
-  $free=[double](Get-CimInstance Win32_OperatingSystem).FreePhysicalMemory/1024
-  if($free -lt 2560){throw "Insufficient free RAM before model loading: $free MiB"}
-  $used=$null;$lastGpuError=''
-  for($sample=0;$sample -lt 30;$sample++){
-   $values=@(& nvidia-smi.exe --query-gpu=memory.used --format=csv,noheader,nounits 2>&1);$gpuExit=$LASTEXITCODE
-   $line=([string]($values|Select-Object -First 1)).Trim()
-   if($gpuExit -eq 0 -and $line -match '^\d+$'){$used=[int]$line;if($used -le 2048){break}}
-   $lastGpuError=($values|Out-String).Trim();Start-Sleep -Milliseconds 500
-  }
-  if($null -eq $used){throw ('GPU resource query failed: '+$lastGpuError)}
-  if($used -gt 2048){throw "GPU is occupied: $used MiB"}
   if(!(Selected-Request)){exit 0}
   $run=Join-Path $root ([DateTime]::UtcNow.ToString('yyyyMMddTHHmmssfffffffZ')+'-'+[Guid]::NewGuid().ToString('N').Substring(0,8))
   New-Item -ItemType Directory -Force -Path $run|Out-Null

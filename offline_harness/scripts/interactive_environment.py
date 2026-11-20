@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Manage this installation's Docker daemon and task containers."""
-import argparse,fcntl,hashlib,ipaddress,json,os,pathlib,re,shlex,shutil,subprocess,uuid,time
+import argparse,fcntl,hashlib,ipaddress,json,os,pathlib,re,shlex,shutil,subprocess,sys,uuid,time
 
 def call(argv,env=None,timeout=120):
     result=subprocess.run(list(map(str,argv)),text=True,capture_output=True,env=env,timeout=timeout)
@@ -42,7 +42,7 @@ class Environment:
         for env in self.c.get('environments',{}).values():
             if env['type']=='internal':self.network(env['network'],True,env['subnet'])
             elif env['type']=='lan':self.network(env.get('network','ctf-front-lan'),False,env.get('subnet','172.30.90.0/24'))
-        tools=self.docker('run','--rm','--pull=never','--network','none','--read-only','--cap-drop','ALL','--security-opt','no-new-privileges','--memory','256m','--pids-limit','64',image['Id'],'python3','-c',"import json,shutil; tools={n:shutil.which(n) for n in ['python3','curl','bash','file']}; print(json.dumps(tools)); assert all(tools.values()), tools")
+        tools=self.docker('run','--rm','--pull=never','--network','none','--read-only','--cap-drop','ALL','--security-opt','no-new-privileges',image['Id'],'python3','-c',"import json,shutil; tools={n:shutil.which(n) for n in ['python3','curl','bash','file']}; print(json.dumps(tools)); assert all(tools.values()), tools")
         return {'ready':True,'docker':self.bin,'dockerHost':self.host,'imageId':image['Id'],'tools':json.loads(tools),'dataRoot':info['DockerRootDir']}
     def network(self,name,internal,subnet):
         try:n=json.loads(self.docker('network','inspect',name))[0]
@@ -78,8 +78,8 @@ class Environment:
             source=next((str(ip) for ip in list(ipaddress.ip_network(subnet).hosts())[1:] if str(ip) not in used),None)
             if not source:raise RuntimeError('LAN solver subnet has no free address')
         elif kind!='offline':raise ValueError('Unknown environment type')
-        limits=self.c.get('solver',{});memory=int(limits.get('memoryMiB',2048));pids=int(limits.get('pids',128));tmp=int(limits.get('tmpMiB',128))
-        if not 128<=memory<=6144 or not 32<=pids<=256 or not 16<=tmp<=512:raise ValueError('Solver resource configuration is out of range')
+        # Resource policy belongs to the operator; Docker validates its own options.
+        limits=self.c.get('solver',{});memory=limits.get('memoryMiB',2048);pids=limits.get('pids',128);tmp=limits.get('tmpMiB',128)
         # The task root is the solver's mutable workspace.  Public inputs may
         # remain read-only below it, but the owner must be able to create job
         # records and analysis artifacts at the root.

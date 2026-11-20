@@ -43,7 +43,7 @@ function fixture(t){
  return {root,work,store,broker,get launches(){return launches;}};
 }
 
-function sandboxFixture(t,{startError,memoryMiB=2048}={}){
+function sandboxFixture(t,{startError,memoryMiB=2048,pidsLimit=128}={}){
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'command-preflight-')),work=path.join(root,'offline-harness/work/task');
  fs.mkdirSync(work,{recursive:true});const store=new Store(path.join(root,'run'));let starts=0;
  const container={Id:'synthetic',Image:'fixture-image',State:{Running:true},HostConfig:{Privileged:false,PidMode:'',IpcMode:'',NetworkMode:'none',CapAdd:[],Devices:[],DeviceRequests:[],CapDrop:['ALL'],SecurityOpt:['no-new-privileges:true'],Memory:2048*1024*1024,PidsLimit:128,ReadonlyRootfs:true,PortBindings:{}},Mounts:[{Destination:'/work',Source:work,Type:'bind'}],NetworkSettings:{Networks:{}}};
@@ -59,6 +59,7 @@ function sandboxFixture(t,{startError,memoryMiB=2048}={}){
  };
  const broker=new DockerBroker({workDir:work,containerId:'synthetic',imageId:'fixture-image'},store,execute);
  container.HostConfig.Memory=memoryMiB*1024*1024;
+ container.HostConfig.PidsLimit=pidsLimit;
  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  return {root,work,store,broker,get starts(){return starts;}};
 }
@@ -73,11 +74,13 @@ test('sandbox validation performs one retained-job preflight before model work b
  assert.equal(f.starts,1);
 });
 
-test('six GiB solvers pass the broker preflight required before inference',async t=>{
- const f=sandboxFixture(t,{memoryMiB:6144});
- await f.broker.validate();
- assert.equal(f.starts,1);
- assert.ok(fs.existsSync(path.join(f.work,'.offline-jobs')));
+test('operator resource quotas and unlimited solvers pass preflight before inference',async t=>{
+ for(const limits of [{memoryMiB:6144},{memoryMiB:32768,pidsLimit:4096},{memoryMiB:0,pidsLimit:-1}]){
+  const f=sandboxFixture(t,limits);
+  await f.broker.validate();
+  assert.equal(f.starts,1);
+  assert.ok(fs.existsSync(path.join(f.work,'.offline-jobs')));
+ }
 });
 
 test('sandbox validation rejects unavailable job storage and allows a later retry',async t=>{
