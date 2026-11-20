@@ -10,6 +10,7 @@ import {Store,hash} from '../src/store.mjs';
 import {BtwSession,snapshotBtw} from '../src/btw-session.mjs';
 import {NativeClient} from '../src/native.mjs';
 import {ModelCatalog} from '../src/model-catalog.mjs';
+import {buildTools} from '../src/tools.mjs';
 
 const frame=(delta,finish=null,usage=undefined)=>'data: '+JSON.stringify({choices:[{delta,finish_reason:finish}],usage})+'\n\n';
 const system='Retain the original system prompt and tools';
@@ -47,7 +48,7 @@ async function server(t){
    res.setHeader('Content-Type','text/event-stream');res.flushHeaders();res.write(frame({reasoning_content:'分支思考',content:'分支回复'}));state.resolveStarted();
    if(state.preemptNext){state.preemptNext=false;state.free=0;return res.end('data: '+JSON.stringify({error:{message:'CTF_BTW_WAIT: KV headroom reserved for main slot'}})+'\n\n');}
    const toolMessages=body.messages.filter(message=>message.role==='tool');
-   if(state.toolCall&&!toolMessages.length)return res.end(frame({tool_calls:[{index:0,id:state.nativeToolId??'call_same',function:{name:'run_command',arguments:JSON.stringify(state.toolArgs??{command:'printf branch'})}}]},'tool_calls',{prompt_tokens:50,completion_tokens:4})+'data: [DONE]\n\n');
+   if(state.toolCall&&!toolMessages.length)return res.end(frame({tool_calls:[{index:0,id:state.nativeToolId??'call_same',function:{name:state.toolName??'run_command',arguments:JSON.stringify(state.toolArgs??{command:'printf branch'})}}]},'tool_calls',{prompt_tokens:50,completion_tokens:4})+'data: [DONE]\n\n');
    if(state.truncateTool)return res.end(frame({tool_calls:[{index:0,id:state.nativeToolId??'call_same',function:{name:'run_command',arguments:JSON.stringify(state.toolArgs??{command:'printf branch'})}}]},'length',{prompt_tokens:50,completion_tokens:4})+'data: [DONE]\n\n');
    if(toolMessages.length)state.toolResults.push(toolMessages);
    if(state.hold)return;
@@ -59,6 +60,41 @@ async function server(t){
  t.after(()=>new Promise(resolve=>{app.close(resolve);app.closeAllConnections();}));
  return {state,url:'http://127.0.0.1:'+app.address().port};
 }
+
+test('knowledge calls stay in the branch and toggles take effect after the advertised turn',async t=>{
+ const {state,url}=await server(t),s=session(t,url);let enabled=true;s.knowledgeControls=()=>({enabled});
+ accepted(s,1,[{role:'system',content:system},{role:'user',content:'main'}]);
+ const mainTool=buildTools(s.store,{}, {},{}).find(t=>t.name==='knowledge');
+ const mainResult=await mainTool.execute('call_same',{op:'search',query:'PHP fibers 怎么使用'});
+ assert.equal(JSON.parse(mainResult.content[0].text).total,0);
+ const digest=s.store.events.at(-1).digest,branch=BtwSession.create(s);
+ state.toolCall=true;state.toolName='knowledge';state.toolArgs={op:'search',query:'CRC32'};
+ const stream=branch.stream.bind(branch);branch.stream=async(...args)=>{const result=await stream(...args);if(result.calls.length)enabled=false;return result;};
+ await branch.ask('Look up CRC32');
+ assert.equal(s.store.events.at(-1).digest,digest);
+ const result=branch.messages().find(m=>m.toolName==='knowledge');assert.ok(result);
+ assert.equal(JSON.parse(result.content[0].text).results[0].id,'formats/png/crc-coverage');
+ const requests=state.requests.filter(r=>r.url==='/v1/chat/completions');
+ assert.ok(requests[0].body.tools.some(t=>t.function.name==='knowledge'));
+ assert.ok(!requests[1].body.tools.some(t=>t.function.name==='knowledge'));
+ assert.equal(branch.toolStore.events.filter(e=>e.type==='tool_start'&&e.data.name==='knowledge').length,1);
+ assert.equal(s.store.events.filter(e=>e.type==='tool_start'&&e.data.name==='knowledge').length,1);
+ enabled=true;assert.ok(branch.requestBody().tools.some(t=>t.function.name==='knowledge'));
+ await branch.destroy();
+});
+
+test('knowledge receipts recover under their saved branch contract before a later disable takes effect',async t=>{
+ const s=session(t);let enabled=true;s.knowledgeControls=()=>({enabled});
+ accepted(s,1,[{role:'system',content:system},{role:'user',content:'main'}]);
+ const branch=BtwSession.create(s),call={id:'retained-knowledge',modelId:'call_same',name:'knowledge',arguments:{op:'get',id:'formats/png/crc-coverage'},requestId:1};
+ branch.data.history.push({role:'assistant',content:'',toolCalls:[call],time:Date.now()});branch.save();
+ await branch.tools().find(t=>t.name==='knowledge').execute(call.id,call.arguments);
+ enabled=false;const reopened=new BtwSession(s);await reopened.executePendingTools();
+ assert.equal(reopened.messages().filter(m=>m.toolName==='knowledge').length,1);
+ assert.equal(reopened.toolStore.events.filter(e=>e.type==='tool_start'&&e.data.callId===call.id).length,1);
+ assert.ok(!reopened.requestBody().tools.some(t=>t.function.name==='knowledge'));
+ assert.equal(s.store.events.some(e=>e.type==='tool_start'),false);
+});
 
 test('snapshot uses the exact accepted compact view and excludes the incomplete response',t=>{
  const s=session(t);const original=[{role:'system',content:system},{role:'user',content:'original task'},{role:'user',content:'Recovery view; Compact summary contains EVIDENCE-42'},{role:'assistant',content:'completed round'},{role:'user',content:'newly observed tool result'}];

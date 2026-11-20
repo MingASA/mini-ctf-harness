@@ -132,6 +132,7 @@ export class BtwSession extends EventEmitter {
   if(!validBranchId(this.data.branchId)){this.data.branchId=fallbackBranchId(session,this.data);migrated=true;}
   if(!Number.isSafeInteger(this.data.nextRequestId)||this.data.nextRequestId<1){this.data.nextRequestId=1;migrated=true;}
   if(!Array.isArray(this.data.queuedInputs)){this.data.queuedInputs=[];migrated=true;}
+  if(typeof this.data.knowledgeEnabled!=='boolean'){this.data.knowledgeEnabled=session.knowledgeControls?.().enabled??(session.config.knowledgeEnabled!==false);migrated=true;}
   this.toolRoot=path.join(session.store.root,'btw-tools',this.data.branchId);
   this.toolStore=new Store(this.toolRoot);
   if(broker?.store===session.store)throw Error('分支工具不得复用主线 Store');
@@ -169,10 +170,10 @@ export class BtwSession extends EventEmitter {
   // Never call InteractiveSession.tools(): its dependency tracker feeds
   // asynchronous observations into the primary session inbox.
   const all=this.options.tools??buildTools(this.toolStore,this.broker,this.session.knowledge??{},{submit:()=>{throw Error('submit_flag is unavailable in a branch');}},()=>{},
-   {nativeImages:this.session.config.nativeImages===true,remainingMs:()=>this.session.budget?.().millisecondsRemaining??3600000,signal:()=>this.controller?.signal});
+   {knowledgeEnabled:this.data.knowledgeEnabled,nativeImages:this.session.config.nativeImages===true,remainingMs:()=>this.session.budget?.().millisecondsRemaining??3600000,signal:()=>this.controller?.signal});
   if(!Array.isArray(all))throw Error('Invalid branch tool configuration');
   const names=new Set();
-  this._tools=all.filter(tool=>tool?.name!=='submit_flag'&&(this.session.config.nativeImages===true||tool?.name!=='view_image')).map(tool=>{
+  this._tools=all.filter(tool=>tool?.name!=='submit_flag'&&(this.data.knowledgeEnabled||tool?.name!=='knowledge')&&(this.session.config.nativeImages===true||tool?.name!=='view_image')).map(tool=>{
    if(!tool||typeof tool.name!=='string'||!tool.name||typeof tool.description!=='string'||!tool.parameters||typeof tool.execute!=='function'||names.has(tool.name))throw Error('Invalid branch tool configuration');
    names.add(tool.name);return tool;
   });
@@ -209,11 +210,15 @@ export class BtwSession extends EventEmitter {
  }
  requestBody(){
   if(this.pendingToolCalls().length)throw Error('分支存在未路由的工具结果');
+  // Finish/recover calls using the contract advertised to that request. Apply
+  // the task's current setting only before constructing the next request.
+  const enabled=this.session.knowledgeControls?.().enabled??(this.session.config.knowledgeEnabled!==false);
+  if(enabled!==this.data.knowledgeEnabled){this.data.knowledgeEnabled=enabled;this._tools=null;this.save();}
   const s=this.data.snapshot,b=copy(s.body),tools=this.toolSpecs();
   for(const key of ['response_format','stream_options','id_slot','n_predict'])delete b[key];
   // Retain the accepted main request as the prefix so unified KV sharing is
   // not thrown away merely to explain the branch routing boundary.
-  const instruction={role:'user',content:`[Harness routing notice: independent /btw branch ${this.data.branchId}. Tool calls and results stay in this branch and never modify or appear in the primary session. Use only listed tools; submit_flag is unavailable.]`};
+  const instruction={role:'user',content:`[Harness routing notice: independent /btw branch ${this.data.branchId}. Tool calls and results stay in this branch and never modify or appear in the primary session. Use only listed tools; submit_flag is unavailable. Offline knowledge is ${enabled?'enabled':'disabled'} for this task.]`};
   b.messages.push(instruction,...rawHistory(this.data.history));b.tools=tools;
   return {...b,model:s.model,id_slot:1,tool_choice:tools.length?'auto':'none',parallel_tool_calls:false,cache_prompt:true,max_tokens:s.generationTokens};
  }
