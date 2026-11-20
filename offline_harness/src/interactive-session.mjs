@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import {isDeepStrictEqual} from 'node:util';
 import {taskClock,beginSolve,endSolve,checkpointSolve,stopReserveMs,processIdentity} from './task-clock.mjs';
 import {outputLimitContinuation} from './truncation.mjs';
 import {EventEmitter} from 'node:events';
@@ -20,6 +21,21 @@ import {recoverInterruptedTools} from './resume-tools.mjs';
 import {LocalModelRecovery} from './local-model.mjs';
 
 export const SESSION_DEFAULTS={runtimeProtocol:'native-read-compact-v3',mode:'memory-skills',model:'qwen3.8-27b-iq4xs',baseUrl:'http://127.0.0.1:8080',contextTokens:65536,promptTokens:51200,generationTokens:8192,reasoningTokens:4096,maxTurns:200,maxGeneratedTokens:262144,maxSeconds:2400,budgetMode:'active_solve',nativeImages:false};
+// Operator image upgrades retain the task, workspace and Docker endpoint. Keep
+// the original journal intact and replay only explicitly recorded replacements.
+function durableTask(store,existing){
+ const expected={task:existing.data.task,config:structuredClone(existing.data.config)};
+ if(hash(JSON.stringify(expected))!==existing.data.sha256)throw Error('Task/config differs from durable session');
+ for(const event of store.events.filter(e=>e.type==='sandbox_replaced')){
+  const {from,to}=event.data;
+  if(event.seq<=existing.seq||!isDeepStrictEqual(from,expected.config.sandbox)||!to||
+     !['containerId','imageId'].every(k=>typeof to[k]==='string'&&to[k].length>0)||
+     !isDeepStrictEqual({...to,containerId:from.containerId,imageId:from.imageId},from))
+   throw Error('Invalid durable sandbox replacement');
+  expected.config.sandbox=to;
+ }
+ return expected;
+}
 export class InteractiveSession extends EventEmitter {
  constructor(task,config,options={}){
   super();validateTask(task);this.task=task;this.config={...SESSION_DEFAULTS,...config};this.options=options;
@@ -30,7 +46,7 @@ export class InteractiveSession extends EventEmitter {
   this.store=options.store||new Store(config.runDir);this.inbox=new TaskInbox(task.id,this.store);
   const existing=this.store.events.find(e=>e.type==='interactive_task');
   const frozen={task,config:this.config};
-  if(existing&&existing.data.sha256!==hash(JSON.stringify(frozen)))throw Error('Task/config differs from durable session');
+  if(existing&&!isDeepStrictEqual(durableTask(this.store,existing),frozen))throw Error('Task/config differs from durable session');
   if(!existing)this.store.append('interactive_task',{...frozen,sha256:hash(JSON.stringify(frozen))});
   Object.assign(this.config,compactFields(generationSettings(this.config,'compact')));
   this.applyEffort();this.replayModel();this.applyKnowledge();
