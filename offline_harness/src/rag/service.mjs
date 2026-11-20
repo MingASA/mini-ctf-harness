@@ -7,8 +7,8 @@ import {JobStore,REQUEST_ID,requestHash} from './job-store.mjs';
 const TERMINAL=new Set(['completed','failed','cancelled']);
 export class JobQueue {
   constructor(worker,{concurrency=2,maxJobs=128,timeoutMs=30000,retentionMs=600000,jobDir=null}={}) {
-    if (typeof worker!=='function'||!Number.isInteger(concurrency)||concurrency<1||concurrency>16||
-        !Number.isInteger(maxJobs)||maxJobs<concurrency||maxJobs>4096||!Number.isInteger(timeoutMs)||timeoutMs<1||timeoutMs>300000||!Number.isInteger(retentionMs)||retentionMs<1) throw Error('Invalid queue configuration');
+    if (typeof worker!=='function'||!Number.isSafeInteger(concurrency)||concurrency<1||
+        !Number.isSafeInteger(maxJobs)||maxJobs<1||!Number.isSafeInteger(timeoutMs)||timeoutMs<1||!Number.isSafeInteger(retentionMs)||retentionMs<1) throw Error('Invalid queue configuration');
     Object.assign(this,{worker,concurrency,maxJobs,timeoutMs,retentionMs});this.jobs=new Map();this.requests=new Map();this.pending=[];this.active=0;this.closed=false;
     this.storage=jobDir?new JobStore(jobDir):null;
     try {
@@ -46,7 +46,14 @@ export class JobQueue {
     const job={jobId:randomUUID(),status:'queued',createdAt:Date.now(),request:body,requestHash:hash,...(requestId?{requestId}:{}),controller:new AbortController()};
     this.commit(job);
     if(requestId)this.requests.set(requestId,{jobId:job.jobId,hash});
-    job.timer=setTimeout(()=>{try{this.terminate(job,'failed',{code:'TIMEOUT',message:'Retrieval deadline exceeded'});}catch{}},this.timeoutMs);job.timer.unref?.();
+    // Node timers overflow above 2^31-1 ms; rearm long deadlines instead of truncating them.
+    const deadline=job.createdAt+this.timeoutMs;
+    const expire=()=>{
+      const remaining=deadline-Date.now();
+      if(remaining>0){job.timer=setTimeout(expire,Math.min(remaining,2147483647));job.timer.unref?.();return;}
+      try{this.terminate(job,'failed',{code:'TIMEOUT',message:'Retrieval deadline exceeded'});}catch{}
+    };
+    expire();
     this.jobs.set(job.jobId,job);this.pending.push(job.jobId);queueMicrotask(()=>this.pump());return this.status(job.jobId);
   }
   terminate(job,status,error) {

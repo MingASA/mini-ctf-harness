@@ -248,7 +248,9 @@ Compose 描述的是独立运行的题目服务，例如一个 HTTP 应用和它
 
 工具镜像包含 cpio、7z、xz、zstd 等归档工具，以及 binwalk、foremost、exiftool、steghide、zsteg、YARA、ImageMagick、FFmpeg、PDF 和 Office 分析工具。取证工具包括 Volatility 3 和 Sleuth Kit。二进制分析和兼容工具包括 gdb-multiarch、radare2、Ghidra headless、jadx、QEMU user、MinGW、apktool 和 Wine 32/64。系统工具优先使用 Debian Bookworm 官方包，其余上游发布包固定版本和 SHA256。Wine 状态保存在题目工作目录的 `.wine` 中。
 
-解题容器默认内存上限为 2048 MiB，可在 `config.json` 的 `solver.memoryMiB` 中设置为 128–4096 MiB；复杂分析和多个并发题目会相应占用更多内存。容器以工作目录所属用户运行，保留只读根文件系统、能力丢弃和网络隔离。
+解题容器资源由 `config.json` 的 `solver.memoryMiB`、`solver.cpus`、`solver.pids` 和 `solver.tmpMiB` 配置，分别控制内存、CPU 配额、进程数和 `/tmp` 大小。配置直接交给 Docker，创建及执行前检查不会附加固定数值上限；配额按需使用，不预留对应内存或独占 CPU。独立离线入口 `provision_sandbox.py` 也支持 `--memory-mib`、`--cpus`、`--pids`、`--tmp-mib`。容器仍使用只读根文件系统、能力丢弃和网络隔离，offloadKV 单独配置。
+
+Windows 模型启动按引擎实际加载结果判断是否成功，不再要求预留固定数量的空闲 RAM 或显存。RAG 队列的 `concurrency`、`maxJobs`、`timeoutMs` 按所配置数值执行，没有额外的固定最大值。
 
 构建后可以在受限容器中检查基础工具和归档往返（将 `IMAGE` 替换为待检查的镜像 ID）：
 
