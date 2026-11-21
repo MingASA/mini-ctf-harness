@@ -218,7 +218,7 @@ export class BtwSession extends EventEmitter {
   for(const key of ['response_format','stream_options','id_slot','n_predict'])delete b[key];
   // Retain the accepted main request as the prefix so unified KV sharing is
   // not thrown away merely to explain the branch routing boundary.
-  const instruction={role:'user',content:`[Harness routing notice: independent /btw branch ${this.data.branchId}. Tool calls and results stay in this branch and never modify or appear in the primary session. Use only listed tools; submit_flag is unavailable. Offline knowledge is ${enabled?'enabled':'disabled'} for this task.]`};
+  const instruction={role:'user',content:`[Harness routing notice: independent /btw branch ${this.data.branchId}. Tool calls and results stay in this branch and never modify or appear in the primary session. Use only listed tools; submit_flag is unavailable.${this.session.options?.communicationPrompt?.()?' Peer communication in the prefix belongs to the main session. This branch cannot call communicate and receives no new peer messages.':''} Offline knowledge is ${enabled?'enabled':'disabled'} for this task.]`};
   b.messages.push(instruction,...rawHistory(this.data.history));b.tools=tools;
   return {...b,model:s.model,id_slot:1,tool_choice:tools.length?'auto':'none',parallel_tool_calls:false,cache_prompt:true,max_tokens:s.generationTokens};
  }

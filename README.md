@@ -92,6 +92,10 @@ de632c79cb58be69c4685967e114a329fd819ba6fb9e87c1c79843dc7a2e73bd
 
 Thinking 采样 `temperature=1.0, top_p=0.95, top_k=20`；Non-thinking 为 `0.7, 0.80, 20`。内置 15 个 SKILL.md 与 33 个 References；Pi 直接发现 `.agents/skills/`，按需使用通用 `read` 读取。
 
+## 可选点对点 Agent 通信
+
+`feature/lan-communicate` 新增 `communicate` 工具：人工将两道会话配对后，两台机器上的 Agent 可直接交流。消息持久化、断线重试、接收去重，遵守人工暂停；不配置时保持原单 Agent 行为。配置与操作见 [点对点通信说明](docs/COMMUNICATE.md)。
+
 ## 主会话离线知识库
 
 运行 `./mini-ctf` 后，比赛会话中的模型自动获得 `knowledge` 工具。工具提供 `search`、`browse` 和 `get`，查询和结果直接留在当前任务对话及日志里。后台运行入口 `./mini-ctf run` 也使用相同工具。

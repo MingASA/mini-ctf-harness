@@ -10,6 +10,7 @@ import {TaskNumbers} from './task-numbers.mjs';
 import {ContestQueue} from './contest-queue.mjs';
 import {InteractiveSession} from './interactive-session.mjs';
 import {BtwSession} from './btw-session.mjs';
+import {Communication} from './communication.mjs';
 import {ModelCatalog} from './model-catalog.mjs';
 import {SESSION_DEFAULTS} from './interactive-session.mjs';
 import {KvCache} from './kv-cache.mjs';
@@ -107,11 +108,18 @@ export class Contest extends EventEmitter {
  }
  load(record){
   const remote={};if(this.config.services?.rag)remote.rag=new RagClient(this.config.services.rag);if(this.config.services?.vision)remote.vision=new VisionClient(this.config.services.vision);
-  const opts={guard:this.guard,remote,allowParallel:origin=>this.btw?.activeOn(origin)??false,...this.options.sessionOptions?.(record)};
+  const opts={guard:this.guard,remote,communicationPrompt:()=>this.communication?.prompt(record.task.id)??'',communicationTools:()=>this.communication?.tools(record.task.id)??[],allowParallel:origin=>this.btw?.activeOn(origin)??false,...this.options.sessionOptions?.(record)};
   const session=this.options.sessionFactory?.(record,opts)||new InteractiveSession(record.task,record.config,opts);
   session.on('auxiliary',event=>this.emit('auxiliary',{taskId:record.task.id,event}));
   session.on('change',()=>this.emit('change'));session.on('agent',event=>this.emit('agent',{taskId:record.task.id,event}));session.on('journal',event=>this.emit('journal',{taskId:record.task.id,event}));
   this.sessions.set(record.task.id,session);return session;
+ }
+ async enableCommunication(){
+  if(!this.config.communicate)throw Error('请先设置 communicate.secret 和 advertiseUrl；参见 docs/COMMUNICATE.md');
+  if(this.closing)throw Error('Harness is closing');
+  if(!this.communication)this.communication=new Communication(this);
+  if(!this.communicationStarting)this.communicationStarting=this.communication.start().catch(error=>{this.communication.transport.error=error.message;throw error;}).finally(()=>{this.communicationStarting=null;});
+  return this.communicationStarting;
  }
  save(){atomic(path.join(this.root,'tasks.json'),[...this.records.values()]);}
  taskLabel(id){return this.numbers.label(id);}
@@ -181,7 +189,7 @@ export class Contest extends EventEmitter {
   finally{this.deleting.delete(id);}
   this.maintenance.delete(id);
   if(this.resident===id){this.resident=null;this.ramKvResident=null;this.release();}
-  this.sessions.get(id)?.removeAllListeners();this.sessions.delete(id);this.records.delete(id);this.save();
+  this.sessions.get(id)?.removeAllListeners();this.sessions.delete(id);this.records.delete(id);this.save();this.communication?.forget(id);
   fs.rmSync(runDir,{recursive:true,force:true});this.emit('change');
   return {id,deleted:true};
  }
@@ -375,6 +383,7 @@ export class Contest extends EventEmitter {
    s.store.snapshot('conversation-checkpoint',{taskId:id,messages:s.messages(),time:Date.now()});
    if(this.checkpointRequested){const saved=await kv.save(s);s.store.append('checkpoint_result',saved);this.checkpointRequested=false;}
    this.queue.settle(id,result.status,result.dependencies||[]);
+   this.communication?.wake(id);
    if(result.status==='needs_review')this.retryLocally(id);
   }catch(e){this.notice=e.message;if(id){this.session(id).store.append('dispatch_error',{error:e.message});this.queue.settle(id,this.session(id).pauseRequested?'paused':'needs_review');this.retryLocally(id);}else this.enabled=false;}
   finally{
@@ -383,5 +392,5 @@ export class Contest extends EventEmitter {
    this.busy=false;this.emit('change');
   }
  }
- async close(){this.cancelInitialization?.();this.modelSwitchController?.abort();this.closing=true;this.enabled=false;clearInterval(this.interval);if(this.active)this.session(this.active).pause();this.btw?.pause();await this.execution;await this.btw?.running?.catch(()=>{});if(this.btw)await this.btw.free().catch(()=>{});await this.kvOperation?.catch(()=>{});await this.modelSwitchPromise?.catch(()=>{});await this.modelClosePromise?.catch(()=>{});await this.initialization?.catch(()=>{});while(this.polling)await new Promise(r=>setTimeout(r,10));this.release();if(fs.existsSync(this.lock))fs.unlinkSync(this.lock);}
+ async close(){this.cancelInitialization?.();this.modelSwitchController?.abort();this.closing=true;this.enabled=false;clearInterval(this.interval);if(this.active)this.session(this.active).pause();this.btw?.pause();this.communication?.transport.controller.abort();await this.communicationStarting?.catch(()=>{});await this.communication?.close();await this.execution;await this.btw?.running?.catch(()=>{});if(this.btw)await this.btw.free().catch(()=>{});await this.kvOperation?.catch(()=>{});await this.modelSwitchPromise?.catch(()=>{});await this.modelClosePromise?.catch(()=>{});await this.initialization?.catch(()=>{});while(this.polling)await new Promise(r=>setTimeout(r,10));this.release();if(fs.existsSync(this.lock))fs.unlinkSync(this.lock);}
 }

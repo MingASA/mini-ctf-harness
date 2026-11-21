@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 export class TaskInbox {
  constructor(taskId,store){this.taskId=taskId;this.store=store;}
  enqueue(text,{id=crypto.randomUUID(),kind='human',evidence=[]}={}) {
-  if(typeof text!=='string'||!text.trim()||text.length>16000)throw Error('Message must contain 1..16000 characters');
+  if(typeof text!=='string'||!text.trim())throw Error('Message must contain nonempty text');
   if(!['human','observation','feedback'].includes(kind))throw Error('Unknown inbox message kind');
   const old=this.store.events.find(e=>e.type==='inbox_queued'&&e.data.id===id);
   if(old){if(old.data.text!==text||old.data.kind!==kind)throw Error('Inbox ID reused');return old.data;}

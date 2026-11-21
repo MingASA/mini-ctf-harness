@@ -20,6 +20,7 @@ const HELP=`Ctrl+N 创建题目 · Ctrl+L 切换查看 · Ctrl+P 暂停当前题
 /start 启动调度   /queue 题目队列   /review 确认答案   /view [题号]   /delete [题号]   /priority [数值]   /switch [题号]（保存进度并切题）
 /env [环境] 选择新题环境\n/model [编号或ID] 选择模型 · /close-server 关闭模型服务\n/compact 本轮结束后压缩 · /effort [normal|compact] [强度] [思考tokens|-1] 选择思考设置\n/pause  /resume [题号]  /offloadKV 暂停并保存驻留题的 KV 到 RAM\n/offloadKV config [参数=MiB …] 查看或修改 RAM KV 余量及总上限\n/cancel 命令ID  /checkpoint  /feedback 候选ID correct|incorrect|pending 说明
 /btw 开始或进入独立分支 · /btw free 释放分支 KV · /btw resume 继续 · /btw close 删除 · /main 返回主线
+/communicate open 开放当前题 · connect URL 会话码 配对 · send 内容 · messages · off
 /context [窗口 软压缩线] 调整当前会话，例如 /context 64K 48K
 /knowledge [on|off] 查看或开关当前题的离线知识库，设置会保存；运行中在完整轮次结束后生效
 /tab [面板]  /tool 序号 查看工具输出  /read 文件路径  /archive 消息ID
@@ -145,6 +146,21 @@ export class CompetitionTerminal {
     this.notice=this.contest.notice;
    }
    else if(cmd==='/help'){this.detail=HELP;}
+   else if(cmd==='/communicate'){
+    if(this.btwFocused)throw Error('请先 /main；communicate 只绑定主会话');
+    const action=args[0]??'status',comm=this.contest.communication??await this.contest.enableCommunication();
+    if(action==='status')this.detail=stringify(comm.status(id));
+    else if(action==='messages')this.detail=stringify(comm.messages(this.requireTask()).slice(-30));
+    else if(action==='open'){
+     await this.contest.enableCommunication();const state=comm.open(this.requireTask());this.detail=null;this.tab='output';
+     this.notice='对端使用 /communicate connect '+state.node.url+' '+state.session.code;
+    }else if(action==='connect'){
+     if(args.length!==3)throw Error('用法：/communicate connect http://对端IP:18765 对端会话码');
+     await this.contest.enableCommunication();const state=await comm.connect(this.requireTask(),args[1],args[2]);this.detail=null;this.tab='output';this.notice='已配对 '+state.session.peer.name+'；模型下个完整轮次可用 communicate。';
+    }else if(action==='off'){comm.off(this.requireTask());this.detail=null;this.tab='output';this.notice='当前题已停止通信，尚未发出的消息已取消；已送达的消息不会撤回。';}
+    else if(action==='send'){const sent=comm.send(this.requireTask(),args.slice(1).join(' '));this.detail=null;this.tab='output';this.notice='消息 '+sent.message_id+' · '+sent.delivery;}
+    else throw Error('用法：/communicate [open|connect URL 会话码|send 内容|messages|off]');
+   }
    else if(cmd==='/knowledge'){
     if(args.length>1||(args.length&&!['on','off'].includes(args[0])))throw Error('用法：/knowledge [on|off]');
     const s=this.contest.session(this.requireTask());
@@ -521,7 +537,7 @@ export class CompetitionTerminal {
   }
   if(content!==null)this.content.setText(safeText(content).slice(-160000));
   const usage=s?sessionUsage(s.store,s.config,s.sessionWindow):null;
-  this.binding.setText(safeText(this.wizard?`创建 ${this.wizard.step+1}/4：${['题目标题','粘贴题意（支持多行）','附件：文件或目录路径 · /browse 选择 · - 跳过','内网目标 URL 或 - 跳过'][this.wizard.step]} · /back 上一步 · /cancel 取消`:`输入绑定 → ${c.taskLabel(this.bound||this.selected)||'无题目'} · ${this.btwFocused?'分支 /btw':'主线'} · 面板 ${this.tab}${usage?' · '+usageLine(usage)+'\n'+contextLine(usage):''}`));
+  this.binding.setText(safeText(this.wizard?`创建 ${this.wizard.step+1}/4：${['题目标题','粘贴题意（支持多行）','附件：文件或目录路径 · /browse 选择 · - 跳过','内网目标 URL 或 - 跳过'][this.wizard.step]} · /back 上一步 · /cancel 取消`:`输入绑定 → ${c.taskLabel(this.bound||this.selected)||'无题目'} · ${this.btwFocused?'分支 /btw':'主线'}${c.communication?.line(this.selected)?' · '+c.communication.line(this.selected):''} · 面板 ${this.tab}${usage?' · '+usageLine(usage)+'\n'+contextLine(usage):''}`));
   this.footer.setText(safeText((this.notice||c.notice||'Ctrl+C 中断生成 · Ctrl+R 恢复 · /compact 压缩 · /effort 调整思考 · /quit 退出')+'\n'+(c.notice&&this.notice?c.notice:'暂停推理保留命令运行；/cancel 命令ID 单独取消。')));
   this.tui.requestRender();
  }

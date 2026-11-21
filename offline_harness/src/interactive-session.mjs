@@ -166,7 +166,7 @@ export class InteractiveSession extends EventEmitter {
   for(const e of this.store.events.filter(e=>e.type==='knowledge_requested'&&!this.store.events.some(x=>x.type==='knowledge_resolved'&&x.data.request_seq===e.seq)))
    this.store.append('knowledge_resolved',{request_seq:e.seq,status:e===last?'applied':'superseded'});
  }
- systemPrompt(){return systemPrompt(this.config.mode,this.knowledge,{knowledgeEnabled:this.knowledgeControls().enabled})+'\nThis is a persistent interactive competition session. A normal final response waits for the operator. Human corrections remain pinned until the operator archives them. submit_flag saves a candidate for the operator to submit. The frontend shows awaiting_review until the operator records correct or incorrect feedback.';}
+ systemPrompt(){return systemPrompt(this.config.mode,this.knowledge,{knowledgeEnabled:this.knowledgeControls().enabled})+'\nThis is a persistent interactive competition session. A normal final response waits for the operator. Human corrections remain pinned until the operator archives them. submit_flag saves a candidate for the operator to submit. The frontend shows awaiting_review until the operator records correct or incorrect feedback.'+(this.options.communicationPrompt?.()??'');}
 
  requestYield(){this.yieldRequested=true;}
  async cancelCommand(id){
@@ -204,6 +204,7 @@ export class InteractiveSession extends EventEmitter {
      return {content:[{type:'text',text:JSON.stringify({job_id:job.jobId,status:job.status})}],details:{}};
     })});
   }
+  wrap.push(...(this.options.communicationTools?.()??[]));
   return wrap.filter(t=>(this.config.nativeImages||t.name!=='view_image'));
  }
  observation(result,kind,id){return boundedText(this.store,this.broker,JSON.stringify(kind==='command'?commandOutput(this.store,this.broker,result):result),kind+':'+id);}
