@@ -45,7 +45,8 @@ async function server(t){
   if(req.url.endsWith('/input_tokens'))return res.end(JSON.stringify({input_tokens:50}));
   if(req.url==='/v1/chat/completions'){
    if(state.required&&state.free<=state.required){res.statusCode=503;return res.end(JSON.stringify({error:{message:`CTF_BTW_WAIT: required=${state.required}, available=${state.free}`}}));}
-   res.setHeader('Content-Type','text/event-stream');res.flushHeaders();res.write(frame({reasoning_content:'分支思考',content:'分支回复'}));state.resolveStarted();
+   res.setHeader('Content-Type','text/event-stream');res.flushHeaders();res.write(frame({role:'assistant',content:null,reasoning_content:null}));res.write(frame({reasoning_content:'分支思考',content:'分支回复'}));state.resolveStarted();
+   if(state.badDelta)return res.end(frame({content:42})+'data: [DONE]\n\n');
    if(state.preemptNext){state.preemptNext=false;state.free=0;return res.end('data: '+JSON.stringify({error:{message:'CTF_BTW_WAIT: KV headroom reserved for main slot'}})+'\n\n');}
    const toolMessages=body.messages.filter(message=>message.role==='tool');
    if(state.toolCall&&!toolMessages.length)return res.end(frame({tool_calls:[{index:0,id:state.nativeToolId??'call_same',function:{name:state.toolName??'run_command',arguments:JSON.stringify(state.toolArgs??{command:'printf branch'})}}]},'tool_calls',{prompt_tokens:50,completion_tokens:4})+'data: [DONE]\n\n');
@@ -299,4 +300,31 @@ test('managed backend enables two unified slots with a reserved main pool and do
  assert.equal(at('-np'),'2');assert.equal(at('-c'),'8192');assert.equal(at('--ctf-btw-reserve'),'512');
  assert.ok(launch.args.includes('--kv-unified'));assert.ok(launch.args.includes('--no-cache-idle-slots'));assert.equal(at('--fit'),'off');assert.equal(at('--spec-type'),'draft-mtp');
  busy=true;await catalog.activate(profile,current,{allowBtw:true});assert.equal(launches,1);
+});
+
+// llama-server starts every chat stream with role=assistant, content=null.
+test('nullable role and reasoning deltas do not abort branch generation',async t=>{
+ const {url}=await server(t),s=session(t,url);
+ accepted(s,1,[{role:'system',content:system},{role:'user',content:'main'}]);
+ const mainDigest=s.store.events.at(-1).digest,branch=BtwSession.create(s);
+ await branch.ask('Continue alongside main');
+ assert.equal(branch.status,'idle');
+ assert.equal(branch.data.history.at(-1).content,'分支回复');
+ assert.equal(branch.data.history.at(-1).reasoning,'分支思考');
+ assert.equal(s.store.events.at(-1).digest,mainDigest);
+ assert.equal(branch.toolStore.events.filter(e=>e.type==='btw_model_response').length,1);
+});
+
+test('malformed non-null deltas preserve partial output and record a branch-only failure',async t=>{
+ const {state,url}=await server(t),s=session(t,url);state.badDelta=true;
+ accepted(s,1,[{role:'system',content:system},{role:'user',content:'main'}]);
+ const mainDigest=s.store.events.at(-1).digest,branch=BtwSession.create(s);
+ await assert.rejects(branch.ask('Inspect'),/Invalid branch content delta/);
+ assert.equal(branch.data.history.at(-1).content,'分支回复');
+ const failed=branch.toolStore.events.find(e=>e.type==='btw_generation_failed');
+ assert.equal(failed.data.error,'Invalid branch content delta');
+ assert.equal(failed.data.branch_id,branch.data.branchId);
+ assert.equal(failed.data.request_id,1);
+ assert.equal(s.store.events.at(-1).digest,mainDigest);
+ assert.equal(new BtwSession(s).toolStore.events.at(-1).type,'btw_generation_failed');
 });

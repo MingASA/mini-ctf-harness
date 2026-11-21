@@ -304,8 +304,10 @@ export class BtwSession extends EventEmitter {
    const choice=chunk.choices?.[0];if(!choice)return;
    if(choice.finish_reason)finish=choice.finish_reason;
    const delta=choice.delta??{};
-   if(delta.content!==undefined){if(typeof delta.content!=='string')throw Error('Invalid branch content delta');content+=delta.content;}
-   if(delta.reasoning_content!==undefined){if(typeof delta.reasoning_content!=='string')throw Error('Invalid branch reasoning delta');reasoning+=delta.reasoning_content;}
+   // llama-server emits content:null in its initial assistant-role frame.
+   // Null means no text in this frame, just like an omitted field.
+   if(delta.content!=null){if(typeof delta.content!=='string')throw Error('Invalid branch content delta');content+=delta.content;}
+   if(delta.reasoning_content!=null){if(typeof delta.reasoning_content!=='string')throw Error('Invalid branch reasoning delta');reasoning+=delta.reasoning_content;}
    for(const call of delta.tool_calls??[]){
     if(!call||!Number.isSafeInteger(call.index)||call.index<0)throw Error('Invalid branch tool-call delta');
     let draft=drafts.get(call.index);if(!draft){draft={id:'',name:'',arguments:''};drafts.set(call.index,draft);}
@@ -356,7 +358,7 @@ export class BtwSession extends EventEmitter {
   this.emit('change');return run;
  }
  async generate(signal){
-  let required=0,requiredAt=null,partial=null;
+  let required=0,requiredAt=null,partial=null,activeRequestId=null;
   try {
    await this.executePendingTools(signal);signal.throwIfAborted();
    const queued=this.data.queuedInputs.shift();
@@ -377,7 +379,7 @@ export class BtwSession extends EventEmitter {
     const count=await this.json('/v1/chat/completions/input_tokens',{method:'POST',body,signal,timeout:30000});
     if(!Number.isSafeInteger(count.input_tokens)||count.input_tokens<1)throw Error('后端未返回准确的分支 token 数');
     if(count.input_tokens+body.max_tokens>this.data.snapshot.contextTokens)throw Error('分支历史和输出预留超过上下文容量；请在主线 Compact 后重新分叉');
-    const requestId=this.reserveRequest();let result;
+    const requestId=this.reserveRequest();activeRequestId=requestId;let result;
     try{result=await this.stream(body,count,requestId,signal);partial=null;}
     catch(error){
      partial=error.btwPartial??partial;
@@ -404,6 +406,9 @@ export class BtwSession extends EventEmitter {
    }
   }catch(error){
    this.discardToolDrafts(partial,signal.aborted?'cancelled':'stream_error');this.persistPartial(partial);
+   this.toolStore.append(signal.aborted?'btw_generation_paused':'btw_generation_failed',{
+    branch_id:this.data.branchId,task_id:this.session.task.id,request_id:activeRequestId,
+    error:signal.aborted?'Cancelled by operator':String(error.message??error),route:'branch'});
    this.live=null;this.status=signal.aborted?'paused':error.wait?'waiting':'error';this.error=signal.aborted?'已暂停':error.message;
    this.save();if(!signal.aborted)throw error;
   }
