@@ -121,3 +121,22 @@ test('closing the model serializes switching and KV operations and reports stop 
   assert.equal(contest.modelServerStopped,true);
  }finally{await contest?.close();fs.rmSync(root,{recursive:true,force:true});}
 });
+
+
+test('closing a backend drains its branch, preserves branch history and permits reload',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'model-close-btw-'));
+ let stopped=false,saved=false,drained=false,finish,contest;
+ const running=new Promise(resolve=>{finish=resolve;});
+ try{
+  contest=new Contest({contestDir:root,modelRuntime:{exe:'/fixture'}},{testMode:true,guard:()=>{},
+   modelCatalog:{stopManagedServer:async()=>{assert.ok(drained);stopped=true;}}});
+  const branch={data:{kvMayExist:true,history:[{role:'user',content:'retain me'}]},running,
+   pause:()=>{drained=true;finish();},save:()=>{saved=true;},removeAllListeners:()=>{}};
+  contest.btw=branch;
+  const closing=contest.closeModelServer();
+  assert.throws(()=>contest.askBtw('new input'),/模型或 KV/);
+  await closing;
+  assert.ok(stopped&&saved);assert.equal(contest.btw,null);
+  assert.equal(branch.data.kvMayExist,false);assert.equal(branch.data.history[0].content,'retain me');
+ }finally{await contest?.close();fs.rmSync(root,{recursive:true,force:true});}
+});

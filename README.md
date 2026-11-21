@@ -4,7 +4,7 @@
 
 ## 安装并运行
 
-支持原生 x86-64 Ubuntu 24.04，以及 Windows 11 + WSL2 Ubuntu 22.04/24.04。系统需有 Python 3.10+、Git、启用 systemd 和 NVIDIA 驱动。WSL 使用 Windows CUDA 引擎；原生 Ubuntu 使用 Linux CUDA 引擎。
+支持原生 x86-64 Ubuntu 24.04，以及 Windows 11 + WSL2 Ubuntu 22.04/24.04。系统需有 Python 3.10+、Git、启用 systemd 和 NVIDIA 驱动。下面的 `--btw` 安装方式使用 Linux CUDA 引擎；省略该参数时，WSL 使用 Windows CUDA 引擎，原生 Ubuntu 使用 Linux CUDA 引擎。
 
 WSL 使用 Windows CUDA 服务时，请先在 `%UserProfile%\.wslconfig` 配置以下网络模式，并重新启动 WSL。这样前端可通过 `127.0.0.1` 连接 Windows 服务，配置依据见 [Microsoft WSL 网络文档](https://learn.microsoft.com/en-us/windows/wsl/networking#mirrored-mode-networking)。
 
@@ -13,12 +13,12 @@ WSL 使用 Windows CUDA 服务时，请先在 `%UserProfile%\.wslconfig` 配置�
 networkingMode=mirrored
 ```
 
-将仓库放在准备使用的磁盘，然后执行：
+`/btw` 已包含在 `main`。将仓库放在准备使用的磁盘，然后执行：
 
 ```bash
-git clone https://github.com/MingASA/mini-ctf-harness.git
+git clone --branch main https://github.com/MingASA/mini-ctf-harness.git
 cd mini-ctf-harness
-./mini-ctf install --data-dir /path/to/mini-ctf-data --model qwen3.8-27b-iq4xs
+./mini-ctf install --btw --data-dir /path/to/mini-ctf-data --model qwen3.8-27b-iq4xs
 ./mini-ctf
 ```
 
@@ -27,11 +27,23 @@ cd mini-ctf-harness
 另一台机器或云端推送新版本后，本机在仓库目录执行：
 
 ```bash
-./mini-ctf update
+./mini-ctf update --btw
 ./mini-ctf
 ```
 
 更新命令只接受 Git 快进更新，保留数据目录中的权重、引擎、题目记录、配置和 Docker 数据。普通前端、提示词和 Skill 更新拉取后直接可用；仅当依赖锁或工具镜像定义变化时才刷新对应部分，新增的固定模型资产只下载一次。更新不会结束驻留模型或正在运行的前端；要使用新代码时退出旧前端后重新执行 `./mini-ctf`，已加载且配置未变的模型由启动器复用。
+
+已有安装首次启用 `/btw`，在 `main` 分支的干净工作区中执行：
+
+```bash
+./mini-ctf update --btw
+```
+
+启用后，后续普通 `./mini-ctf update` 也会在后端补丁变化时自动维护它。
+
+`install --btw` 和 `update --btw` 都会准备编译依赖、复用已有 CUDA Toolkit 12.8+（缺少时自动下载并校验固定 CUDA 12.8.1 组件，约 1 GB）、构建固定版本的补丁后端，并把路径与开关写入这台机器的默认配置。首次编译需几分钟；相同补丁、Toolkit 和 GPU 架构会复用已校验的构建。已有 Toolkit 可额外传入 `--cuda-toolkit /path/to/cuda`。配置及编译产物保存在本机，Git 推送后需在另一台机器执行上述安装或更新命令。
+
+安装完成后直接运行 `./mini-ctf`，在终端输入 `/btw` 即可。无需指定缓存目录里的 `btw-config.json`。安装或更新命令不停止模型服务；如果此前仍驻留旧后端，先结束使用它的会话并关闭该服务以释放端口和显存，再启动新后端。WSL 启用 `/btw` 后运行 Linux 后端，不依赖上面的 Windows 服务网络模式。
 
 安装命令会完成：
 
@@ -129,6 +141,9 @@ Ctrl+N       新建题目，粘贴题意、选择附件、填写目标地址
 /effort      选择正常推理或 Compact 压缩，分别设置思考开关、强度和 token 预算
 /env         选择新题环境；/tab 选择面板
 /compact     当前完整轮次结束后压缩
+/btw         从当前完整上下文打开独立分支；/main 切回主线输入
+/btw free    释放分支 KV，保留分支聊天记录；下次提问时重建
+/btw close   删除分支；分支生成中 Ctrl+C 暂停，空闲时 Ctrl+C 删除
 /context     输入当前会话的窗口和软压缩线，也可直接输入 /context 64K 48K
 /tool 3      查看当前题的第 3 条工具结果；/tab output 返回对话
 /close-server 停止托管模型服务并保留界面与会话；用 /model 重新加载
@@ -146,7 +161,13 @@ Ctrl+C       停止生成，保留内容、后台命令及驻留模型；输入�
 
 后端资源状态常驻在终端顶部，每两秒刷新。带观测补丁的后端通过 `/kv-cache` 在模型执行线程上读取实际 cell，分别显示正在生成、预填充和仍有 KV 的 slot 数，以及主模型和 MTP 的注意力池占用、空闲、共享、独占 cell。有效 KV 载荷按实际 cell 和各层张量行大小计算，循环状态单独显示。接口同时提供每个序列的归属、张量大小和后端缓冲区分配量。原版后端显示 `/slots` 提供的请求状态和提示 token 数，并标注 cell 统计可用性。
 
-Linux CUDA 用户可用以下命令构建固定 b12144 的观测后端。需要 Git、CMake、Ninja、C++ 编译器和 CUDA Toolkit，脚本可接受第三个参数指定 Toolkit 目录。
+`/btw` 会冻结主线最近一次实际接收的上下文，包括该次使用的 Compact 摘要和后续消息；正在生成的半截回复不会混入快照。主线和分支并排显示，输入默认绑定分支，用 `/main` 回到主线，随时用 `/btw` 回到分支。分支保留独立对话，可以使用当前题目的工具（不含提交答案）。工具请求与结果按分支身份保存和返回，不写入主线对话；同一道题的文件系统仍共享。`/btw resume` 继续被 Ctrl+C 中断的分支回复；`/btw free` 释放分支 KV 但保留聊天，`/btw close` 删除分支。
+
+分支需要下述带 `/btw` 补丁的后端。它只加载一次模型权重，在同一个统一 KV 池中预留两个可用序列；只有提出分支问题时才让第二路生成。前缀与主线匹配时复制共享的 cell 归属，并分别维护主模型、MTP 和循环状态。循环状态无法安全回退到匹配点时，后端会重算必要的前缀。状态栏按主模型与 MTP 的实际 cell 分别显示分支使用量、与主线共享量、分支序列独占量、有效载荷和空闲池容量，并将循环状态单列；这些数字不是 `nvidia-smi` 的预分配缓冲区大小。
+
+后端为主线保留 KV 余量。余量不足时分支等待；如果生成过程中余量降到保留线，会先暂停并释放分支 KV，再在有余量时重建并继续。主线仍接近软线时可以回到主线使用 `/compact`。分支不通过 RAM KV 快照腾出空间；托管引擎继续使用 `--fit off`，不会为容纳分支自动把模型卸到 RAM。两路并发的吞吐量取决于模型、MTP 和硬件。
+
+推荐使用上面的 `install --btw` 或 `update --btw`，自动完成构建和配置。需要手动指定源码与构建目录时，Linux CUDA 用户也可用以下命令构建固定 b12144 的后端。需要 Git、CMake、Ninja、C++ 编译器和 CUDA Toolkit，脚本可接受第三个参数指定 Toolkit 目录。
 
 ```sh
 git clone --depth 1 --branch b12144 https://github.com/ggml-org/llama.cpp.git /path/to/llama.cpp
@@ -154,6 +175,12 @@ sh offline_harness/scripts/build-kv-backend.sh /path/to/llama.cpp /path/to/build
 ```
 
 在本机 `config.json` 的 `modelRuntime` 中，将 `exe` 指向生成的 `bin/llama-server`，`platform` 设为 `linux`，并使用独立的 `runDir` 保存该后端的进程回执。动态库目录可通过 `libraryDirs` 指定。源码补丁位于 `offline_harness/patches/`。直接验证真实序列复制和释放的 C++ 程序位于 `offline_harness/test/backend/kv-cells.cpp`，编译时链接补丁后的 libllama 和 libggml-base，并传入本地 Qwen3.5 9B GGUF 路径运行。
+
+手动构建后，将 `"btw": {"enabled": true}` 合并到同一个 `modelRuntime`，并在方便时重启托管引擎使新后端生效。可选 `reserveCells` 设置主线保留的空闲 cell 数，默认等于 `generationTokens`；后端还会额外保留批处理与 MTP 所需的余量。启动时使用 `-np 2 --kv-unified --no-cache-idle-slots`，保持原有上下文池大小与单份权重。旧的单 slot 引擎仍可用于普通主线，分支提问会提示先启用带补丁的后端。
+
+`node offline_harness/test/backend/btw-client.mjs http://127.0.0.1:18081` 验证真实前端解析、双路生成、连续追问、取消分支后主线继续，以及分支 KV 释放。两个测试都要单独使用空闲测试后端。
+
+`offline_harness/test/backend/btw-server.py --origin http://127.0.0.1:18081` 可对独立测试后端验证并发、主模型/MTP 的共享 cell 和仅释放分支；测试会使用 slot 0 和 slot 1，要求测试后端为空且模型别名为 `btw-test`，不要指向正在解题的服务。
 
 工具接口保持简短：
 
@@ -283,6 +310,8 @@ python3 -m unittest discover -s ../installer/test
 | `/effort` | 先选「正常推理」或「Compact 压缩」，再选关闭或思考强度。启用思考后可设置 token 预算。 |
 | `/context [窗口 软压缩线]` | 设置会话窗口和自动压缩线，例如 `/context 64K 48K`。 |
 | `/compact` | 请求在完整轮次结束后压缩上下文。 |
+| `/btw`、`/main` | 打开独立分支，或将输入切回主线。 |
+| `/btw free`、`/btw resume`、`/btw close` | 释放分支 KV、继续中断的回答、删除分支。 |
 | `/checkpoint` | 请求在轮次边界保存当前驻留题的进度。 |
 | `/offloadKV` | 暂停并尝试把驻留题的 KV 快照保存到内存。`/offloadKV config` 查看或设置内存余量和快照总上限。 |
 | `/tab [面板]` | 切换面板，例如 `/tab budget` 查看窗口、用量和两套思考设置。 |

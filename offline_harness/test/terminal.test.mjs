@@ -419,3 +419,34 @@ test('failed sandbox cleanup keeps the session and its queue state',async()=>{
   assert.equal(c.records.has('alpha'),true);assert.deepEqual(c.queue.item('alpha'),before);assert.ok(fs.existsSync(c.records.get('alpha').config.sandbox.workDir));
  }finally{await c?.close();fs.rmSync(root,{recursive:true,force:true});}
 });
+
+test('/btw displays main and branch together, keeps drafts separate, and Ctrl+C only controls the branch',async()=>{
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'pi-btw-ui-'));let c,ui,controller;const erased=[];
+ try{
+  const modelFetch=async(url,options={})=>{
+   if(url.endsWith('/kv-cache'))return Response.json({schema_version:1,ctf_btw:{enabled:true,kv_unified:true,main_slot:0,branch_slot:1,required_free_cells:100},scheduler:{generating:1,prefill:0,retained_slots:1},slots:[{id:0},{id:1}],contexts:{target:{supported:true,pools:[{id:'p',kind:'attention',capacity_cells:1000,occupied_cells:200,free_cells:800,shared_cells:0,exclusive_cells:200,membership_groups:[{sequences:[0],cells:200}]}]}}});
+   if(url.endsWith('/input_tokens'))return Response.json({input_tokens:50});
+   if(url.endsWith('/slots/1?action=erase')){erased.push(1);return Response.json({id_slot:1,n_erased:1});}
+   if(url.endsWith('/v1/chat/completions'))return new Response(new ReadableStream({start(stream){controller=stream;stream.enqueue(new TextEncoder().encode('data: '+JSON.stringify({choices:[{delta:{content:'分支正在回答'},finish_reason:null}]})+'\n\n'));},cancel(){}}),{headers:{'content-type':'text/event-stream'}});
+   return new Response('{}',{status:404});
+  };
+  c=new Contest({contestDir:path.join(root,'contest'),model:{baseUrl:'http://127.0.0.1:8080'}},{testMode:true,guard:()=>{},modelFetch,provision:async id=>{const workDir=path.join(root,id);fs.mkdirSync(workDir);return {containerId:id,workDir};},sessionOptions:()=>({broker:{validate:async()=>{}},knowledge:{docs:[]}})});
+  await c.add({id:'fixture',objective:'Investigate evidence'});const session=c.session('fixture');
+  const body={model:session.config.model,messages:[{role:'system',content:'system'},{role:'user',content:'main evidence'}],tools:[]};
+  session.store.append('model_request',{requestId:1,body,prompt_tokens:20});session.store.append('model_accepted',{requestId:1});
+  const digest=session.store.events.at(-1).digest;
+  const terminal=new Terminal();ui=new CompetitionTerminal(c,{terminal});ui.start();ui.editor.setText('主线草稿');
+  ui.agentEvent({taskId:'fixture',event:{type:'message_update',message:{role:'assistant',content:[{type:'text',text:'主线正在推理'}]}}});
+  await ui.submit('/btw');assert.equal(ui.btwFocused,true);assert.equal(ui.editor.getExpandedText(),'');
+  await ui.submit('有没有遗漏');await delay();ui.renderNow();
+  const screen=ui.tui.getScreenLines().join('\n');assert.match(screen,/主线正在推理/);assert.match(screen,/分支正在回答/);assert.match(screen,/输入绑定.*分支/);
+  ui.interrupt();await c.btw.running;assert.equal(c.btw.status,'paused');assert.equal(session.store.events.at(-1).digest,digest);
+  // Ctrl+C must also preserve a branch waiting for KV or a tool result.
+  let pausedWaiting=false;const realPause=c.btw.pause.bind(c.btw);
+  c.btw.status='waiting';c.btw.pause=()=>{pausedWaiting=true;c.btw.status='paused';return true;};
+  ui.interrupt();assert.ok(pausedWaiting);assert.ok(c.btw);assert.deepEqual(erased,[]);
+  c.btw.pause=realPause;
+  await ui.submit('/main');assert.equal(ui.btwFocused,false);assert.equal(ui.editor.getExpandedText(),'主线草稿');
+  await ui.submit('/btw');ui.interrupt();await delay();assert.equal(c.btw,null);assert.deepEqual(erased,[1]);assert.equal(session.store.events.at(-1).digest,digest);
+ }finally{if(controller)try{controller.close();}catch{}await ui?.close();await c?.close();fs.rmSync(root,{recursive:true,force:true});}
+});

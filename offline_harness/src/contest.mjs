@@ -9,6 +9,7 @@ import {sourceIdentity} from './source-identity.mjs';
 import {TaskNumbers} from './task-numbers.mjs';
 import {ContestQueue} from './contest-queue.mjs';
 import {InteractiveSession} from './interactive-session.mjs';
+import {BtwSession} from './btw-session.mjs';
 import {ModelCatalog} from './model-catalog.mjs';
 import {SESSION_DEFAULTS} from './interactive-session.mjs';
 import {KvCache} from './kv-cache.mjs';
@@ -82,7 +83,7 @@ export class Contest extends EventEmitter {
   fs.writeFileSync(this.lock,JSON.stringify({pid:process.pid}),{flag:'wx',mode:0o600});
   this.source=sourceIdentity();
   fs.mkdirSync(path.join(this.root,'startups'),{recursive:true});atomic(path.join(this.root,'startups',Date.now()+'-'+process.pid+'.json'),this.source);
-  this.sessions=new Map();this.records=new Map();this.deleting=new Set();this.enabled=false;this.closing=false;this.busy=false;this.polling=false;this.notice='';this.active=null;this.manualNext=null;this.checkpointRequested=false;this.maintenance=new Map();this.holdResident=false;this.resident=null;this.interruptEpoch=0;
+  this.sessions=new Map();this.records=new Map();this.deleting=new Set();this.enabled=false;this.closing=false;this.busy=false;this.polling=false;this.notice='';this.active=null;this.manualNext=null;this.checkpointRequested=false;this.maintenance=new Map();this.holdResident=false;this.resident=null;this.interruptEpoch=0;this.btw=null;
   this.guard=options.guard||assertExperimentIdle;this.queue=new ContestQueue(this.root);
   this.defaultModel={...SESSION_DEFAULTS,...config.model};this.catalog=options.modelCatalog??new ModelCatalog(this.config,{guard:this.guard,fetchFn:options.modelFetch??fetch,executeFn:options.modelExecute});
   const selection=path.join(this.root,'model-selection.json');if(fs.existsSync(selection))Object.assign(this.defaultModel,JSON.parse(fs.readFileSync(selection)).settings);
@@ -106,7 +107,7 @@ export class Contest extends EventEmitter {
  }
  load(record){
   const remote={};if(this.config.services?.rag)remote.rag=new RagClient(this.config.services.rag);if(this.config.services?.vision)remote.vision=new VisionClient(this.config.services.vision);
-  const opts={guard:this.guard,remote,...this.options.sessionOptions?.(record)};
+  const opts={guard:this.guard,remote,allowParallel:origin=>this.btw?.activeOn(origin)??false,...this.options.sessionOptions?.(record)};
   const session=this.options.sessionFactory?.(record,opts)||new InteractiveSession(record.task,record.config,opts);
   session.on('auxiliary',event=>this.emit('auxiliary',{taskId:record.task.id,event}));
   session.on('change',()=>this.emit('change'));session.on('agent',event=>this.emit('agent',{taskId:record.task.id,event}));session.on('journal',event=>this.emit('journal',{taskId:record.task.id,event}));
@@ -154,6 +155,7 @@ export class Contest extends EventEmitter {
   id=this.resolveTaskId(id);const record=this.records.get(id);if(!record)throw Error('Unknown task '+id);
   if(this.deleting.has(id))throw Error('会话正在删除');
   if(this.modelSwitching||this.modelClosePromise||this.offloadingKV)throw Error('模型或 KV 操作进行中，请稍后再删除');
+  if(this.btw?.session.task.id===id)await this.deleteBtw();
   if(!this.options.deprovision)throw Error('当前启动方式未配置会话容器删除功能');
   const runDir=path.resolve(record.config.runDir),tasksDir=path.join(this.root,'tasks');
   if(runDir!==path.join(tasksDir,id)||fs.realpathSync(tasksDir)!==path.join(fs.realpathSync(this.root),'tasks'))
@@ -184,6 +186,27 @@ export class Contest extends EventEmitter {
   return {id,deleted:true};
  }
  enqueue(id,text){id=this.resolveTaskId(id);const s=this.session(id);const result=s.enqueue(text);const status=this.status(id);if(['awaiting_input','awaiting_judge','awaiting_review','idle','paused'].includes(status))this.queue.enqueue(id,'resume');if(this.holdResident&&!this.enabled){this.manualNext=id;this.start();}this.emit('change');return result;}
+ async openBtw(id){
+  id=this.resolveTaskId(id);const session=this.session(id);
+  if(this.modelSwitching||this.modelClosePromise||this.modelServerStopped||this.offloadingKV||this.closing)throw Error('模型或 KV 操作进行中，请稍后再开分支');
+  if(session.config.localRecovery)throw Error('当前自动重启后端的恢复模式无法安全并发；请先关闭该模式');
+  if(this.btw?.session.task.id===id)return this.btw;
+  if(this.btw){await this.btw.free();this.btw.removeAllListeners();this.btw=null;}
+  const options={fetchFn:this.options.modelFetch??fetch,guard:this.guard};
+  const file=path.join(session.store.root,'btw-branch.json');
+  const branch=fs.existsSync(file)?new BtwSession(session,options):BtwSession.create(session,options);
+  branch.on('change',()=>this.emit('change'));this.btw=branch;this.emit('change');return branch;
+ }
+ async freeBtw(){if(!this.btw)throw Error('当前没有 /btw 分支');return this.btw.free();}
+ askBtw(text){
+  if(this.modelSwitching||this.modelClosePromise||this.modelServerStopped||this.offloadingKV||this.closing)throw Error('模型或 KV 操作进行中，暂时不能生成分支');
+  if(!this.btw)throw Error('当前没有 /btw 分支');
+  this.acquire();
+  let run;try{run=this.btw.ask(text);}catch(error){if(!this.active&&!this.holdResident&&!this.ramKvResident)this.release();throw error;}
+  run.finally(()=>{if(!this.active&&!this.holdResident&&!this.ramKvResident)this.release();}).catch(()=>{});
+  return run;
+ }
+ async deleteBtw(){if(!this.btw)return;const branch=this.btw;await branch.destroy();branch.removeAllListeners();if(this.btw===branch)this.btw=null;this.emit('change');}
  interruptActive(){
   this.modelSwitchController?.abort();this.interruptEpoch++;this.enabled=false;this.holdResident=true;this.manualNext=null;
   const id=this.active??this.resident;
@@ -198,6 +221,7 @@ export class Contest extends EventEmitter {
  switchModel(id,value,options){
   if(this.offloadingKV)throw Error('Wait for the RAM KV operation to finish');
   if(this.modelClosePromise)throw Error('Wait for the model server to stop');
+  if(this.btw)throw Error('请先删除 /btw 分支，再切换模型');
   if(this.modelSwitchPromise)throw Error('A model switch is already in progress');
   const pending=this.performModelSwitch(id,value,options);this.modelSwitchPromise=pending;pending.finally(()=>{this.modelSwitchPromise=null;}).catch(()=>{});return pending;
  }
@@ -234,12 +258,14 @@ export class Contest extends EventEmitter {
   if(!this.config.modelRuntime?.exe)throw Error('当前安装没有托管模型服务');
   this.interruptActive();
   this.notice='正在关闭模型服务…';this.emit('change');
+  this.btw?.pause();await this.btw?.running?.catch(()=>{});
   await this.execution;
   const hadLease=Boolean(this.lease);
   this.acquire();
   try{
    await this.catalog.stopManagedServer();
    this.modelServerStopped=true;
+   if(this.btw){this.btw.data.kvMayExist=false;this.btw.save();this.btw.removeAllListeners();this.btw=null;}
    this.resident=null;this.ramKvResident=null;this.holdResident=false;
    this.notice='托管模型服务已关闭。用 /model 重新加载。';
   }finally{if(this.modelServerStopped||!hadLease)this.release();}
@@ -297,6 +323,7 @@ export class Contest extends EventEmitter {
   this.offloadingKV=true;
   try{
    this.interruptActive();
+   this.btw?.pause();await this.btw?.running?.catch(()=>{});
    await this.execution;
    const ram=this.catalog.ramKvOwned(session.config);
    if(!ram||this.ramKvResident?.id!==id||this.ramKvResident.processId!==ram.processId||!this.lease)
@@ -331,7 +358,7 @@ export class Contest extends EventEmitter {
    this.acquire();let item;
    if(this.manualNext){id=this.manualNext;this.manualNext=null;this.queue.remove(id);item={taskId:id,kind:'resume',priority:0,sequence:this.queue.state.next++};this.queue.state.running=item;this.queue.save();}else item=this.queue.take();
    if(!item)return;id=item.taskId;this.active=id;this.notice='';this.emit('change');const s=this.session(id);
-   if(this.defaultModel.modelSelection){const profile=this.catalog.resolve(s.config.modelSelection??s.config.model,s.config);await this.catalog.activate(profile,s.config);}
+   if(this.defaultModel.modelSelection){const profile=this.catalog.resolve(s.config.modelSelection??s.config.model,s.config);await this.catalog.activate(profile,s.config,{allowBtw:this.btw?.activeOn(s.config.baseUrl)??false});}
    const kv=new KvCache(s.config,{guard:this.guard,fetchFn:this.options.kvFetch||fetch});
    const ram=this.catalog.ramKvOwned?.(s.config);
    const ramCache=ram&&new KvCache(s.config,{guard:this.guard,fetchFn:this.options.kvFetch||fetch,ram});
@@ -352,9 +379,9 @@ export class Contest extends EventEmitter {
   }catch(e){this.notice=e.message;if(id){this.session(id).store.append('dispatch_error',{error:e.message});this.queue.settle(id,this.session(id).pauseRequested?'paused':'needs_review');this.retryLocally(id);}else this.enabled=false;}
   finally{
    this.active=null;
-   if(!this.holdResident&&!this.ramKvResident){this.release();this.resident=null;}
+   if(!this.holdResident&&!this.ramKvResident&&!this.btw?.running){this.release();this.resident=null;}
    this.busy=false;this.emit('change');
   }
  }
- async close(){this.cancelInitialization?.();this.modelSwitchController?.abort();this.closing=true;this.enabled=false;clearInterval(this.interval);if(this.active)this.session(this.active).pause();await this.execution;await this.kvOperation?.catch(()=>{});await this.modelSwitchPromise?.catch(()=>{});await this.modelClosePromise?.catch(()=>{});await this.initialization?.catch(()=>{});while(this.polling)await new Promise(r=>setTimeout(r,10));this.release();if(fs.existsSync(this.lock))fs.unlinkSync(this.lock);}
+ async close(){this.cancelInitialization?.();this.modelSwitchController?.abort();this.closing=true;this.enabled=false;clearInterval(this.interval);if(this.active)this.session(this.active).pause();this.btw?.pause();await this.execution;await this.btw?.running?.catch(()=>{});if(this.btw)await this.btw.free().catch(()=>{});await this.kvOperation?.catch(()=>{});await this.modelSwitchPromise?.catch(()=>{});await this.modelClosePromise?.catch(()=>{});await this.initialization?.catch(()=>{});while(this.polling)await new Promise(r=>setTimeout(r,10));this.release();if(fs.existsSync(this.lock))fs.unlinkSync(this.lock);}
 }

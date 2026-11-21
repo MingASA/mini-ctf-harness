@@ -241,7 +241,10 @@ test('offload pauses the resident task, keeps its transcript and restores its RA
   await contest.add({id:'beta',objective:'Different test session'});
   contest.enabled=true;const first=contest.tick();await ready.promise;await settle();
   await assert.rejects(contest.offloadKV('beta'),/驻留/);
+  const branchDrained=deferred();let branchPaused=false;
+  contest.btw={pause:()=>{branchPaused=true;branchDrained.resolve();},running:branchDrained.promise,free:async()=>{}};
   const saved=await contest.offloadKV('alpha');await first;
+  assert.ok(branchPaused);contest.btw=null;
   assert.equal(saved.status,'saved');assert.equal(contest.status('alpha'),'paused');assert.equal(contest.enabled,false);
   assert.equal(fs.readFileSync(path.join(root,saved.filename),'utf8'),'snapshot');
   assert.deepEqual(fs.readdirSync(stage),[]);

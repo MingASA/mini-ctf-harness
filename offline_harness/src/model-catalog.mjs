@@ -134,11 +134,17 @@ export class ModelCatalog {
   return {...ram,identity:owner.key,processId:owner.requestId,vision:owner.args.includes('--mmproj'),
    cpuProjector:owner.args.includes('--no-mmproj-offload')};
  }
- async verify(profile,settings,signal){
+ async verify(profile,settings,signal,{allowBtw=false}={}){
   const health=await this.json(profile.baseUrl,'/health',{signal});if(health.status!=='ok')throw Error('Selected model is not ready');
   const models=await this.json(profile.baseUrl,'/v1/models',{signal});if(!models.data?.some(m=>m.id===profile.model))throw Error('Backend is serving a different model: '+profile.model);
   const props=await this.json(profile.baseUrl,'/props',{signal});if(props.default_generation_settings?.n_ctx!==settings.contextTokens)throw Error('Selected model context does not match its profile');
-  const slots=await this.json(profile.baseUrl,'/slots',{signal});if(!Array.isArray(slots)||slots.some(s=>s.is_processing))throw Error('Selected model still has an active request');
+  const slots=await this.json(profile.baseUrl,'/slots',{signal});
+  if(!Array.isArray(slots))throw Error('Invalid selected model slots');
+  if(slots.some(s=>s.is_processing)){
+   if(!allowBtw||slots.some(s=>s.is_processing&&s.id!==1))throw Error('Selected model still has an active request');
+   const capability=(await this.json(profile.baseUrl,'/kv-cache',{signal})).ctf_btw;
+   if(!capability?.enabled||!capability.kv_unified||capability.main_slot!==0||capability.branch_slot!==1)throw Error('Selected model has an unprotected active request');
+  }
   return {model:profile.model,baseUrl:profile.baseUrl,contextTokens:settings.contextTokens};
  }
  async stopManagedServer(){
@@ -166,7 +172,7 @@ export class ModelCatalog {
    throw new Error(error.stderr?.trim()||error.message,{cause:error});
   }
  }
- async activate(profile,current,{signal,projectorDevice}={}){
+ async activate(profile,current,{signal,projectorDevice,allowBtw=false}={}){
   this.guard();signal?.throwIfAborted();const settings=this.settings(profile,current,{projectorDevice});
   let startup;
   if(profile.modelPath){
@@ -176,7 +182,15 @@ export class ModelCatalog {
    fs.mkdirSync(runtimeRoot,{recursive:true});
    const script=path.join(runtimeRoot,'Terminal-Model.ps1');fs.copyFileSync(new URL('../scripts/Terminal-Model.ps1',import.meta.url),script);
    const hostPath=this.config.modelRuntime?.platform==='linux'?x=>x:windowsPath;
-   const port=Number(new URL(profile.baseUrl).port||80),args=['-m',hostPath(profile.modelPath),'--alias',profile.model,'--host','127.0.0.1','--port',String(port),'-c',String(settings.contextTokens),'-np','1','-ngl',String(profile.gpuLayers??99),'--flash-attn','on','-ctk',profile.kvType??'q8_0','-ctv',profile.kvType??'q8_0','-b','64','-ub','32','--fit','off','--load-mode','none','--cache-ram','0','--ctx-checkpoints','2','--checkpoint-min-step','256','--jinja','--metrics','--no-context-shift','--slots'];
+   const btw=this.config.modelRuntime?.btw;
+   const reserve=btw?.reserveCells??current.generationTokens;
+   if(btw?.enabled&&(!Number.isInteger(reserve)||reserve<1||reserve>=settings.contextTokens))throw Error('Invalid /btw main KV reserve');
+   const port=Number(new URL(profile.baseUrl).port||80),args=['-m',hostPath(profile.modelPath),'--alias',profile.model,'--host','127.0.0.1','--port',String(port),'-c',String(settings.contextTokens),'-np',btw?.enabled?'2':'1','-ngl',String(profile.gpuLayers??99),'--flash-attn','on','-ctk',profile.kvType??'q8_0','-ctv',profile.kvType??'q8_0','-b','64','-ub','32','--fit','off','--load-mode','none','--cache-ram','0','--ctx-checkpoints','2','--checkpoint-min-step','256','--jinja','--metrics','--no-context-shift','--slots'];
+   if(btw?.enabled)args.push('--kv-unified','--no-cache-idle-slots','--ctf-btw-reserve',String(reserve));
+   if(btw?.enabled&&profile.mtpTokens!==undefined){
+    if(!Number.isInteger(profile.mtpTokens)||profile.mtpTokens<1||profile.mtpTokens>64)throw Error('Invalid /btw MTP draft token count');
+    args.push('--spec-type','draft-mtp','--spec-draft-n-max',String(profile.mtpTokens));
+   }
    if(settings.nativeImages){
     if(!profile.mmprojPath||!fs.existsSync(profile.mmprojPath))throw Error('Selected model projector is missing');
     args.push('--mmproj',hostPath(profile.mmprojPath),settings.projectorDevice==='gpu'?'--mmproj-offload':'--no-mmproj-offload',
@@ -186,6 +200,9 @@ export class ModelCatalog {
    if(ram)args.push('--slot-save-path',ram.hostDirectory);
    const ramIdentity=ram?{exeTime:fs.statSync(exe).mtimeMs,projectorTime:settings.nativeImages?fs.statSync(profile.mmprojPath).mtimeMs:null}:undefined;
    const launch={libraryDirs:this.config.modelRuntime?.libraryDirs??[],requestId:crypto.randomUUID(),key:hash(JSON.stringify({profile:descriptor({...profile,contextTokens:settings.contextTokens}),exe,args,weight:fs.statSync(profile.modelPath).mtimeMs,ramIdentity})),model:profile.model,baseUrl:profile.baseUrl,contextTokens:settings.contextTokens,exe:hostPath(exe),args,root:hostPath(runtimeRoot)};
+   const ownerFile=path.join(runtimeRoot,'owner.json');
+   if(allowBtw&&fs.existsSync(ownerFile)&&JSON.parse(fs.readFileSync(ownerFile)).key===launch.key){try{const receipt=await this.verify(profile,settings,signal,{allowBtw});return {settings,receipt};}catch(error){if(signal?.aborted||allowBtw)throw error;}}
+   if(allowBtw)throw Error('Model runtime changed while the branch is active; stop the branch before switching models');
    // Detached launchers may start after a cancellation and another selection.
    // Keep their input immutable; selection.json names the latest desired request.
    const config=path.join(runtimeRoot,'selection-'+launch.requestId+'.json');
@@ -210,7 +227,7 @@ export class ModelCatalog {
      const owner=fs.existsSync(ownerFile)?JSON.parse(fs.readFileSync(ownerFile)):null;
      if(owner?.key!==startup.key||owner.selectionId!==startup.id)throw Error('Waiting for selected model ownership');
     }
-    receipt=await this.verify(profile,settings,signal);break;
+    receipt=await this.verify(profile,settings,signal,{allowBtw});break;
    }
    catch(error){
     if(signal?.aborted)throw error;

@@ -54,8 +54,13 @@ export class KvCache {
    const filename=`ctf-${session.task.id}-${this.ram?randomBytes(8).toString('hex'):fingerprint.slice(0,16)}.bin`,slot=this.ram?0:this.config.kv.slot??0;
    let estimatedBytes;
    if(this.ram){
-    if(slots.length!==1||slots[0].id!==slot||slots[0].n_ctx!==this.config.contextTokens)throw Error('RAM KV requires the managed single-slot backend');
-    const tokens=slots[0].n_prompt_tokens;
+    const main=slots.find(s=>s.id===slot);
+    if(!main||main.n_ctx!==this.config.contextTokens)throw Error('RAM KV requires the managed main slot');
+    if(slots.length!==1){
+     const capability=(await this.call('/kv-cache')).ctf_btw;
+     if(slots.length!==2||slot!==0||!capability?.enabled||!capability.kv_unified||capability.main_slot!==0||capability.branch_slot!==1)throw Error('RAM KV requires the managed single-slot or protected two-slot backend');
+    }
+    const tokens=main.n_prompt_tokens;
     if(!Number.isInteger(tokens)||!Number.isInteger(last.data.prompt_tokens)||tokens<last.data.prompt_tokens||tokens>this.config.contextTokens||tokens<=0)
      throw Error('No complete resident prefix is available');
     const media=last.data.body?.messages?.flatMap(m=>Array.isArray(m.content)?m.content.filter(part=>part.type!=='text'):[])??[];
@@ -78,7 +83,7 @@ export class KvCache {
    if(receipt.id_slot!==slot||receipt.filename!==filename||!(receipt.n_saved>0)||!(receipt.n_written>0))throw Error('KV save receipt did not verify nonempty data');
    if(this.ram){
     const stat=fs.lstatSync(stageFile??ramFile);
-    if(!stat.isFile()||receipt.n_saved!==slots[0].n_prompt_tokens||receipt.n_written!==stat.size||receipt.n_written>estimatedBytes)
+    if(!stat.isFile()||receipt.n_saved!==slots.find(s=>s.id===slot).n_prompt_tokens||receipt.n_written!==stat.size||receipt.n_written>estimatedBytes)
      throw Error('RAM snapshot differs from the admitted slot size');
     if(stageFile){
      this.admit('save',stat.size);

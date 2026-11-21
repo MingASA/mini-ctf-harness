@@ -14,12 +14,12 @@ import {assertExperimentIdle} from './process-guard.mjs';
 export {DEFAULT_GUARD,assertExperimentIdle} from './process-guard.mjs';
 
 export class NativeClient {
-  constructor(config, store, {guard = assertExperimentIdle, fetchFn = fetch, onAccepted = ()=>{},localRecovery,operatorSignal,requestSignal,onAuxiliary=()=>{}} = {}) {
+  constructor(config, store, {guard = assertExperimentIdle, fetchFn = fetch, onAccepted = ()=>{},localRecovery,operatorSignal,requestSignal,onAuxiliary=()=>{},allowParallel=()=>false} = {}) {
     const url = new URL(config.baseUrl);
     if (!['127.0.0.1','[::1]'].includes(url.hostname) || url.protocol !== 'http:' || url.username || url.password || url.search || url.hash || !['','/'].includes(url.pathname)) throw Error('Local model origin must be an explicit loopback HTTP origin');
     this.config=config; this.store=store; this.guard=guard; this.fetchFn=fetchFn; this.origin=url.origin;
     this.context=new ContextManager(store,config);
-    this.onAccepted=onAccepted;this.operatorSignal=operatorSignal;this.requestSignal=requestSignal;this.onAuxiliary=onAuxiliary;
+    this.onAccepted=onAccepted;this.operatorSignal=operatorSignal;this.requestSignal=requestSignal;this.onAuxiliary=onAuxiliary;this.allowParallel=allowParallel;
     this.localRecovery=localRecovery??(config.localRecovery?new LocalModelRecovery(config.localRecovery,store):null);
   }
   body(input,{kind,maxTokens}={}) {
@@ -195,7 +195,22 @@ export class NativeClient {
         }
       }
       if(route==='/health' && data.status!=='ok') throw Error('Native model is not ready');
-      if(route==='/slots' && (!Array.isArray(data) || data.some(x=>x.is_processing))) throw Error('Native model is already processing another request');
+      if(route==='/slots') {
+        if(!Array.isArray(data))throw Error('Invalid native slots');
+        const busy=data.filter(x=>x.is_processing);
+        if(busy.length){
+          // The protected backend permits only the fixed main/BTW pair.
+          // Checking this symmetrically lets a branch preflight while slot 0
+          // is active without allowing arbitrary slot or task interleaving.
+          const peer=this.config.nativeSlot===0?1:this.config.nativeSlot===1?0:null;
+          const busyIds=new Set(busy.map(x=>x.id));
+          if(!this.allowParallel()||peer===null||busyIds.size!==1||!busyIds.has(peer))throw Error('Native model is already processing another request');
+          const telemetry=await this.fetchFn(this.origin+'/kv-cache',{redirect:'error',signal:signal?AbortSignal.any([signal,AbortSignal.timeout(10000)]):AbortSignal.timeout(10000)});
+          if(!telemetry.ok)throw Error('Parallel branch requires the protected KV backend');
+          const policy=(await telemetry.json()).ctf_btw;
+          if(!policy?.enabled||!policy.kv_unified||policy.main_slot!==0||policy.branch_slot!==1)throw Error('Parallel branch requires the protected KV backend');
+        }
+      }
       if(route==='/slots'&&this.config.engineContextTokens){
         const slot=data.find(s=>s.id===this.config.nativeSlot);
         if(slot?.n_ctx!==undefined&&slot.n_ctx<this.config.engineContextTokens)throw Error('Native slot is smaller than the configured engine window');
