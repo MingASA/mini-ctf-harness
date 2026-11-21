@@ -24,6 +24,7 @@ try {
     const contest=new Contest(config,startup?{provision:(...args)=>startup.provision(...args),deprovision:(...args)=>startup.deprovision(...args)}:{});if(startup)startup.attach(contest);
     const interrupt=()=>terminal.interrupt(),terminate=()=>terminal.close();
     const terminal=new CompetitionTerminal(contest,{onClose:()=>{process.off('SIGINT',interrupt);process.off('SIGTERM',terminate);process.exitCode=0;}});terminal.start();
+    if(config.team)contest.enableTeam().catch(error=>{contest.notice='团队通信未启动：'+error.message;contest.emit('change');});
     process.once('SIGTERM',terminate);process.on('SIGINT',interrupt);if(startup)startup.start(contest,{noModel:startOptions.noModel}).catch(()=>{});
   }
   else if(args[0]==='guard') {assertExperimentIdle();console.log('Existing experiment is not running.');}

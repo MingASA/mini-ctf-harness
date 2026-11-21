@@ -20,6 +20,8 @@ const HELP=`Ctrl+N 创建题目 · Ctrl+L 切换查看 · Ctrl+P 暂停当前题
 /start 启动调度   /queue 题目队列   /review 确认答案   /view [题号]   /delete [题号]   /priority [数值]   /switch [题号]（保存进度并切题）
 /env [环境] 选择新题环境\n/model [编号或ID] 选择模型 · /close-server 关闭模型服务\n/compact 本轮结束后压缩 · /effort [normal|compact] [强度] [思考tokens|-1] 选择思考设置\n/pause  /resume [题号]  /offloadKV 暂停并保存驻留题的 KV 到 RAM\n/offloadKV config [参数=MiB …] 查看或修改 RAM KV 余量及总上限\n/cancel 命令ID  /checkpoint  /feedback 候选ID correct|incorrect|pending 说明
 /btw 开始或进入独立分支 · /btw free 释放分支 KV · /btw resume 继续 · /btw close 删除 · /main 返回主线
+/team center|worker|discover|connect URL|graph|messages · /team 查看通信状态
+/handoff [说明] 本轮结束后交接给 Center · Worker /help [问题] 求助 · /help commands 查看命令
 /context [窗口 软压缩线] 调整当前会话，例如 /context 64K 48K
 /knowledge [on|off] 查看或开关当前题的离线知识库，设置会保存；运行中在完整轮次结束后生效
 /tab [面板]  /tool 序号 查看工具输出  /read 文件路径  /archive 消息ID
@@ -50,7 +52,7 @@ export class CompetitionTerminal {
    if(matchesKey(data,'ctrl+p')){this.attempt(()=>contest.pause(this.requireTask()));return {consume:true};}
    if(matchesKey(data,'ctrl+r')){this.attempt(()=>{this.setView(this.requireTask());contest.resume(this.requireTask());});return {consume:true};}
   });
-  this.changed=()=>this.render();this.agentEvent=({taskId,event})=>{
+  this.changed=()=>{if(!this.selected&&!this.wizard&&contest.records.size){this.selected=contest.records.keys().next().value;this.bound=this.selected;this.tab='output';this.detail=null;this.persist();}this.render();};this.agentEvent=({taskId,event})=>{
    if(event.type==='message_update')this.live.set(taskId,structuredClone(event.message));
    if(event.type==='message_end')this.live.delete(taskId);this.render();
   };
@@ -109,6 +111,12 @@ export class CompetitionTerminal {
   };
   input.onEscape=()=>{close();resolve(undefined);};
  });}
+ multilineValue(title){return new Promise(resolve=>{
+  const input=new Editor(this.tui,theme),footer=new Text('Enter 发送 · Shift+Enter 换行 · Esc 取消 · 输入 - 跳过',1,0);
+  input.focused=true;const close=this.dialog(title,input,footer),handle=input.handleInput.bind(input);
+  input.handleInput=data=>{if(matchesKey(data,'escape')){close();resolve(undefined);}else handle(data);};
+  input.onSubmit=raw=>{const value=raw.trim();if(!value)return;close();resolve(value);};
+ });}
  async browseAttachment(start){
   const {resolved,info}=resolveAttachmentPath(start||process.cwd());
   if(info.isFile())return resolved;
@@ -144,7 +152,28 @@ export class CompetitionTerminal {
     if(this.btwFocused)this.setInputTarget(false);
     this.notice=this.contest.notice;
    }
-   else if(cmd==='/help'){this.detail=HELP;}
+   else if(cmd==='/help'&&!(args[0]!=='commands'&&this.contest.team?.binding(id)?.role==='worker')){this.detail=HELP;}
+   else if(cmd==='/team'){
+    if(this.btwFocused)throw Error('请先 /main；团队操作绑定主会话');
+    const team=await this.contest.enableTeam(),action=args[0]??'status';
+    if(action==='center'){
+     const taskId=this.requireTask(),report=team.binding(taskId)?'':await this.multilineValue('探路 agent 报告（可粘贴多行已观察事实）');
+     if(report===null||report===undefined)return;
+     await team.center(taskId,report);this.detail=stringify({joined:await team.discover(taskId),...team.status(taskId)});
+    }else if(action==='worker')this.detail=stringify(team.worker(args[1]==='new'?undefined:id));
+    else if(action==='discover')this.detail=stringify(await team.discover(this.requireTask()));
+    else if(action==='connect'){if(args.length!==2)throw Error('用法：/team connect http://LAN-IP:18765');this.detail=stringify(await team.connect(this.requireTask(),args[1]));}
+    else if(action==='graph'){
+     const b=team.binding(this.requireTask());if(!b)throw Error('当前题尚未加入团队');this.detail=stringify(b.role==='center'?team.graph(b):await team.remoteRead(b,{source:'graph'}));
+    }else if(action==='messages')this.detail=stringify(team.transport.store.events.filter(e=>['outgoing','received','sent'].includes(e.type)).slice(-30));
+    else if(action==='status')this.detail=stringify(team.status(id));
+    else throw Error('用法：/team [center|worker [new]|discover|connect URL|graph|messages]');
+    if(['center','worker','discover','connect'].includes(action)){this.notice=action==='worker'?'已等待 Center 加入；/team 查看通信状态。':'团队操作已完成；/team 查看节点和投递状态，/team graph 查看事实与行动图。';this.detail=null;this.tab='output';}
+   }
+   else if(cmd==='/handoff'||cmd==='/help'){
+    if(this.btwFocused)throw Error('请先 /main；交接和求助只使用主会话记录');
+    this.detail=null;this.tab='output';const team=await this.contest.enableTeam();this.notice=stringify(team.requestReport(this.requireTask(),cmd==='/help'?'help':'handoff',args.join(' ')));
+   }
    else if(cmd==='/knowledge'){
     if(args.length>1||(args.length&&!['on','off'].includes(args[0])))throw Error('用法：/knowledge [on|off]');
     const s=this.contest.session(this.requireTask());
@@ -521,7 +550,7 @@ export class CompetitionTerminal {
   }
   if(content!==null)this.content.setText(safeText(content).slice(-160000));
   const usage=s?sessionUsage(s.store,s.config,s.sessionWindow):null;
-  this.binding.setText(safeText(this.wizard?`创建 ${this.wizard.step+1}/4：${['题目标题','粘贴题意（支持多行）','附件：文件或目录路径 · /browse 选择 · - 跳过','内网目标 URL 或 - 跳过'][this.wizard.step]} · /back 上一步 · /cancel 取消`:`输入绑定 → ${c.taskLabel(this.bound||this.selected)||'无题目'} · ${this.btwFocused?'分支 /btw':'主线'} · 面板 ${this.tab}${usage?' · '+usageLine(usage)+'\n'+contextLine(usage):''}`));
+  this.binding.setText(safeText(this.wizard?`创建 ${this.wizard.step+1}/4：${['题目标题','粘贴题意（支持多行）','附件：文件或目录路径 · /browse 选择 · - 跳过','内网目标 URL 或 - 跳过'][this.wizard.step]} · /back 上一步 · /cancel 取消`:`输入绑定 → ${c.taskLabel(this.bound||this.selected)||'无题目'} · ${this.btwFocused?'分支 /btw':'主线'}${c.team?.line(this.selected)?' · '+c.team.line(this.selected):''} · 面板 ${this.tab}${usage?' · '+usageLine(usage)+'\n'+contextLine(usage):''}`));
   this.footer.setText(safeText((this.notice||c.notice||'Ctrl+C 中断生成 · Ctrl+R 恢复 · /compact 压缩 · /effort 调整思考 · /quit 退出')+'\n'+(c.notice&&this.notice?c.notice:'暂停推理保留命令运行；/cancel 命令ID 单独取消。')));
   this.tui.requestRender();
  }

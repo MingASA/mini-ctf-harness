@@ -10,6 +10,7 @@ import {TaskNumbers} from './task-numbers.mjs';
 import {ContestQueue} from './contest-queue.mjs';
 import {InteractiveSession} from './interactive-session.mjs';
 import {BtwSession} from './btw-session.mjs';
+import {Team} from './team.mjs';
 import {ModelCatalog} from './model-catalog.mjs';
 import {SESSION_DEFAULTS} from './interactive-session.mjs';
 import {KvCache} from './kv-cache.mjs';
@@ -107,11 +108,18 @@ export class Contest extends EventEmitter {
  }
  load(record){
   const remote={};if(this.config.services?.rag)remote.rag=new RagClient(this.config.services.rag);if(this.config.services?.vision)remote.vision=new VisionClient(this.config.services.vision);
-  const opts={guard:this.guard,remote,allowParallel:origin=>this.btw?.activeOn(origin)??false,...this.options.sessionOptions?.(record)};
+  const opts={guard:this.guard,remote,teamPrompt:()=>this.team?.prompt(record.task.id)??'',teamTools:()=>this.team?.tools(record.task.id)??[],teamFinish:message=>this.team?.finishTurn(record.task.id,message)??false,allowParallel:origin=>this.btw?.activeOn(origin)??false,...this.options.sessionOptions?.(record)};
   const session=this.options.sessionFactory?.(record,opts)||new InteractiveSession(record.task,record.config,opts);
   session.on('auxiliary',event=>this.emit('auxiliary',{taskId:record.task.id,event}));
   session.on('change',()=>this.emit('change'));session.on('agent',event=>this.emit('agent',{taskId:record.task.id,event}));session.on('journal',event=>this.emit('journal',{taskId:record.task.id,event}));
   this.sessions.set(record.task.id,session);return session;
+ }
+ async enableTeam(){
+  if(!this.config.team)throw Error('请先在配置文件中设置 team.secret、name 和 LAN 地址；参见 docs/TEAM.md');
+  if(this.closing)throw Error('Harness is closing');
+  if(!this.team)this.team=new Team(this);
+  if(!this.teamStarting)this.teamStarting=this.team.start().finally(()=>{this.teamStarting=null;});
+  return this.teamStarting;
  }
  save(){atomic(path.join(this.root,'tasks.json'),[...this.records.values()]);}
  taskLabel(id){return this.numbers.label(id);}
@@ -120,7 +128,8 @@ export class Contest extends EventEmitter {
  session(id){id=this.resolveTaskId(id);const s=this.sessions.get(id);if(!s)throw Error('Unknown task '+id);return s;}
  queueRows(){return [...this.records.values()].map(r=>{const s=this.session(r.task.id);return {id:r.task.id,title:this.taskTitle(r.task.id),status:this.status(r.task.id),model:s.config.model,jobs:s.dependencies().length,reviews:s.candidates().filter(x=>!x.feedback||x.feedback.status==='pending')};});}
  status(id){id=this.resolveTaskId(id);const item=this.queue.item(id);if(this.active===id)return 'running';if(this.queue.state.readyResume.some(x=>x.taskId===id))return 'ready_resume';if(this.queue.state.readyFresh.some(x=>x.taskId===id))return 'ready_fresh';return item?.status||'idle';}
- async add({id,title,objective,attachmentDir='',target='',sandbox}){
+ async add({id,title,objective,attachmentDir='',target='',sandbox,signal}){
+  signal?.throwIfAborted();
   const files=scanAttachments(attachmentDir,this.config.importLimits);
   id=id??this.numbers.allocate();
   if(!/^[a-zA-Z0-9_-]{1,100}$/.test(id)||['__proto__','constructor','prototype'].includes(id)||this.records.has(id))throw Error('Task ID invalid or already exists');
@@ -130,7 +139,7 @@ export class Contest extends EventEmitter {
   let work;
   sandbox=sandbox||this.config.sandboxes?.find(s=>![...this.records.values()].some(r=>r.config.sandbox?.containerId===s.containerId||r.config.sandbox?.workDir===s.workDir));
   if(sandbox){work=sandbox.workDir;if([...this.records.values()].some(r=>r.config.sandbox?.containerId===sandbox.containerId||r.config.sandbox?.workDir===work))throw Error('Each task needs its own sandbox');}
-  else if(this.options.provision){sandbox=await this.options.provision(id,{target,environment:this.environmentName});work=sandbox.workDir;}
+  else if(this.options.provision){sandbox=await this.options.provision(id,{target,environment:this.environmentName,...(signal?{signal}:{})});signal?.throwIfAborted();work=sandbox.workDir;}
   else {
    const p=this.config.provision;if(!p)throw Error('Configure provision or supply an unused sandbox receipt');
    const base=path.resolve(p.workBase);if(!base.includes('/offline-harness/work')||base.includes('/benchmarks/'))throw Error('Invalid competition work base');
@@ -140,10 +149,10 @@ export class Contest extends EventEmitter {
    const out=path.join(runDir,'sandbox.json');
    const resources=Object.entries({memoryMiB:'--memory-mib',cpus:'--cpus'})
     .flatMap(([key,flag])=>this.config.solver?.[key]===undefined?[]:[flag,String(this.config.solver[key])]);
-   await exec('python3',[new URL('../scripts/provision_sandbox.py',import.meta.url).pathname,'--docker',p.docker||'docker','--host',p.dockerHost||'unix:///var/run/docker.sock','--image',p.image,'--work-base',base,'--work-dir',work,'--out',out,...resources],{timeout:60000,maxBuffer:1024*1024});
-   sandbox=JSON.parse(fs.readFileSync(out));return this.register({id,title,objective,target,attachmentDir,attachments,sandbox,runDir});
+   await exec('python3',[new URL('../scripts/provision_sandbox.py',import.meta.url).pathname,'--docker',p.docker||'docker','--host',p.dockerHost||'unix:///var/run/docker.sock','--image',p.image,'--work-base',base,'--work-dir',work,'--out',out,...resources],{timeout:60000,maxBuffer:1024*1024,signal});
+   signal?.throwIfAborted();sandbox=JSON.parse(fs.readFileSync(out));return this.register({id,title,objective,target,attachmentDir,attachments,sandbox,runDir});
   }
-  const attachments=writeAttachments(files,work);
+  signal?.throwIfAborted();const attachments=writeAttachments(files,work);
   return this.register({id,title,objective,target,attachmentDir,attachments,sandbox,runDir});
  }
  register({id,title,objective,target,attachmentDir,attachments,sandbox,runDir}){
@@ -181,7 +190,7 @@ export class Contest extends EventEmitter {
   finally{this.deleting.delete(id);}
   this.maintenance.delete(id);
   if(this.resident===id){this.resident=null;this.ramKvResident=null;this.release();}
-  this.sessions.get(id)?.removeAllListeners();this.sessions.delete(id);this.records.delete(id);this.save();
+  this.sessions.get(id)?.removeAllListeners();this.sessions.delete(id);this.records.delete(id);this.save();this.team?.forgetTask(id);
   fs.rmSync(runDir,{recursive:true,force:true});this.emit('change');
   return {id,deleted:true};
  }
@@ -375,6 +384,7 @@ export class Contest extends EventEmitter {
    s.store.snapshot('conversation-checkpoint',{taskId:id,messages:s.messages(),time:Date.now()});
    if(this.checkpointRequested){const saved=await kv.save(s);s.store.append('checkpoint_result',saved);this.checkpointRequested=false;}
    this.queue.settle(id,result.status,result.dependencies||[]);
+   if(this.team?.binding(id)&&['awaiting_input','waiting_tool','waiting_service'].includes(result.status)&&s.inbox.items().some(i=>i.status==='queued'))this.queue.enqueue(id,'resume',{reason:'team_message_at_boundary'});
    if(result.status==='needs_review')this.retryLocally(id);
   }catch(e){this.notice=e.message;if(id){this.session(id).store.append('dispatch_error',{error:e.message});this.queue.settle(id,this.session(id).pauseRequested?'paused':'needs_review');this.retryLocally(id);}else this.enabled=false;}
   finally{
@@ -383,5 +393,5 @@ export class Contest extends EventEmitter {
    this.busy=false;this.emit('change');
   }
  }
- async close(){this.cancelInitialization?.();this.modelSwitchController?.abort();this.closing=true;this.enabled=false;clearInterval(this.interval);if(this.active)this.session(this.active).pause();this.btw?.pause();await this.execution;await this.btw?.running?.catch(()=>{});if(this.btw)await this.btw.free().catch(()=>{});await this.kvOperation?.catch(()=>{});await this.modelSwitchPromise?.catch(()=>{});await this.modelClosePromise?.catch(()=>{});await this.initialization?.catch(()=>{});while(this.polling)await new Promise(r=>setTimeout(r,10));this.release();if(fs.existsSync(this.lock))fs.unlinkSync(this.lock);}
+ async close(){this.cancelInitialization?.();this.modelSwitchController?.abort();this.closing=true;this.enabled=false;clearInterval(this.interval);if(this.active)this.session(this.active).pause();this.btw?.pause();this.team?.transport.controller.abort();await this.teamStarting?.catch(()=>{});await this.team?.close();await this.execution;await this.btw?.running?.catch(()=>{});if(this.btw)await this.btw.free().catch(()=>{});await this.kvOperation?.catch(()=>{});await this.modelSwitchPromise?.catch(()=>{});await this.modelClosePromise?.catch(()=>{});await this.initialization?.catch(()=>{});while(this.polling)await new Promise(r=>setTimeout(r,10));this.release();if(fs.existsSync(this.lock))fs.unlinkSync(this.lock);}
 }

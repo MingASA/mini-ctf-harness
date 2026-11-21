@@ -92,6 +92,10 @@ de632c79cb58be69c4685967e114a329fd819ba6fb9e87c1c79843dc7a2e73bd
 
 Thinking 采样 `temperature=1.0, top_p=0.95, top_k=20`；Non-thinking 为 `0.7, 0.80, 20`。内置 15 个 SKILL.md 与 33 个 References；Pi 直接发现 `.agents/skills/`，按需使用通用 `read` 读取。
 
+## 可选局域网团队协作
+
+`feature/lan-team` 提供 Center / Worker 协作：沿用各机的 Pi 会话、模型和 Docker，通过持久化消息派工、求助与交接，共享 Fact/Intent 图。未配置时保持单 Agent 模式。三台电脑配置、斜杠命令、附件读取和验证步骤见 [团队协作说明](docs/TEAM.md)。
+
 ## 主会话离线知识库
 
 运行 `./mini-ctf` 后，比赛会话中的模型自动获得 `knowledge` 工具。工具提供 `search`、`browse` 和 `get`，查询和结果直接留在当前任务对话及日志里。后台运行入口 `./mini-ctf run` 也使用相同工具。

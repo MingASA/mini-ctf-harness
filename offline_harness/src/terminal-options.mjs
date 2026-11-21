@@ -15,6 +15,8 @@ export const slashCommands=[
  ['cancel','取消当前题的后台命令'],
  ['compact','在本轮结束后压缩上下文'],
  ['close-server','停止托管模型服务并保留会话'],
+ ['team','局域网协作：center / worker / discover / connect / graph / messages'],
+ ['handoff','本轮结束后总结实际发现并交接给 Center'],
  ['btw','分叉独立讨论；free 释放 KV，main 返回主线，close 删除分支'],
  ['main','将输入切回主线'],
  ['context','设置当前会话的窗口和软压缩线'],

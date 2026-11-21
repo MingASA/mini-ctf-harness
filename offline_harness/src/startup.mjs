@@ -47,9 +47,13 @@ export class Startup {
   const result=await this.execute(binary,!wsl&&process.getuid()===0?helper:rootArgs,{signal,timeout:1200000,maxBuffer:1024*1024,env:windowsInteropEnv(),cwd:this.config.modelRuntime?.hostCwd??path.dirname(this.file)});
   return JSON.parse(result.stdout.trim().split('\n').at(-1));
  }
- async provision(id,{target='',environment=this.environment}={}){
-  await this.dockerReady;const workDir=path.join(this.config.provision.workBase,id);fs.mkdirSync(workDir,{recursive:true});
-  return this.root('provision',['--task',id,'--work-dir',workDir,'--environment',environment,'--target',target]);
+ async provision(id,{target='',environment=this.environment,signal}={}){
+  signal?.throwIfAborted();
+  if(signal){
+   let cancel;try{await Promise.race([this.dockerReady,new Promise((_,reject)=>{cancel=()=>reject(signal.reason);signal.addEventListener('abort',cancel,{once:true});})]);}finally{signal.removeEventListener('abort',cancel);}
+  }else await this.dockerReady;
+  signal?.throwIfAborted();const workDir=path.join(this.config.provision.workBase,id);fs.mkdirSync(workDir,{recursive:true});
+  return this.root('provision',['--task',id,'--work-dir',workDir,'--environment',environment,'--target',target],signal);
  }
  async deprovision(id,sandbox){
   await this.dockerReady;
